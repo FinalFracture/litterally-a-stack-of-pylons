@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://dncgl25a25s8j"]
+
+[ext_resource type="Script" uid="uid://x1mhsegrmdbr" path="res://scripts/cone_piece.gd" id="1_piece"]
+[ext_resource type="PackedScene" path="res://Models/standard_cone.glb" id="2_model"]
+
+[sub_resource type="CylinderShape3D" id="Shape_cone"]
+height = 0.4572
+radius = 0.14
+
+[node name="StandardCone" type="CollisionShape3D" unique_id=1842856723]
+shape = SubResource("Shape_cone")
+script = ExtResource("1_piece")
+
+[node name="ConeMesh" type="MeshInstance3D" parent="." unique_id=293029267]
+
+[node name="Model" parent="ConeMesh" instance=ExtResource("2_model")]

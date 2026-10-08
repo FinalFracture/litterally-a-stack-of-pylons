@@ -1,0 +1,38 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/cone_piece.gd" id="1_piece"]
+
+[sub_resource type="StandardMaterial3D" id="Mat_orange"]
+albedo_color = Color(0.96, 0.62, 0.16, 1)
+roughness = 0.6
+
+[sub_resource type="StandardMaterial3D" id="Mat_mark"]
+albedo_color = Color(0.12, 0.1, 0.08, 1)
+roughness = 0.8
+
+[sub_resource type="CylinderMesh" id="Mesh_cone"]
+top_radius = 0.008
+bottom_radius = 0.1
+height = 0.3048
+radial_segments = 20
+
+[sub_resource type="BoxMesh" id="Mesh_mark"]
+size = Vector3(0.02, 0.06, 0.01)
+
+[sub_resource type="CylinderShape3D" id="Shape_cone"]
+height = 0.3048
+radius = 0.09
+
+[node name="MiniCone" type="CollisionShape3D"]
+shape = SubResource("Shape_cone")
+script = ExtResource("1_piece")
+piece_type = 1
+
+[node name="ConeMesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mesh_cone")
+surface_material_override/0 = SubResource("Mat_orange")
+
+[node name="HeadingMark" type="MeshInstance3D" parent="ConeMesh"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, -0.055)
+mesh = SubResource("Mesh_mark")
+surface_material_override/0 = SubResource("Mat_mark")
