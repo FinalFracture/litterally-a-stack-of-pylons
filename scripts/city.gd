@@ -35,6 +35,7 @@ const _CONE := preload("res://scenes/player/standard_cone.tscn")
 const _MINI := preload("res://scenes/player/mini_cone.tscn")
 const _BARREL := preload("res://scenes/player/barrel.tscn")
 const _ChunkLayout := preload("res://scripts/road_chunk_layout.gd")
+const _WorldCone := preload("res://scripts/world_cone.gd")
 
 var _spots: Array[Dictionary]
 var _built: Array[Rect2]
@@ -777,13 +778,17 @@ func _cone_depot(x0: float, z_near: float, side: float) -> void:
 	add_child(sign)
 
 
-func _piece(kind: String, at: Vector3) -> void:
-	var body := StaticBody3D.new()
+func _world_cone_body(at: Vector3, yaw: float = 0.0) -> RigidBody3D:
+	# World cones are knockable, bottom-heavy rigid bodies (M1, REAL-001/005). See world_cone.gd.
+	var body := _WorldCone.new() as RigidBody3D
 	body.position = at
-	body.collision_layer = 1
-	body.collision_mask = 1
-	body.add_to_group("stack_target")
+	body.rotation.y = yaw
 	add_child(body)
+	return body
+
+
+func _piece(kind: String, at: Vector3) -> void:
+	var body := _world_cone_body(at)
 	var scene: PackedScene = _CONE
 	var lift: float = GameConstants.STANDARD_H * 0.5
 	if kind == "mini":
@@ -1253,14 +1258,8 @@ func _scatter_cone_stacks() -> void:
 
 
 func _cone_stack(at: Vector3, count: int, yaw: float, index: int) -> void:
-	var body := StaticBody3D.new()
+	var body := _world_cone_body(at, yaw)
 	body.name = "ConeStack%d" % index
-	body.position = at
-	body.rotation.y = yaw
-	body.collision_layer = 1
-	body.collision_mask = 1
-	body.add_to_group("stack_target")
-	add_child(body)
 	var extra: float = GameConstants.STANDARD_EXTRA
 	var height: float = GameConstants.STANDARD_H
 	for i in count:
@@ -1271,12 +1270,7 @@ func _cone_stack(at: Vector3, count: int, yaw: float, index: int) -> void:
 
 
 func _cone(at: Vector3) -> void:
-	var body := StaticBody3D.new()
-	body.position = at
-	body.collision_layer = 1
-	body.collision_mask = 1
-	body.add_to_group("stack_target")
-	add_child(body)
+	var body := _world_cone_body(at)
 	var piece := _CONE.instantiate() as Node3D
 	body.add_child(piece)
 	piece.position = Vector3(0.0, 0.2286, 0.0)

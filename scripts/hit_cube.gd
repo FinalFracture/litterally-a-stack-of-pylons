@@ -1179,6 +1179,10 @@ func _deliver_hit(body: Node) -> void:
 		if stack != null and stack.has_method("receive_hit"):
 			stack.receive_hit(travel_velocity, self)
 		return
+	if body.has_method("car_impact"):
+		# World cones: physics pushes them; car_impact caps the imparted speed and adds spin.
+		body.car_impact(travel_velocity, self)
+		return
 	var column := body.get_parent()
 	if column != null and column.has_method("break_from_hit"):
 		column.break_from_hit(travel_velocity, self)

@@ -1,0 +1,23 @@
+[gd_scene load_steps=3 format=3]
+
+; World-cone collider for the 18" standard cone (REAL-005).
+; Origin = the cone piece's centre (piece bottom at y = -0.2286).
+; Taper: frustum r 0.12 m -> 0.04 m from the base top to the tip.
+; Base: square rubber base 0.286 x 0.028 x 0.286 m.
+; world_cone.gd copies every CollisionShape3D child into the cone's RigidBody3D.
+; To use an Asset Manager "-col" mesh later, replace these children with that shape.
+
+[sub_resource type="ConvexPolygonShape3D" id="Shape_taper"]
+points = PackedVector3Array(0.1200, -0.2006, 0.0000, 0.1109, -0.2006, 0.0459, 0.0849, -0.2006, 0.0849, 0.0459, -0.2006, 0.1109, 0.0000, -0.2006, 0.1200, -0.0459, -0.2006, 0.1109, -0.0849, -0.2006, 0.0849, -0.1109, -0.2006, 0.0459, -0.1200, -0.2006, 0.0000, -0.1109, -0.2006, -0.0459, -0.0849, -0.2006, -0.0849, -0.0459, -0.2006, -0.1109, -0.0000, -0.2006, -0.1200, 0.0459, -0.2006, -0.1109, 0.0849, -0.2006, -0.0849, 0.1109, -0.2006, -0.0459, 0.0400, 0.2286, 0.0000, 0.0370, 0.2286, 0.0153, 0.0283, 0.2286, 0.0283, 0.0153, 0.2286, 0.0370, 0.0000, 0.2286, 0.0400, -0.0153, 0.2286, 0.0370, -0.0283, 0.2286, 0.0283, -0.0370, 0.2286, 0.0153, -0.0400, 0.2286, 0.0000, -0.0370, 0.2286, -0.0153, -0.0283, 0.2286, -0.0283, -0.0153, 0.2286, -0.0370, -0.0000, 0.2286, -0.0400, 0.0153, 0.2286, -0.0370, 0.0283, 0.2286, -0.0283, 0.0370, 0.2286, -0.0153)
+
+[sub_resource type="BoxShape3D" id="Shape_base"]
+size = Vector3(0.286, 0.028, 0.286)
+
+[node name="StandardConeWorldCollider" type="Node3D"]
+
+[node name="Taper" type="CollisionShape3D" parent="."]
+shape = SubResource("Shape_taper")
+
+[node name="Base" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.2146, 0)
+shape = SubResource("Shape_base")
