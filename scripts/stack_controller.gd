@@ -602,7 +602,8 @@ func _make_hit_body(piece: Node3D, fling: Vector3, hitter: Node, nudge: Vector3)
 	rb.add_to_group("stack_target")
 	rb.collision_layer = 1
 	rb.collision_mask = 1
-	rb.mass = 0.55
+	# Same real masses as world cones (M-04): 1.4 kg standard, 0.9 kg mini, 8 kg barrel.
+	rb.mass = GameConstants.piece_mass(int(piece.get("piece_type")))
 	rb.linear_damp = 0.05
 	rb.angular_damp = 0.35
 	rb.continuous_cd = true
@@ -715,7 +716,7 @@ func _spawn_loose(piece: Node3D, velocity: Vector3, keep_upright: bool) -> void:
 	rb.add_to_group("stack_target")
 	rb.collision_layer = 1
 	rb.collision_mask = 1
-	rb.mass = 0.6
+	rb.mass = GameConstants.piece_mass(int(piece.get("piece_type")))
 	rb.linear_damp = 1.2
 	rb.angular_damp = 2.5
 	rb.continuous_cd = true

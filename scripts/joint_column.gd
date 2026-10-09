@@ -17,7 +17,10 @@ func build(pieces: Array, parent: Node) -> void:
 	_body.add_to_group("stack_target")
 	_body.collision_layer = 1
 	_body.collision_mask = 1
-	_body.mass = 0.6 * float(pieces.size())
+	var kg := 0.0
+	for p in pieces:
+		kg += GameConstants.piece_mass(int((p as Node).get("piece_type")))
+	_body.mass = maxf(kg, 0.1)
 	_body.linear_damp = 0.6
 	_body.angular_damp = 1.2
 	_body.continuous_cd = true
@@ -40,7 +43,7 @@ func _loose_piece(piece: Node3D, fling: Vector3, hitter: Node, nudge: Vector3) -
 	loose.add_to_group("stack_target")
 	loose.collision_layer = 1
 	loose.collision_mask = 1
-	loose.mass = 0.55
+	loose.mass = GameConstants.piece_mass(int(piece.get("piece_type")))
 	loose.linear_damp = 0.05
 	loose.angular_damp = 0.4
 	loose.continuous_cd = true

@@ -1175,8 +1175,9 @@ func _deliver_hit(body: Node) -> void:
 	if body.is_in_group("hitter") or body.is_in_group("vehicle"):
 		_crash_with(body)
 		return
-	if body.is_in_group("pedestrian") and body.has_method("knock"):
-		body.knock(travel_velocity, self)
+	if body.is_in_group("pedestrian") and body.has_method("take_hit"):
+		# Every hitter goes through take_hit (PHYSICS_SPEC_v1 §1); cars are judged on speed.
+		body.take_hit(self, _kind_mass(self), travel_velocity, (body as Node3D).global_position)
 		return
 	if body.is_in_group("soul"):
 		if _feet_on_roof(body):
