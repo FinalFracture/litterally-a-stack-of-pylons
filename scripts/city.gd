@@ -1,6 +1,8 @@
 extends Node3D
 
-@export var road_test_seed: int = 0 # Zero rolls a fresh road seed each run.
+## Zero uses the world seed from LaunchConfig (fixed default, or PYLONS_SEED / --seed).
+## A non-zero value here overrides it for editor experiments only.
+@export var road_test_seed: int = 0
 
 const ASPHALT := Color(0.15, 0.16, 0.17)
 const GRASS := Color(0.30, 0.44, 0.22)
@@ -32,6 +34,7 @@ const DETAIL_OFF := 125.0
 const _CONE := preload("res://scenes/player/standard_cone.tscn")
 const _MINI := preload("res://scenes/player/mini_cone.tscn")
 const _BARREL := preload("res://scenes/player/barrel.tscn")
+const _ChunkLayout := preload("res://scripts/road_chunk_layout.gd")
 
 var _spots: Array[Dictionary]
 var _built: Array[Rect2]
@@ -617,15 +620,28 @@ func map_bounds() -> Rect2:
 
 
 func _tuning_block() -> void:
-	# Seeded districts. Only the player's 500 m chunk is loaded.
+	# Seeded districts. Only the centre chunk is loaded (Milestone 1: no ring, no streaming).
+	# Chunk content is seeded from the world seed plus the chunk grid coords (road_network._chunk_seed).
 	var soul := get_tree().get_first_node_in_group("soul") as Node3D
-	var center := Vector3.ZERO if soul == null else Vector3(soul.global_position.x, 0.0, soul.global_position.z)
+	var chunk: Vector2i = LaunchConfig.CENTRE_CHUNK
+	var origin: Vector2 = _ChunkLayout.chunk_origin(chunk)
+	var half: float = _ChunkLayout.CHUNK_SIZE_M * 0.5
+	var center := Vector3(origin.x + half, 0.0, origin.y + half)
+	set_meta("chunk_bounds", Rect2(origin, Vector2(_ChunkLayout.CHUNK_SIZE_M, _ChunkLayout.CHUNK_SIZE_M)))
 	_stall = Vector3(center.x, 0.65, center.z)
 	# Below the sidewalk footing. Visible grass is the blocks between roads.
 	_ground("LoopGrass", Vector3(center.x, -0.45, center.z), Vector3(2200.0, 0.5, 2200.0), Vector3(2200.0, 0.5, 2200.0), GRASS, false)
+	var world_seed: int = road_test_seed if road_test_seed != 0 else LaunchConfig.world_seed
 	var road_builder = preload("res://scripts/road_network.gd").new()
-	road_builder.build(self, center, road_test_seed)
+	road_builder.build(self, center, world_seed)
+	var spawn: Vector3 = road_builder.sidewalk_spawn(Vector2(center.x, center.z))
+	if LaunchConfig.has_spawn_override:
+		spawn = LaunchConfig.spawn_override
+	set_meta("spawn_point", spawn)
+	if soul != null:
+		soul.global_position = spawn
 	_scatter_cone_stacks()
+	LaunchConfig.announce(spawn)
 
 
 func register_road_surface(area: Rect2, road_name: String = "Modular Loop") -> void:

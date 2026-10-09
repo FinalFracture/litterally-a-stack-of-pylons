@@ -98,6 +98,7 @@ var _ground_mat: Material
 var _part_mats: Dictionary = {}
 var _segments: Array[Dictionary] = []
 var _rects_pending: Array[Dictionary] = []
+var _stack_sites: Array[Dictionary] = []
 var _portals: Array[Dictionary] = []
 var _portal_keys: Dictionary = {}
 var _rng: RandomNumberGenerator
@@ -2851,7 +2852,8 @@ func _decor_ok(at: Vector3) -> bool:
 
 func _publish_cone_stacks(city: Node3D) -> void:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = _world_seed + 4817
+	# Chunk content: seeded from the world seed plus the home chunk's grid coords.
+	rng.seed = _chunk_seed(_world_seed, _Layout.chunk_of(_clear_at.x, _clear_at.y)) + 4817
 	var candidates: Array[Vector3] = []
 	for box in _walk_boxes:
 		var length: float = float(box["length"])
@@ -2886,6 +2888,55 @@ func _publish_cone_stacks(city: Node3D) -> void:
 		})
 	city.set_meta("cone_stack_sites", sites)
 	city.set_meta("cone_stack_count", sites.size())
+	_stack_sites = sites
+
+
+## Milestone 1 spawn: the sidewalk point in the target's chunk nearest the target.
+## Never on asphalt: the point must sit inside a sidewalk box, clear of every road
+## rect, building footprint and published cone stack.
+func sidewalk_spawn(target: Vector2) -> Vector3:
+	var home: Vector2i = _Layout.chunk_of(target.x, target.y)
+	var best := Vector3.ZERO
+	var best_d := INF
+	for box in _walk_boxes:
+		var chunk: Vector2i = box["chunk"]
+		if chunk != home:
+			continue
+		var length: float = float(box["length"])
+		var width: float = float(box["width"])
+		if width < 1.0 or length < 2.0:
+			continue
+		var mid: Vector3 = box["mid"]
+		var dir: Vector3 = _dir(float(box["angle"]))
+		var reach: float = length * 0.5 - 0.6
+		var steps: int = maxi(1, int(reach / 1.0))
+		for k in range(-steps, steps + 1):
+			var along: float = reach * float(k) / float(steps)
+			var spot: Vector3 = mid + dir * along
+			var flat := Vector2(spot.x, spot.z)
+			var d: float = flat.distance_to(target)
+			if d >= best_d:
+				continue
+			if _nearest_road_gap(flat) < 0.5:
+				continue
+			if _blocked_foot(flat, 0.8):
+				continue
+			if _near_stack_site(flat, 3.0):
+				continue
+			best_d = d
+			best = Vector3(spot.x, WALK_TOP + 0.02, spot.z)
+	if best_d == INF:
+		push_warning("No sidewalk spawn found in chunk %s; spawning at the chunk centre." % str(home))
+		return Vector3(target.x, WALK_TOP + 0.02, target.y)
+	return best
+
+
+func _near_stack_site(flat: Vector2, radius: float) -> bool:
+	for spec in _stack_sites:
+		var at: Vector3 = spec["at"]
+		if Vector2(at.x, at.z).distance_to(flat) < radius:
+			return true
+	return false
 
 
 func _stack_spot_ok(spot: Vector3) -> bool:
@@ -3380,6 +3431,7 @@ func _walk_body(host: Node3D) -> StaticBody3D:
 	body.name = "Sidewalk"
 	body.collision_layer = 1
 	body.collision_mask = 1
+	body.add_to_group("sidewalk")
 	host.add_child(body)
 	return body
 

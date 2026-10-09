@@ -9,11 +9,14 @@ const SQUASH_RETURN := 9.0
 const LAND_SPEED := 1.2
 const FALL_Y := -4.0
 const EDGE_INSET := 1.0
+const RESPAWN_INSET := 0.35
 
 var _squash_y := 1.0
 var hold_column := false
 var ragdoll := false
-var _map_half := 32.0
+# Respawn clamp: the loaded chunk's real bounds (City meta "chunk_bounds"), not the disabled Ground box.
+var _bounds := Rect2(0.0, 0.0, 500.0, 500.0)
+var _bounds_read := false
 var max_speed: float = DEFAULT_SPEED
 var jump_height: float = 0.49
 
@@ -24,10 +27,6 @@ func _ready() -> void:
 	var gravity: float = _gravity()
 	if gravity > 0.0:
 		jump_height = DEFAULT_JUMP_SPEED * DEFAULT_JUMP_SPEED / (2.0 * gravity)
-	var shape_node := get_parent().get_node_or_null("Ground/CollisionShape3D") as CollisionShape3D
-	if shape_node != null and shape_node.shape is BoxShape3D:
-		var box := shape_node.shape as BoxShape3D
-		_map_half = minf(box.size.x, box.size.z) * 0.5
 
 
 func _physics_process(delta: float) -> void:
@@ -71,22 +70,39 @@ func _recover_if_fallen() -> void:
 	var stack := get_node_or_null("StackController")
 	if stack != null and stack.has_method("note_respawn"):
 		stack.note_respawn()
-	print("pavement")
+	LaunchConfig.log_line("pavement")
+
+
+func _chunk_bounds() -> Rect2:
+	if not _bounds_read:
+		var city := get_parent().get_node_or_null("City")
+		if city != null and city.has_meta("chunk_bounds"):
+			_bounds = city.get_meta("chunk_bounds")
+			_bounds_read = true
+	return _bounds
 
 
 func _nearest_pavement() -> Vector3:
-	var limit := _map_half - EDGE_INSET
+	var area := _chunk_bounds().grow(-EDGE_INSET)
 	var here := global_position
-	var best := Vector3(clampf(here.x, -limit, limit), 0.05, clampf(here.z, -limit, limit))
-	var best_d := Vector2(here.x - best.x, here.z - best.z).length()
-	for node in get_tree().get_nodes_in_group("pavement"):
-		if not (node is StaticBody3D):
-			continue
-		var spot := _closest_on_body(node as StaticBody3D, here)
-		var dist := Vector2(here.x - spot.x, here.z - spot.z).length()
-		if dist < best_d:
-			best = spot
-			best_d = dist
+	here.x = clampf(here.x, area.position.x, area.end.x)
+	here.z = clampf(here.z, area.position.y, area.end.y)
+	var best := Vector3(here.x, 0.05, here.z)
+	var best_d := INF
+	# Sidewalks first, so a respawn never lands in a lane. Road pavement is the fallback.
+	for group_name in ["sidewalk", "pavement"]:
+		for node in get_tree().get_nodes_in_group(group_name):
+			if not (node is StaticBody3D):
+				continue
+			var spot := _closest_on_body(node as StaticBody3D, here)
+			if not area.has_point(Vector2(spot.x, spot.z)):
+				continue
+			var dist := Vector2(here.x - spot.x, here.z - spot.z).length()
+			if dist < best_d:
+				best = spot
+				best_d = dist
+		if best_d < INF:
+			break
 	return best
 
 
@@ -119,8 +135,11 @@ func _closest_on_box(shape_node: CollisionShape3D, here: Vector3) -> Vector3:
 	var half := box.size * 0.5
 	var xf := shape_node.global_transform
 	var local: Vector3 = xf.affine_inverse() * here
-	var x: float = clampf(local.x, -half.x, half.x)
-	var z: float = clampf(local.z, -half.z, half.z)
+	# Stay RESPAWN_INSET inside the box so a sidewalk respawn never sits on the curb line.
+	var ix: float = maxf(half.x - RESPAWN_INSET, 0.0)
+	var iz: float = maxf(half.z - RESPAWN_INSET, 0.0)
+	var x: float = clampf(local.x, -ix, ix)
+	var z: float = clampf(local.z, -iz, iz)
 	return xf * Vector3(x, half.y, z) + Vector3(0.0, 0.05, 0.0)
 
 
