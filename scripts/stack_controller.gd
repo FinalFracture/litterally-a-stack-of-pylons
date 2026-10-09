@@ -23,10 +23,12 @@ var _ragdoll_anchor: RigidBody3D
 var _ragdoll_until := 0
 var _hit_bodies: Array[RigidBody3D] = []
 var _hit_hitter: CollisionObject3D
+var _keymouse := false
 
 
 func _ready() -> void:
 	_soul = get_parent() as CharacterBody3D
+	_keymouse = LaunchConfig.keymouse_on()
 
 
 func _physics_process(delta: float) -> void:
@@ -45,6 +47,12 @@ func _physics_process(delta: float) -> void:
 		_hop_off_top()
 	if Input.is_action_just_pressed("soul_transfer"):
 		_try_swap()
+	if _keymouse:
+		# Keyboard stand-ins for left/right click. Registered only with PYLONS_KEYMOUSE=1 or --keymouse.
+		if Input.is_action_just_pressed("km_take"):
+			_try_pickup()
+		if Input.is_action_just_pressed("km_drop"):
+			_drop_bottom()
 	_soul.hold_column = not _settle_pieces.is_empty() and _soul.global_position.y < 0.25
 	_check_slide_hit()
 	_check_overhead()

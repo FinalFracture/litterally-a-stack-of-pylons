@@ -7,6 +7,9 @@ const SPRING_MARGIN := 0.3
 const MOUSE_SENS := 0.003
 const PITCH_MIN := 0.15
 const PITCH_MAX := 1.2
+# Keyboard look (only with PYLONS_KEYMOUSE=1 or --keymouse), radians per second.
+const KEY_YAW_SPEED := 2.2
+const KEY_PITCH_SPEED := 1.3
 
 @export var target_path: NodePath
 
@@ -40,8 +43,18 @@ func _physics_process(_delta: float) -> void:
 	_place()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if LaunchConfig.keymouse_on() and not get_tree().paused:
+		_key_look(delta)
 	_place()
+
+
+func _key_look(delta: float) -> void:
+	# Same sense as the mouse: right turns the view right, up looks up.
+	var turn := Input.get_axis("km_look_left", "km_look_right")
+	var tilt := Input.get_axis("km_look_down", "km_look_up")
+	_yaw -= turn * KEY_YAW_SPEED * delta
+	_pitch = clampf(_pitch + tilt * KEY_PITCH_SPEED * delta, PITCH_MIN, PITCH_MAX)
 
 
 func snap() -> void:
