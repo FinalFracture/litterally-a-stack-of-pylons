@@ -7,6 +7,8 @@ const _PATH_LOG := preload("res://scripts/path_change_log.gd")
 const _PASS_LOG := preload("res://scripts/pass_attempt_log.gd")
 const _FLEET_LOG := preload("res://scripts/fleet_log.gd")
 const _DRILL := preload("res://scripts/drive_drill.gd")
+const _Graph := preload("res://scripts/traffic_graph.gd")
+const TRIP_GOAL_MAX_M := 450.0
 
 const GREEN_TIME := 6.0
 const YELLOW_TIME := 1.6
@@ -39,6 +41,29 @@ var _in_main: PackedByteArray = PackedByteArray()
 var _spots: Array[Dictionary] = []
 var _spot_i := 0
 var _fleet_target := FLEET
+# M2 streaming: the lane graph covers loaded chunks only and is rebuilt off-thread.
+var _hop_grid: Dictionary = {}
+var _light_grid: Dictionary = {}
+var _stop_grid: Dictionary = {}
+var _all_spots: Array = []
+var _graph_task := -1
+var _graph_box: Dictionary = {}
+var _graph_gen := 0
+var _loaded: Dictionary = {}
+var _resend: Array = []
+var _send_fails: Dictionary = {}
+var _guard_i := 0
+## Counters for the traffic health report.
+var stream_despawned := 0
+var stream_rerouted := 0
+var stream_dead_end_despawns := 0
+var graph_rebuilds := 0
+var last_upkeep_usec := 0
+var _free_tasks: Array[int] = []
+var upkeep_apply_usec_max := 0
+var upkeep_reroute_usec_max := 0
+var graph_build_ms_max := 0.0
+var graph_apply_ms_max := 0.0
 @export var vehicle_traffic_enabled := true
 
 
@@ -106,6 +131,9 @@ func _physics_process(delta: float) -> void:
 			else:
 				_phase_left = YELLOW_TIME
 	_paint_lamps()
+	var up0 := Time.get_ticks_usec()
+	_stream_upkeep()
+	last_upkeep_usec = Time.get_ticks_usec() - up0
 	_trip_wait += delta
 	if _trip_wait >= 0.45:
 		_trip_wait = 0.0
@@ -324,7 +352,27 @@ func _pick(pos: Vector3, dir: Vector3, lines: Array[Dictionary], lateral_max: fl
 	var best_kind := 0.0
 	var best_line: Dictionary = {}
 	var found := false
-	for i in lines.size():
+	var grid: Dictionary = {}
+	if is_same(lines, _lights):
+		grid = _light_grid
+	elif is_same(lines, _stops):
+		grid = _stop_grid
+	var order: PackedInt32Array = PackedInt32Array()
+	if grid.is_empty():
+		order.resize(lines.size())
+		for n in lines.size():
+			order[n] = n
+	else:
+		var reach: float = maxf(along_max, -RELEASE_AT) + lateral_max + 1.0
+		var c0 := _Graph.cell_of(pos.x - reach, pos.z - reach)
+		var c1 := _Graph.cell_of(pos.x + reach, pos.z + reach)
+		for cx in range(c0.x, c1.x + 1):
+			for cz in range(c0.y, c1.y + 1):
+				var key := Vector2i(cx, cz)
+				if grid.has(key):
+					order.append_array(grid[key])
+		order.sort()
+	for i in order:
 		var line: Dictionary = lines[i]
 		var axis: Vector3 = line["dir"] as Vector3
 		if axis.dot(dir) < 0.75:
@@ -440,6 +488,14 @@ func _bind_generated() -> void:
 	if city == null:
 		push_warning("City is missing. Traffic was not placed.")
 		return
+	if city.has_method("loaded_chunks"):
+		# Streaming: build the graph now from what is loaded, then follow the streamer.
+		var streamer: Node = city.get("streamer")
+		if streamer != null and not streamer.window_changed.is_connected(_on_window_changed):
+			streamer.window_changed.connect(_on_window_changed)
+		var job := _graph_inputs(city)
+		_apply_graph(_Graph.build(job[0], job[1], job[2], float(city.get_meta("road_chunk_m", 500.0)), _graph_seed()))
+		return
 	_load_controls(city)
 	var raw: Variant = city.get_meta("road_drive_edges", [])
 	if not (raw is Array):
@@ -450,6 +506,161 @@ func _bind_generated() -> void:
 	_drive_ready = _node_at.size() >= 2
 	if not _drive_ready:
 		push_warning("Generated roads have no connected lanes.")
+
+
+func _graph_seed() -> int:
+	_graph_gen += 1
+	return LaunchConfig.world_seed * 31 + _graph_gen
+
+
+func _graph_inputs(city: Node) -> Array:
+	var chunks: Dictionary = city.call("loaded_chunks")
+	var edges: Array = []
+	var controls: Array = []
+	var loaded: Dictionary = {}
+	var keys: Array = chunks.keys()
+	keys.sort()
+	for coord in keys:
+		var data: RefCounted = chunks[coord]
+		edges.append(data.get("drive_edges"))
+		controls.append(data.get("controls"))
+		loaded[coord] = true
+	return [edges, controls, loaded]
+
+
+func _on_window_changed(_loaded_list: Array) -> void:
+	var city := _city_node()
+	if city == null:
+		return
+	if _graph_task >= 0:
+		# One rebuild at a time; the newest window wins on the next change signal.
+		_graph_box["stale"] = true
+		return
+	var job := _graph_inputs(city)
+	var chunk_m := float(city.get_meta("road_chunk_m", 500.0))
+	var seed := _graph_seed()
+	var box := {"out": null, "usec": 0, "stale": false}
+	_graph_box = box
+	var work := func() -> void:
+		var t0 := Time.get_ticks_usec()
+		box["out"] = _Graph.build(job[0], job[1], job[2], chunk_m, seed)
+		box["usec"] = Time.get_ticks_usec() - t0
+	_graph_task = WorkerThreadPool.add_task(work, false, "traffic graph")
+
+
+func _reap_free_tasks(all: bool) -> void:
+	var keep: Array[int] = []
+	for id in _free_tasks:
+		if all or WorkerThreadPool.is_task_completed(id):
+			WorkerThreadPool.wait_for_task_completion(id)
+		else:
+			keep.append(id)
+	_free_tasks = keep
+
+
+func _exit_tree() -> void:
+	_reap_free_tasks(true)
+	if _graph_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_graph_task)
+		_graph_task = -1
+
+
+func _poll_graph() -> void:
+	if _graph_task < 0 or not WorkerThreadPool.is_task_completed(_graph_task):
+		return
+	WorkerThreadPool.wait_for_task_completion(_graph_task)
+	_graph_task = -1
+	var box := _graph_box
+	graph_build_ms_max = maxf(graph_build_ms_max, float(box["usec"]) / 1000.0)
+	var t0 := Time.get_ticks_usec()
+	if box["out"] != null:
+		_apply_graph(box["out"])
+	graph_apply_ms_max = maxf(graph_apply_ms_max, float(Time.get_ticks_usec() - t0) / 1000.0)
+	if bool(box["stale"]):
+		_on_window_changed([])
+
+
+func _apply_graph(out: Dictionary) -> void:
+	# Release the previous graph on a worker: freeing tens of thousands of hop dictionaries
+	# on the main thread was a ~30 ms hitch.
+	var old: Array = [_node_at, _leave, _hop_grid, _all_spots, _light_grid, _stop_grid]
+	if not _leave.is_empty():
+		# Every WorkerThreadPool task must be waited on (a never-claimed task aborts the
+		# engine at exit), so keep the id and reap it later.
+		_free_tasks.append(WorkerThreadPool.add_task(func() -> void: old.clear(), false, "traffic graph free"))
+	_node_at = out["node_at"]
+	_leave = out["leave"]
+	_in_main = out["in_main"]
+	_hop_grid = out["hop_grid"]
+	_all_spots = out["spots"]
+	_lights = out["lights"]
+	_stops = out["stops"]
+	_light_grid = out["light_grid"]
+	_stop_grid = out["stop_grid"]
+	_spots.clear()
+	_spot_i = 0
+	_loaded = out["loaded"]
+	_drive_ready = _node_at.size() >= 2
+	graph_rebuilds += 1
+	# Cars outside the loaded area go; cars whose trip leaves it get a new trip (a few per frame).
+	_resend.clear()
+	for child in get_children():
+		if child.get("trip") != true or not (child is Node3D):
+			continue
+		var car := child as Node3D
+		if not _chunk_loaded_at(car.global_position):
+			stream_despawned += 1
+			car.queue_free()
+			continue
+		if _route_leaves_loaded(car):
+			_resend.append(car)
+
+
+func _chunk_loaded_at(at: Vector3) -> bool:
+	if _loaded.is_empty():
+		return true
+	var m := 500.0
+	return _loaded.has(Vector2i(int(floor(at.x / m)), int(floor(at.z / m))))
+
+
+func _route_leaves_loaded(car: Node) -> bool:
+	var route: Variant = car.get("_route")
+	if not (route is PackedVector3Array):
+		return false
+	var pts: PackedVector3Array = route
+	var from_i: int = maxi(int(car.get("_route_i")) - 1, 0)
+	for i in range(from_i, pts.size()):
+		if not _chunk_loaded_at(pts[i]):
+			return true
+	return false
+
+
+## Streaming upkeep: apply finished graph rebuilds, re-route a few cars per frame, and
+## despawn any car found outside the loaded chunks (a wreck shove or a stale route).
+func _stream_upkeep() -> void:
+	var t0 := Time.get_ticks_usec()
+	_reap_free_tasks(false)
+	_poll_graph()
+	upkeep_apply_usec_max = maxi(upkeep_apply_usec_max, Time.get_ticks_usec() - t0)
+	var t1 := Time.get_ticks_usec()
+	var budget := 1
+	while budget > 0 and not _resend.is_empty():
+		var car: Variant = _resend.pop_back()
+		if not is_instance_valid(car):
+			continue
+		stream_rerouted += 1
+		_send(car)
+		budget -= 1
+	upkeep_reroute_usec_max = maxi(upkeep_reroute_usec_max, Time.get_ticks_usec() - t1)
+	var kids := get_children()
+	if kids.is_empty() or _loaded.is_empty():
+		return
+	for _n in 3:
+		_guard_i = (_guard_i + 1) % kids.size()
+		var kid: Node = kids[_guard_i]
+		if kid.get("trip") == true and kid is Node3D and not _chunk_loaded_at((kid as Node3D).global_position):
+			stream_despawned += 1
+			kid.queue_free()
 
 
 func _load_controls(city: Node) -> void:
@@ -612,6 +823,13 @@ func _fill_spots() -> void:
 	var soul := get_tree().get_first_node_in_group("soul") as Node3D
 	if soul != null:
 		avoid = Vector2(soul.global_position.x, soul.global_position.z)
+	if not _all_spots.is_empty():
+		# Streaming: spots come pre-shuffled from the graph build; _body_fits checks asphalt.
+		for spot in _all_spots:
+			var at: Vector3 = spot["at"]
+			if Vector2(at.x, at.z).distance_to(avoid) > 16.0:
+				_spots.append(spot)
+		return
 	for node_i in _leave.size():
 		if node_i < _in_main.size() and _in_main[node_i] == 0:
 			continue
@@ -913,6 +1131,17 @@ func _refresh_trips() -> void:
 			child.queue_free()
 			continue
 		_send(child)
+		if child.call("route_done") == true and not _loaded.is_empty():
+			# No onward trip from here (a lane end at the loaded area's edge): despawn
+			# rather than drive into an unloaded chunk. _top_up replaces it.
+			var fails: int = int(_send_fails.get(child.get_instance_id(), 0)) + 1
+			_send_fails[child.get_instance_id()] = fails
+			if fails >= 3:
+				_send_fails.erase(child.get_instance_id())
+				stream_dead_end_despawns += 1
+				child.queue_free()
+		else:
+			_send_fails.erase(child.get_instance_id())
 	_top_up()
 
 
@@ -1193,6 +1422,8 @@ func _depart_edge(here: Vector3, nose: Vector3) -> Dictionary:
 	var nose_n := Vector3(nose.x, 0.0, nose.z)
 	if nose_n.length_squared() > 0.01:
 		nose_n = nose_n.normalized()
+	if not _hop_grid.is_empty():
+		return _depart_edge_grid(here, nose_n)
 	for outs_v in _leave:
 		var outs: Array = outs_v
 		for raw in outs:
@@ -1237,6 +1468,58 @@ func _depart_edge(here: Vector3, nose: Vector3) -> Dictionary:
 	return best
 
 
+func _depart_edge_grid(here: Vector3, nose_n: Vector3) -> Dictionary:
+	var best: Dictionary = {}
+	var best_score := 100000.0
+	var best_key := Vector3i(-1, -1, -1)
+	var c0 := _Graph.cell_of(here.x - 7.0, here.z - 7.0)
+	var c1 := _Graph.cell_of(here.x + 7.0, here.z + 7.0)
+	var cands: Array = []
+	for cx in range(c0.x, c1.x + 1):
+		for cz in range(c0.y, c1.y + 1):
+			var key := Vector2i(cx, cz)
+			if _hop_grid.has(key):
+				cands.append_array(_hop_grid[key])
+	for ref in cands:
+		var r: Vector3i = ref
+		var hop: Dictionary = (_leave[r.x] as Array)[r.y]
+		var poly: PackedVector3Array = hop["poly"]
+		var a: Vector3 = poly[r.z]
+		var b: Vector3 = poly[r.z + 1]
+		var ab := Vector2(b.x - a.x, b.z - a.z)
+		var span: float = ab.length()
+		if span < 0.2:
+			continue
+		var rel := Vector2(here.x - a.x, here.z - a.z)
+		var t: float = clampf(rel.dot(ab) / (span * span), 0.0, 1.0)
+		var closest := Vector2(a.x, a.z) + ab * t
+		var gap: float = closest.distance_to(Vector2(here.x, here.z))
+		if gap > 7.0:
+			continue
+		var dir := Vector3(ab.x / span, 0.0, ab.y / span)
+		var align := 1.0
+		if nose_n.length_squared() > 0.01:
+			align = dir.dot(nose_n)
+		if align < 0.15:
+			continue
+		var to_i: int = int(hop["to"])
+		var on_main: bool = to_i < _in_main.size() and _in_main[to_i] == 1
+		var score: float = gap + (1.0 - align) * 3.0
+		if not on_main:
+			score += 100.0
+		# Deterministic tie-break, as in the full scan (lowest node, hop, segment first).
+		if score > best_score or (score == best_score and (r.x > best_key.x or (r.x == best_key.x and (r.y > best_key.y or (r.y == best_key.y and r.z >= best_key.z))))):
+			continue
+		best_score = score
+		best_key = r
+		var suffix := PackedVector3Array()
+		suffix.append(Vector3(closest.x, 0.0, closest.y))
+		for k in range(r.z + 1, poly.size()):
+			suffix.append(poly[k])
+		best = {"suffix": suffix, "to": to_i}
+	return best
+
+
 func _pick_goal(start: int) -> int:
 	var n: int = _node_at.size()
 	if n < 2:
@@ -1252,8 +1535,11 @@ func _pick_goal(start: int) -> int:
 			continue
 		if home and (pick >= _in_main.size() or _in_main[pick] == 0):
 			continue
-		any = pick
-		if _node_at[start].distance_to(_node_at[pick]) > 70.0:
+		var gap: float = _node_at[start].distance_to(_node_at[pick])
+		if any < 0 or gap <= TRIP_GOAL_MAX_M:
+			any = pick
+		# Streaming (M2): goals 70-450 m away keep each path search small; trips chain.
+		if gap > 70.0 and gap <= TRIP_GOAL_MAX_M:
 			far = pick
 			break
 	if far >= 0:
@@ -1264,6 +1550,11 @@ func _pick_goal(start: int) -> int:
 
 
 func _path_nodes(start: int, goal: int) -> Array[int]:
+	# Binary-heap Dijkstra (M2): the old O(n^2) scan was too slow on a 3x3 window.
+	return _Graph.path(_node_at, _leave, start, goal)
+
+
+func _path_nodes_scan(start: int, goal: int) -> Array[int]:
 	var none: Array[int] = []
 	var count: int = _node_at.size()
 	if start < 0 or goal < 0 or start >= count or goal >= count or start == goal:

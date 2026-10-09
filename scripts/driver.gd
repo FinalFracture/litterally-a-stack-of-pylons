@@ -2257,7 +2257,7 @@ func _goal_point(car: Node) -> Vector3:
 
 func _chains(car: Node) -> Array:
 	var nodes: Array[Node3D] = []
-	for node in car.get_tree().get_nodes_in_group("stack_target"):
+	for node in _cones_around(car, (car as Node3D).global_position, 34.0):
 		var body := node as Node3D
 		if body == null or _playerish(body):
 			continue
@@ -2427,7 +2427,7 @@ func _key_of(group: Array[Node3D]) -> int:
 func _obstacles(car: Node3D) -> Array:
 	var out: Array = []
 	var pos := car.global_position
-	for node in car.get_tree().get_nodes_in_group("stack_target"):
+	for node in _cones_around(car, pos, 20.0):
 		_push_obs(out, node, pos, 0.3, "cone")
 	for node in car.get_tree().get_nodes_in_group("pedestrian"):
 		_push_obs(out, node, pos, 0.5, "ped")
@@ -2589,11 +2589,73 @@ func _return_open(car: Node3D, fwd: Vector3, threat: Node3D = null) -> bool:
 	return true
 
 
+## M2 decision: cars treat the player's carried stack like any cone. The soul counts as
+## a cone obstacle while it carries at least one piece (it is added to the cone index);
+## only an empty-handed soul is "playerish" and left out of cone-chain / line logic.
 func _playerish(body: Node) -> bool:
+	var soul: Node = null
 	if body.is_in_group("soul"):
-		return true
-	var parent := body.get_parent()
-	return parent != null and parent.is_in_group("soul")
+		soul = body
+	else:
+		var parent := body.get_parent()
+		if parent != null and parent.is_in_group("soul"):
+			soul = parent
+	if soul == null:
+		return false
+	return not _soul_carrying(soul)
+
+
+static func _soul_carrying(soul: Node) -> bool:
+	for child in soul.get_children():
+		if child.has_method("piece_height"):
+			return true
+	return false
+
+
+# Shared per-physics-frame spatial index of cones (and the soul's stack) for every car.
+# The M1 per-car get_nodes_in_group scans became ~50k checks a frame with a 3x3 window.
+# Kept as root meta, not a static var: static containers holding nodes abort at engine exit.
+const CONE_CELL := 16.0
+
+
+static func _cone_index(tree: SceneTree) -> Dictionary:
+	var frame: int = Engine.get_physics_frames()
+	var root := tree.root
+	var idx: Dictionary = root.get_meta("cone_index", {})
+	if int(idx.get("frame", -1)) == frame:
+		return idx["grid"]
+	var grid: Dictionary = {}
+	var nodes: Array = tree.get_nodes_in_group("stack_target")
+	var soul := tree.get_first_node_in_group("soul")
+	if soul != null and _soul_carrying(soul):
+		nodes.append(soul)
+	for node in nodes:
+		var body := node as Node3D
+		if body == null:
+			continue
+		var key := Vector2i(int(floor(body.global_position.x / CONE_CELL)), int(floor(body.global_position.z / CONE_CELL)))
+		if not grid.has(key):
+			grid[key] = []
+		(grid[key] as Array).append(body)
+	root.set_meta("cone_index", {"frame": frame, "grid": grid})
+	return grid
+
+
+func _cones_around(car: Node, pos: Vector3, reach: float) -> Array:
+	var grid: Dictionary = _cone_index(car.get_tree())
+	var out: Array = []
+	var x0 := int(floor((pos.x - reach) / CONE_CELL))
+	var x1 := int(floor((pos.x + reach) / CONE_CELL))
+	var z0 := int(floor((pos.z - reach) / CONE_CELL))
+	var z1 := int(floor((pos.z + reach) / CONE_CELL))
+	for cx in range(x0, x1 + 1):
+		for cz in range(z0, z1 + 1):
+			var key := Vector2i(cx, cz)
+			if grid.has(key):
+				for body in grid[key]:
+					if is_instance_valid(body):
+						out.append(body)
+	return out
 
 
 func _speed_of(body: Node3D) -> float:
@@ -2841,7 +2903,7 @@ func _take_exit(car: Node3D, poly: PackedVector3Array, junc: Vector2) -> PackedV
 func _cones_near(car: Node3D, reach: float) -> Array[Vector3]:
 	var cones: Array[Vector3] = []
 	var pos := car.global_position
-	for node in car.get_tree().get_nodes_in_group("stack_target"):
+	for node in _cones_around(car, pos, reach):
 		var body := node as Node3D
 		if body == null or _playerish(body):
 			continue
@@ -2949,7 +3011,7 @@ func _cones_ahead(car: Node3D, base: Vector3, axis: Vector3, right: Vector3) -> 
 	# The far lane is about 10.5 m from this one, and the far curb is about 12 m. A shorter window hid that lane and left a false gap.
 	var half: float = GameConstants.ROAD_HALF * 2.0 + 1.5
 	var pos := car.global_position
-	for node in car.get_tree().get_nodes_in_group("stack_target"):
+	for node in _cones_around(car, pos, 27.0):
 		var body := node as Node3D
 		if body == null or _playerish(body):
 			continue
