@@ -6,7 +6,7 @@ const MINI_H := 0.3048
 const MINI_EXTRA := 0.1016
 const BARREL_H := 1.0
 const BARREL_EXTRA := 0.38
-const CAP_M := 3.6576
+# No stack height cap (M1 decision): the old 12 ft CAP_M was never enforced and is removed.
 const BASE_R := 0.14
 # cos(radians(28))
 const UPRIGHT_DOT := 0.882947592858927
