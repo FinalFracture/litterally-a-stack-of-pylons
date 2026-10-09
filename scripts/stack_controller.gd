@@ -185,7 +185,6 @@ func _try_pickup() -> void:
 			_refuse()
 			return
 	_attach_many(pieces, wrapper)
-	print("pick")
 
 
 func _column_pieces(wrapper: Node) -> Array:
@@ -215,7 +214,7 @@ func _attach_many(pieces: Array, wrapper: Node) -> void:
 		if wrapper is CollisionObject3D:
 			_soul.remove_collision_exception_with(wrapper)
 		wrapper.queue_free()
-	print("click")
+	_sfx("click")
 	if not _seen_stack:
 		_seen_stack = true
 		_portrait("stack")
@@ -284,7 +283,7 @@ func _attach(piece: Node3D, wrapper: Node, on_bottom: bool) -> void:
 		if wrapper is CollisionObject3D:
 			_soul.remove_collision_exception_with(wrapper)
 		wrapper.queue_free()
-	print("click")
+	_sfx("click")
 	if not _seen_stack:
 		_seen_stack = true
 		_portrait("stack")
@@ -293,13 +292,13 @@ func _attach(piece: Node3D, wrapper: Node, on_bottom: bool) -> void:
 func _try_swap() -> void:
 	var aim := _aim_cone()
 	if aim.is_empty():
-		print("dull click")
+		_sfx("dull_click")
 		return
 	var wrapper := aim[0] as Node
 	var anchor := aim[1] as Node3D
 	var taken := _pieces_from(wrapper, anchor)
 	if taken.is_empty():
-		print("dull click")
+		_sfx("dull_click")
 		return
 	var feet_y: float = anchor.global_position.y - float(anchor.piece_height()) * 0.5
 	var feet := Vector3(anchor.global_position.x, feet_y, anchor.global_position.z)
@@ -311,7 +310,7 @@ func _try_swap() -> void:
 	var rig := _soul.get_parent().get_node_or_null("CameraRig")
 	if rig != null and rig.has_method("snap"):
 		rig.snap()
-	print("swap")
+	_sfx("thunk")
 	_portrait("swap")
 
 
@@ -467,7 +466,7 @@ func _facing() -> Vector3:
 func _hop_off_top() -> void:
 	var pieces := _pieces()
 	if pieces.size() <= 1:
-		print("dull click")
+		_sfx("dull_click")
 		return
 	var top := pieces[pieces.size() - 1] as Node3D
 	var feet_y: float = top.global_position.y - float(top.piece_height()) * 0.5
@@ -485,17 +484,18 @@ func _hop_off_top() -> void:
 	top.position = Vector3(0.0, float(top.piece_height()) * 0.5, 0.0)
 	top.rotation = Vector3.ZERO
 	holder.queue_free()
-	print("hop top")
+	_sfx("thunk")
 
 
 func _drop_bottom() -> void:
 	var pieces := _pieces()
 	if pieces.size() <= 1:
-		print("dull click")
+		_sfx("dull_click")
 		return
 	var piece := pieces[0] as Node3D
 	_spawn_loose(piece, _drop_back() * DROP_SPEED, true)
 	_queue_settle()
+	_sfx("thunk")
 
 
 func receive_hit(travel: Vector3, hitter: Node = null) -> void:
@@ -567,7 +567,6 @@ func _check_overhead() -> void:
 		push = Vector3(0.0, 0.0, -1.0)
 	_hit_lock_ms = Time.get_ticks_msec() + 800
 	_shatter(push.normalized(), 3.2, collider)
-	print("overhead")
 
 
 func _shatter(push: Vector3, speed: float, hitter: Node) -> void:
@@ -590,7 +589,7 @@ func _shatter(push: Vector3, speed: float, hitter: Node) -> void:
 		if i == 0:
 			anchor = rb
 	_begin_ragdoll(anchor)
-	print("hit")
+	_sfx("knock")
 	_portrait("hit")
 
 
@@ -834,6 +833,12 @@ func note_respawn() -> void:
 	_portrait("respawn")
 
 
+func _sfx(sound: String) -> void:
+	var sfx := get_node_or_null("/root/Sfx")
+	if sfx != null and _soul != null:
+		sfx.call("play_at", sound, _soul.global_position)
+
+
 func _refuse() -> void:
 	_lock_until_ms = Time.get_ticks_msec() + 400
-	print("knock")
+	_sfx("knock")
