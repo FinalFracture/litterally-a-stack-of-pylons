@@ -174,6 +174,8 @@ var _walk_turns := 0
 var _walk_flares := 0
 var _empty_mouths := 0
 var _bare_count := 0
+var _paved_walk_rects: Array = []
+var _paved_walk_grid: Dictionary = {}
 
 
 func build(city: Node3D, center: Vector3, requested_seed: int = 0) -> void:
@@ -5332,6 +5334,8 @@ func _gap_sidewalks() -> void:
 	var corridors: Array[Rect2] = []
 	_add_corner_notches(corridors)
 	var mouths: Array[Rect2] = _mouth_corridors()
+	_paved_walk_grid = {}
+	_paved_walk_rects = []
 	for rect in mouths:
 		corridors.append(rect)
 	_add_apron_corridors(corridors)
@@ -5357,22 +5361,27 @@ func _clip_loose_walks(corridors: Array[Rect2]) -> void:
 		bands.append(surf0["rect"])
 	var drop: Dictionary = {}
 	var kept: Array[Dictionary] = []
+	# Spatial buckets keep this linear in practice. Candidates are visited in the
+	# original band order, so the cut result is identical to the full scan.
+	var grid: Dictionary = _rect_grid(bands)
 	for surf in _surfaces:
 		var kind: String = str(surf["kind"])
 		if not _clip_walk_kind(kind):
 			kept.append(surf)
 			continue
-		if not _hits_corridor(_surface_rect(surf), bands):
+		var surf_rect: Rect2 = _surface_rect(surf)
+		var near: PackedInt32Array = _rect_grid_query(grid, surf_rect)
+		var loops: Array = []
+		for band_i in near:
+			var corridor: Rect2 = bands[band_i]
+			var pen: Vector2 = _rect_pen(surf_rect, corridor)
+			if pen.x <= 0.05 or pen.y <= 0.05:
+				continue
+			loops.append(_local_loop(surf, corridor))
+		if loops.is_empty():
 			kept.append(surf)
 			continue
 		var faces: PackedVector3Array = _mesh_faces(str(surf["kind"]))
-		var loops: Array = []
-		for corridor in bands:
-			if _rect_pen(_surface_rect(surf), corridor).x <= 0.05:
-				continue
-			if _rect_pen(_surface_rect(surf), corridor).y <= 0.05:
-				continue
-			loops.append(_local_loop(surf, corridor))
 		var cut: Dictionary = _cut_faces(faces, loops)
 		if not bool(cut["changed"]) or int(cut["count"]) < 3:
 			if int(cut["count"]) < 3:
@@ -5611,6 +5620,11 @@ func _line_hit3(p: Vector3, q: Vector3, ax: Vector2, ay: Vector2) -> Vector3:
 
 func _mouth_corridors() -> Array[Rect2]:
 	var out: Array[Rect2] = []
+	_paved_walk_rects = []
+	for surf in _surfaces:
+		if _walk_tile_kind(str(surf["kind"])):
+			_paved_walk_rects.append(_surface_rect(surf))
+	_paved_walk_grid = _rect_grid(_paved_walk_rects)
 	for seg in _segments:
 		var kind := ""
 		if seg.has("kind"):
@@ -5682,6 +5696,15 @@ func _near_paved(at: Vector3) -> bool:
 		if _dist_point_seg(at, seg["from"], seg["to"]) <= reach:
 			return true
 	var flat := Vector2(at.x, at.z)
+	if not _paved_walk_grid.is_empty():
+		for n in _rect_grid_query(_paved_walk_grid, Rect2(flat, Vector2.ZERO)):
+			var r: Rect2 = _paved_walk_rects[n]
+			if flat.x < r.position.x - 0.4 or flat.x > r.position.x + r.size.x + 0.4:
+				continue
+			if flat.y < r.position.y - 0.4 or flat.y > r.position.y + r.size.y + 0.4:
+				continue
+			return true
+		return false
 	for surf in _surfaces:
 		if not _walk_tile_kind(str(surf["kind"])):
 			continue
@@ -5947,9 +5970,13 @@ func _hits_corridor(rect: Rect2, corridors: Array[Rect2]) -> bool:
 
 func _split_walk_boxes(corridors: Array[Rect2]) -> void:
 	var next: Array[Dictionary] = []
+	var grid: Dictionary = _rect_grid(corridors)
 	for box in _walk_boxes:
-		var pieces: Array[Rect2] = [_box_rect(box)]
-		for corridor in corridors:
+		var whole: Rect2 = _box_rect(box)
+		var pieces: Array[Rect2] = [whole]
+		# Cut pieces stay inside the original box, so only corridors near it can cut.
+		for corridor_i in _rect_grid_query(grid, whole):
+			var corridor: Rect2 = corridors[corridor_i]
 			var cut: Array[Rect2] = []
 			for piece in pieces:
 				var pen: Vector2 = _rect_pen(piece, corridor)
@@ -6321,6 +6348,18 @@ func _poly_depth(poly: Array[Vector2]) -> float:
 
 
 func _surface_rect(surf: Dictionary) -> Rect2:
+	# Memoised: a surface's kind, position and angle never change after it is placed.
+	# The cache key guards against that assumption breaking.
+	var memo_key: Array = [surf["kind"], surf["at"], surf["angle"], surf.get("mirrored", false)]
+	if surf.has("_rect_key") and surf["_rect_key"] == memo_key:
+		return surf["_rect"]
+	var found: Rect2 = _surface_rect_raw(surf)
+	surf["_rect_key"] = memo_key
+	surf["_rect"] = found
+	return found
+
+
+func _surface_rect_raw(surf: Dictionary) -> Rect2:
 	var kind: String = str(surf["kind"])
 	var mesh: Mesh = _mesh[kind]
 	var aabb: AABB = mesh.get_aabb()
@@ -6346,6 +6385,48 @@ func _surface_rect(surf: Dictionary) -> Rect2:
 				min_z = minf(min_z, world.z)
 				max_z = maxf(max_z, world.z)
 	return Rect2(min_x, min_z, maxf(max_x - min_x, 0.01), maxf(max_z - min_z, 0.01))
+
+
+const _GRID_CELL := 24.0
+
+
+## Buckets rects into a coarse grid. Used only to skip far-away pairs.
+func _rect_grid(rects: Array) -> Dictionary:
+	var grid: Dictionary = {}
+	for n in rects.size():
+		var r: Rect2 = rects[n]
+		var x0: int = int(floor(r.position.x / _GRID_CELL))
+		var x1: int = int(floor(r.end.x / _GRID_CELL))
+		var z0: int = int(floor(r.position.y / _GRID_CELL))
+		var z1: int = int(floor(r.end.y / _GRID_CELL))
+		for cx in range(x0, x1 + 1):
+			for cz in range(z0, z1 + 1):
+				var key := Vector2i(cx, cz)
+				if not grid.has(key):
+					grid[key] = PackedInt32Array()
+				var bucket: PackedInt32Array = grid[key]
+				bucket.append(n)
+				grid[key] = bucket
+	return grid
+
+
+## Indices of rects whose cells touch `area` (padded by 0.5 m), ascending and unique.
+func _rect_grid_query(grid: Dictionary, area: Rect2) -> PackedInt32Array:
+	var seen: Dictionary = {}
+	var x0: int = int(floor((area.position.x - 0.5) / _GRID_CELL))
+	var x1: int = int(floor((area.end.x + 0.5) / _GRID_CELL))
+	var z0: int = int(floor((area.position.y - 0.5) / _GRID_CELL))
+	var z1: int = int(floor((area.end.y + 0.5) / _GRID_CELL))
+	for cx in range(x0, x1 + 1):
+		for cz in range(z0, z1 + 1):
+			var key := Vector2i(cx, cz)
+			if not grid.has(key):
+				continue
+			for n in (grid[key] as PackedInt32Array):
+				seen[n] = true
+	var out := PackedInt32Array(seen.keys())
+	out.sort()
+	return out
 
 
 func _rect_pen(a: Rect2, b: Rect2) -> Vector2:
