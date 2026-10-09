@@ -65,4 +65,4 @@ $env:PYLONS_KEYMOUSE = "1"; godot --path .; Remove-Item Env:PYLONS_KEYMOUSE
 ## Sounds
 
 `scripts/sfx.gd` maps the names `click`, `knock`, `thunk` and `dull_click` to files in `Sounds_Music/sfx/`.
-The current files are synthesized placeholders (`placeholder_*.wav`). To swap one, change its path in `SOUNDS`.
+`click`, `dull_click` and `knock` use the Asset Manager's CC0 set (`sfx_*.ogg`, several variants per slot, played through an `AudioStreamRandomizer`). `thunk` is still the synthesized `placeholder_thunk.wav`. Sources and licences: `Sounds_Music/sfx/CREDITS.md`. To swap a sound, change its file list in `SOUNDS`.
