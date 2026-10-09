@@ -9,6 +9,9 @@ extends Node
 ##   PYLONS_MAX_FPS=N      --max-fps=N       Engine.max_fps (0 = uncapped)
 ##   PYLONS_KEYMOUSE=1     --keymouse        keyboard stand-in for mouse look and click verbs
 ##   PYLONS_LOGS=1         --logs            telemetry prints and traffic log files
+##   PYLONS_CHUNK=x,z      --chunk=x,z       start (teleport) in chunk x,z (500 m grid; default 0,0)
+##   PYLONS_WORLD_HALF_M=N --world-half-m=N  world edge at +-N metres (default 2000; fall-off beyond)
+##   PYLONS_PEDS=N         --peds=N          pedestrians kept near the player (default 16)
 ##
 ## At boot the game prints one PYLONS_LAUNCH line that replays the same run.
 
@@ -16,8 +19,8 @@ extends Node
 ## plain run builds the same city. Change it only on purpose, and say so in STATUS.md.
 const DEFAULT_WORLD_SEED := 20261008
 
-## The world is laid out in 500 m chunks (road_chunk_layout.gd). Milestone 1 loads
-## only this chunk at startup: no ring, no streaming.
+## The world is laid out in 500 m chunks (scripts/world/world_config.gd). The game starts
+## in this chunk unless PYLONS_CHUNK / --chunk says otherwise, and streams a 3x3 window.
 const CENTRE_CHUNK := Vector2i(0, 0)
 
 ## Keyboard stand-ins, registered only when keymouse is on.
@@ -38,6 +41,11 @@ var max_fps := 0
 var keymouse := false
 var logs := false
 var effective_spawn := Vector3.ZERO
+## M2 streaming: chunk to start in (teleport target) and world edge.
+var start_chunk := Vector2i(0, 0)
+var has_chunk_flag := false
+var world_half_m := 2000.0
+var peds := 16
 var _announced := false
 
 
@@ -78,6 +86,23 @@ func _parse() -> void:
 			max_fps = maxi(int(raw_fps), 0)
 		else:
 			push_warning("PYLONS_MAX_FPS '%s' is not an integer; leaving fps uncapped." % raw_fps)
+	var raw_chunk := _pick(args, "chunk", "PYLONS_CHUNK")
+	if raw_chunk != "":
+		var cparts := raw_chunk.split(",")
+		if cparts.size() == 2 and cparts[0].strip_edges().is_valid_int() and cparts[1].strip_edges().is_valid_int():
+			start_chunk = Vector2i(int(cparts[0]), int(cparts[1]))
+			has_chunk_flag = true
+		else:
+			push_warning("PYLONS_CHUNK '%s' is not x,z; starting in chunk 0,0." % raw_chunk)
+	var raw_half := _pick(args, "world-half-m", "PYLONS_WORLD_HALF_M")
+	if raw_half != "":
+		if raw_half.is_valid_float() and float(raw_half) >= 500.0:
+			world_half_m = float(raw_half)
+		else:
+			push_warning("PYLONS_WORLD_HALF_M '%s' must be a number >= 500; using %.0f." % [raw_half, world_half_m])
+	var raw_peds := _pick(args, "peds", "PYLONS_PEDS")
+	if raw_peds != "" and raw_peds.is_valid_int():
+		peds = maxi(int(raw_peds), 0)
 	keymouse = _flag(args, "keymouse", "PYLONS_KEYMOUSE")
 	logs = _flag(args, "logs", "PYLONS_LOGS")
 
@@ -150,11 +175,17 @@ func launch_line() -> String:
 	var env_prefix := ""
 	if fleet != "":
 		env_prefix = "PYLONS_FLEET=%s " % fleet
+	if world_half_m != 2000.0:
+		flags.append("--world-half-m=%.0f" % world_half_m)
+	if peds != 16:
+		flags.append("--peds=%d" % peds)
 	var tail := ""
 	if not flags.is_empty():
 		tail = " " + " ".join(flags)
-	return "PYLONS_LAUNCH seed=%d (%s) spawn=%s (%s) max_fps=%d keymouse=%s logs=%s | replay: %sgodot --path . -- --seed=%d --spawn=%s --max-fps=%d%s" % [
-		world_seed, seed_source, spawn_text, "flag" if has_spawn_override else "sidewalk", max_fps,
+	var chunk_text := "%d,%d" % [start_chunk.x, start_chunk.y]
+	return "PYLONS_LAUNCH seed=%d (%s) chunk=%s (%s) spawn=%s (%s) max_fps=%d keymouse=%s logs=%s | replay: %sgodot --path . -- --seed=%d --chunk=%s --spawn=%s --max-fps=%d%s" % [
+		world_seed, seed_source, chunk_text, "flag" if has_chunk_flag else "default", spawn_text,
+		"flag" if has_spawn_override else "sidewalk", max_fps,
 		"on" if keymouse else "off", "on" if logs else "off",
-		env_prefix, world_seed, spawn_text, max_fps, tail,
+		env_prefix, world_seed, chunk_text, spawn_text, max_fps, tail,
 	]

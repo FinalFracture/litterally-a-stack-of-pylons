@@ -74,11 +74,11 @@ func _recover_if_fallen() -> void:
 
 
 func _chunk_bounds() -> Rect2:
-	if not _bounds_read:
-		var city := get_parent().get_node_or_null("City")
-		if city != null and city.has_meta("chunk_bounds"):
-			_bounds = city.get_meta("chunk_bounds")
-			_bounds_read = true
+	# Streaming (M2): the current chunk changes as the player moves, so read it every time.
+	var city := get_parent().get_node_or_null("City")
+	if city != null and city.has_meta("chunk_bounds"):
+		_bounds = city.get_meta("chunk_bounds")
+		_bounds_read = true
 	return _bounds
 
 

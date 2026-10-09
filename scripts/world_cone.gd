@@ -128,8 +128,15 @@ func _refresh_mass() -> void:
 		moment += com * kg
 	if total <= 0.0:
 		return
-	mass = total
-	center_of_mass = moment / total
+	# Setting mass / CoM wakes the body in Jolt; a deferred refresh after spawn (M2: cones
+	# are restored by streaming jobs) must not wake a stack that was resting.
+	var was_asleep := sleeping
+	var changed: bool = absf(mass - total) > 0.0001 or not center_of_mass.is_equal_approx(moment / total)
+	if changed:
+		mass = total
+		center_of_mass = moment / total
+	if was_asleep:
+		sleeping = true
 	if not _settled_once:
 		# Spawned in its exact rest pose: start asleep until something touches it.
 		_settled_once = true

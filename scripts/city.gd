@@ -36,6 +36,7 @@ const _MINI := preload("res://scenes/player/mini_cone.tscn")
 const _BARREL := preload("res://scenes/player/barrel.tscn")
 const _ChunkLayout := preload("res://scripts/road_chunk_layout.gd")
 const _WorldCone := preload("res://scripts/world_cone.gd")
+const _Streamer := preload("res://scripts/world/chunk_streamer.gd")
 
 var _spots: Array[Dictionary]
 var _built: Array[Rect2]
@@ -55,6 +56,12 @@ var _asphalt_road: PackedStringArray = PackedStringArray()
 var _asphalt_grid: Dictionary = {}
 var _stall := Vector3(32.0, 0.65, -8.0)
 var _rocky: ShaderMaterial
+var _asphalt_free: PackedInt32Array = PackedInt32Array()
+var _asphalt_by_chunk: Dictionary = {}
+var _chunk_data: Dictionary = {}
+var _seg_rows: Dictionary = {}
+var _cone_root: Node3D
+var streamer: Node
 
 
 func _ready() -> void:
@@ -491,10 +498,16 @@ func _asphalt_bucket(cell: Vector2i) -> Array:
 	return _asphalt_grid[cell]
 
 
-func _note_asphalt(area: Rect2, road_name: String) -> void:
+func _note_asphalt(area: Rect2, road_name: String) -> int:
 	var index := _asphalt.size()
-	_asphalt.append(area)
-	_asphalt_road.append(road_name)
+	if not _asphalt_free.is_empty():
+		index = _asphalt_free[_asphalt_free.size() - 1]
+		_asphalt_free.remove_at(_asphalt_free.size() - 1)
+		_asphalt[index] = area
+		_asphalt_road[index] = road_name
+	else:
+		_asphalt.append(area)
+		_asphalt_road.append(road_name)
 	var x0 := int(floor(area.position.x / _ASPHALT_CELL))
 	var x1 := int(floor(area.end.x / _ASPHALT_CELL))
 	var z0 := int(floor(area.position.y / _ASPHALT_CELL))
@@ -509,6 +522,27 @@ func _note_asphalt(area: Rect2, road_name: String) -> void:
 				bucket = []
 				_asphalt_grid[key] = bucket
 			bucket.append(index)
+	return index
+
+
+## Streaming: forget one asphalt rect (its slot is reused by the next chunk).
+func _drop_asphalt(index: int) -> void:
+	var area: Rect2 = _asphalt[index]
+	var x0 := int(floor(area.position.x / _ASPHALT_CELL))
+	var x1 := int(floor(area.end.x / _ASPHALT_CELL))
+	var z0 := int(floor(area.position.y / _ASPHALT_CELL))
+	var z1 := int(floor(area.end.y / _ASPHALT_CELL))
+	for cx in range(x0, x1 + 1):
+		for cz in range(z0, z1 + 1):
+			var key := Vector2i(cx, cz)
+			if not _asphalt_grid.has(key):
+				continue
+			var bucket: Array = _asphalt_grid[key]
+			bucket.erase(index)
+			if bucket.is_empty():
+				_asphalt_grid.erase(key)
+	_asphalt[index] = Rect2(Vector2(INF, INF), Vector2.ZERO)
+	_asphalt_free.append(index)
 
 
 func _asphalt_near(x: float, z: float) -> Dictionary:
@@ -540,6 +574,8 @@ func _asphalt_near(x: float, z: float) -> Dictionary:
 		ring += 1
 	if float(best["off"]) >= 100000.0:
 		for index in _asphalt.size():
+			if not is_finite(_asphalt[index].position.x):
+				continue
 			_asphalt_gap_index(index, x, z, best)
 	var on_road: bool = float(best["off"]) <= 0.001
 	return {
@@ -621,28 +657,127 @@ func map_bounds() -> Rect2:
 
 
 func _tuning_block() -> void:
-	# Seeded districts. Only the centre chunk is loaded (Milestone 1: no ring, no streaming).
-	# Chunk content is seeded from the world seed plus the chunk grid coords (road_network._chunk_seed).
+	# M2: the world streams in 500 m chunks, a 3x3 window around the player.
+	# The start chunk is built right away (boot), its neighbours stream in the background.
 	var soul := get_tree().get_first_node_in_group("soul") as Node3D
-	var chunk: Vector2i = LaunchConfig.CENTRE_CHUNK
-	var origin: Vector2 = _ChunkLayout.chunk_origin(chunk)
-	var half: float = _ChunkLayout.CHUNK_SIZE_M * 0.5
-	var center := Vector3(origin.x + half, 0.0, origin.y + half)
-	set_meta("chunk_bounds", Rect2(origin, Vector2(_ChunkLayout.CHUNK_SIZE_M, _ChunkLayout.CHUNK_SIZE_M)))
-	_stall = Vector3(center.x, 0.65, center.z)
-	# Below the sidewalk footing. Visible grass is the blocks between roads.
-	_ground("LoopGrass", Vector3(center.x, -0.45, center.z), Vector3(2200.0, 0.5, 2200.0), Vector3(2200.0, 0.5, 2200.0), GRASS, false)
 	var world_seed: int = road_test_seed if road_test_seed != 0 else LaunchConfig.world_seed
-	var road_builder = preload("res://scripts/road_network.gd").new()
-	road_builder.build(self, center, world_seed)
-	var spawn: Vector3 = road_builder.sidewalk_spawn(Vector2(center.x, center.z))
+	WorldConfig.world_half_m = LaunchConfig.world_half_m
+	var chunk: Vector2i = WorldConfig.clamp_chunk(LaunchConfig.start_chunk)
+	_cone_root = Node3D.new()
+	_cone_root.name = "WorldCones"
+	add_child(_cone_root)
+	streamer = _Streamer.new()
+	streamer.name = "ChunkStreamer"
+	add_child(streamer)
+	var generator := RoadChunkGenerator.new()
+	streamer.setup(self, world_seed, generator)
+	var kit: RefCounted = generator.kit()
+	set_meta("road_seed", world_seed)
+	set_meta("road_lane_m", kit.LANE)
+	set_meta("road_half_m", kit.HALF)
+	set_meta("road_chunk_m", WorldConfig.CHUNK_SIZE_M)
+	set_meta("signal_mats", kit.get("_signal_mats"))
+	set_meta("street_bulb_mat", (kit.get("_part_mats") as Dictionary).get("bulbs_industrial", null))
+	set_meta("world_half_m", WorldConfig.world_half_m)
+	var data: ChunkData = streamer.load_now(chunk)
+	set_current_chunk(chunk)
+	var spawn: Vector3 = data.spawn
 	if LaunchConfig.has_spawn_override:
 		spawn = LaunchConfig.spawn_override
 	set_meta("spawn_point", spawn)
+	_stall = Vector3(spawn.x, 0.65, spawn.z)
 	if soul != null:
 		soul.global_position = spawn
-	_scatter_cone_stacks()
+		streamer.target = soul
 	LaunchConfig.announce(spawn)
+
+
+## The chunk the player is in (clamped to the world). Respawns stay inside it.
+func set_current_chunk(chunk: Vector2i) -> void:
+	set_meta("current_chunk", chunk)
+	set_meta("chunk_bounds", WorldConfig.chunk_rect(chunk))
+
+
+func cone_root() -> Node3D:
+	return _cone_root
+
+
+## Streaming: small main-thread steps that make a loaded chunk's roads queryable.
+func register_jobs(coord: Vector2i, data: ChunkData) -> Array[Callable]:
+	var jobs: Array[Callable] = []
+	var at := 0
+	while at < data.road_rects.size():
+		jobs.append(_register_rects.bind(coord, data.road_rects.slice(at, at + 160)))
+		at += 160
+	jobs.append(_register_rest.bind(coord, data))
+	return jobs
+
+
+func unregister_jobs(coord: Vector2i) -> Array[Callable]:
+	var jobs: Array[Callable] = [_unregister_rest.bind(coord)]
+	var ids: PackedInt32Array = _asphalt_by_chunk.get(coord, PackedInt32Array())
+	var at := 0
+	while at < ids.size():
+		jobs.append(_unregister_rects.bind(ids.slice(at, at + 160)))
+		at += 160
+	jobs.append(func() -> void: _asphalt_by_chunk.erase(coord))
+	return jobs
+
+
+func _register_rects(coord: Vector2i, rows: Array) -> void:
+	var ids: PackedInt32Array = _asphalt_by_chunk.get(coord, PackedInt32Array())
+	for item in rows:
+		ids.append(_note_asphalt(item["area"], str(item["name"])))
+	_asphalt_by_chunk[coord] = ids
+
+
+func _unregister_rects(ids: PackedInt32Array) -> void:
+	for index in ids:
+		_drop_asphalt(index)
+
+
+func _register_rest(coord: Vector2i, data: ChunkData) -> void:
+	var segs: Array[Dictionary] = []
+	for seg in data.road_segments:
+		var a: Vector3 = seg["from"]
+		var b: Vector3 = seg["to"]
+		var kind: String = str(seg["kind"])
+		segs.append({"x0": a.x, "z0": a.z, "x1": b.x, "z1": b.z, "name": str(seg["name"]),
+			"main": kind == "" or kind == "arterial", "kind": kind})
+	var blocks: Array[Rect2] = []
+	for r in data.blocks:
+		blocks.append(r)
+	var joins: Array[Vector2] = []
+	for j in data.junctions:
+		joins.append(j)
+	_seg_rows[coord] = [segs, blocks, joins]
+	_chunk_data[coord] = data
+	_rebuild_unions()
+
+
+func _unregister_rest(coord: Vector2i) -> void:
+	_chunk_data.erase(coord)
+	_seg_rows.erase(coord)
+	_rebuild_unions()
+
+
+func _rebuild_unions() -> void:
+	_segments.clear()
+	_built.clear()
+	var junctions: Array[Vector2] = []
+	var keys: Array = _chunk_data.keys()
+	keys.sort()
+	for coord in keys:
+		var rows: Array = _seg_rows[coord]
+		_segments.append_array(rows[0])
+		_built.append_array(rows[1])
+		junctions.append_array(rows[2])
+	set_meta("road_junctions", junctions)
+
+
+## Loaded chunk data, keyed by chunk coords (only chunks whose registration finished).
+func loaded_chunks() -> Dictionary:
+	return _chunk_data
 
 
 func register_road_surface(area: Rect2, road_name: String = "Modular Loop") -> void:
