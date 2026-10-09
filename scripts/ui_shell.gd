@@ -20,7 +20,7 @@ func _ready() -> void:
 	layer = 20
 	_title = Label.new()
 	_title.name = "BootTitle"
-	_title.text = "literally a stack of pylons"
+	_title.text = "literally just a stack of pylons"
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_title.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	_title.offset_top = 36.0
