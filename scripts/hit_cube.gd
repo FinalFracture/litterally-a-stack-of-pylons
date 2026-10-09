@@ -14,6 +14,12 @@ extends AnimatableBody3D
 
 const BRAKE_FROM := 3.4
 const STOP_GAP := 0.7
+# M1.1: the solid collider starts at bumper height instead of at the ground, so a car hits a
+# world cone low on its taper (above the cone's centre of mass) and tips it instead of
+# shoving the whole cone along upright. Every kind's box bottom sits 0.05 m above the road, so
+# the solid collider's bottom is at about 0.22 m. The roof (box top), the HitArea, the path
+# queries and wrecks still use the full box (_half / _box_center).
+const BUMPER_CLEARANCE_M := 0.17
 
 var travel_velocity := Vector3.ZERO
 var _toward_end := true
@@ -827,7 +833,7 @@ func _box_hits(at: Vector3, face: Vector3, scale: float = 1.0) -> bool:
 	var center := at
 	var shape_node := get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if shape_node != null:
-		center = at + Vector3(0.0, shape_node.position.y, 0.0)
+		center = at + Vector3(0.0, _box_center.y, 0.0)
 	params.transform = Transform3D(basis, center)
 	params.collision_mask = 1
 	params.collide_with_bodies = true
@@ -904,7 +910,7 @@ func _hits_wall(at: Vector3) -> bool:
 	var center := at
 	if shape_node != null:
 		basis = shape_node.global_transform.basis
-		center = at + Vector3(0.0, shape_node.position.y, 0.0)
+		center = at + Vector3(0.0, _box_center.y, 0.0)
 	params.transform = Transform3D(basis, center)
 	params.collision_mask = 1
 	params.collide_with_bodies = true
@@ -1368,6 +1374,10 @@ func _copy_vehicle_shape_and_model(rb: RigidBody3D) -> void:
 		var inst := CollisionShape3D.new()
 		inst.shape = old_shape.shape.duplicate()
 		inst.transform = old_shape.transform
+		if inst.shape is BoxShape3D:
+			# A wreck rests on the ground, so it gets the full box, not the bumper-height one.
+			(inst.shape as BoxShape3D).size = _half * 2.0
+			inst.position = _box_center
 		rb.add_child(inst)
 	if _heading != null and is_instance_valid(_heading):
 		_heading.reparent(rb, true)
@@ -1640,7 +1650,8 @@ func _eject(host: Node3D) -> void:
 func _solid_xf(host: Node3D) -> Transform3D:
 	var shape_node := host.get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if shape_node != null:
-		return Transform3D(shape_node.global_transform.basis, host.global_position + Vector3(0.0, shape_node.position.y, 0.0))
+		var center_y: float = _box_center.y if host == self else shape_node.position.y
+		return Transform3D(shape_node.global_transform.basis, host.global_position + Vector3(0.0, center_y, 0.0))
 	return host.global_transform
 
 
@@ -1801,9 +1812,10 @@ func _resize_body(size: Vector3, center: Vector3) -> void:
 	var shape_node := get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if shape_node != null and shape_node.shape is BoxShape3D:
 		var box := shape_node.shape.duplicate() as BoxShape3D
-		box.size = size
+		var clearance := minf(BUMPER_CLEARANCE_M, size.y * 0.5)
+		box.size = Vector3(size.x, size.y - clearance, size.z)
 		shape_node.shape = box
-		shape_node.position = _box_center
+		shape_node.position = _box_center + Vector3(0.0, clearance * 0.5, 0.0)
 	var area := get_node_or_null("HitArea/CollisionShape3D") as CollisionShape3D
 	if area != null and area.shape is BoxShape3D:
 		var hitbox := area.shape.duplicate() as BoxShape3D
