@@ -60,7 +60,7 @@ $env:PYLONS_KEYMOUSE = "1"; godot --path .; Remove-Item Env:PYLONS_KEYMOUSE
 
 - One fixed seed builds the same city every run. Chunk content is seeded from the world seed plus the chunk's grid coordinates.
 - Only the centre 500 m chunk (0,0) is built at startup. There is no ring around it and no streaming yet.
-- World cones are real rigid bodies: about 3 kg per cone, with a heavy base and a low centre of mass. They start asleep, and cars can knock them over.
+- World cones are real rigid bodies: about 1.4 kg per standard cone (0.9 kg for a mini), with a heavy base and a low centre of mass. They start asleep. Cars hit them at bumper height, so a hit tips a cone over.
 
 ## Sounds
 
