@@ -96,24 +96,31 @@ func next_drop_name() -> String:
 
 
 func _centers_for(pieces: Array) -> Array:
+	# A piece nests only into the same kind below it (standard in standard, mini in mini).
+	# Any other pair sits on top, so a mixed stack never sinks below the piece under it
+	# or below the ground (REAL-002: a barrel on a cone used to end 0.16 m under ground).
 	var centers: Array[float] = []
 	var cursor_top := 0.0
+	var prev_bottom := 0.0
 	for i in pieces.size():
 		var piece: Node = pieces[i]
 		var height: float = float(piece.piece_height())
 		var bottom := 0.0
-		if i > 0 and _receives_nest(pieces[i - 1]):
-			bottom = cursor_top - (height - float(piece.piece_extra()))
+		if i > 0 and _nests_into(pieces[i - 1], piece):
+			bottom = maxf(cursor_top - (height - float(piece.piece_extra())), prev_bottom)
 		elif i > 0:
 			bottom = cursor_top
 		var center: float = bottom + height * 0.5
 		centers.append(center)
 		cursor_top = bottom + height
+		prev_bottom = bottom
 	return centers
 
 
-func _receives_nest(piece: Node) -> bool:
-	return bool(piece.has_method("can_receive_nest") and piece.can_receive_nest())
+func _nests_into(below: Node, above: Node) -> bool:
+	if not (below.has_method("can_receive_nest") and below.can_receive_nest()):
+		return false
+	return below.get("piece_type") == above.get("piece_type")
 
 
 func _landed_on_top(hit: KinematicCollision3D, piece: Node) -> bool:
