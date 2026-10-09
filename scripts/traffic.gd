@@ -58,22 +58,26 @@ func _ready() -> void:
 		_city_cars()
 	_paint_lamps()
 	_music()
-	var log := Node.new()
-	log.name = "DriveLog"
-	log.set_script(_LOG)
-	add_child(log)
-	var path_log := Node.new()
-	path_log.name = "PathChangeLog"
-	path_log.set_script(_PATH_LOG)
-	add_child(path_log)
-	var pass_log := Node.new()
-	pass_log.name = "PassAttemptLog"
-	pass_log.set_script(_PASS_LOG)
-	add_child(pass_log)
-	var fleet_log := Node.new()
-	fleet_log.name = "FleetLog"
-	fleet_log.set_script(_FLEET_LOG)
-	add_child(fleet_log)
+	# Telemetry logs (traffic_*.log files under ../logs) only with PYLONS_LOGS=1 or --logs.
+	# The fleet harness (PYLONS_FLEET_SEC) still gets its FleetLog, since it quits through it.
+	if LaunchConfig.logs:
+		var log := Node.new()
+		log.name = "DriveLog"
+		log.set_script(_LOG)
+		add_child(log)
+		var path_log := Node.new()
+		path_log.name = "PathChangeLog"
+		path_log.set_script(_PATH_LOG)
+		add_child(path_log)
+		var pass_log := Node.new()
+		pass_log.name = "PassAttemptLog"
+		pass_log.set_script(_PASS_LOG)
+		add_child(pass_log)
+	if LaunchConfig.logs or OS.get_environment("PYLONS_FLEET_SEC") != "":
+		var fleet_log := Node.new()
+		fleet_log.name = "FleetLog"
+		fleet_log.set_script(_FLEET_LOG)
+		add_child(fleet_log)
 	var drill := Node.new()
 	drill.name = "DriveDrill"
 	drill.set_script(_DRILL)

@@ -217,7 +217,7 @@ func _arm(index: int) -> void:
 		var city := _city()
 		if city != null and city.get_node_or_null("StallSign") != null:
 			sign = "yes"
-		print("DRILL_READY tasks=%d stall_sign=%s" % [_tasks.size(), sign])
+		LaunchConfig.log_line("DRILL_READY tasks=%d stall_sign=%s" % [_tasks.size(), sign])
 	_banner()
 
 

@@ -139,7 +139,7 @@ func build(city: Node3D, center: Vector3, requested_seed := 0) -> void:
 	city.set_meta("road_overlap_tolerance_m", MAX_PENETRATION_MM * MILLIMETERS_TO_METERS)
 	city.set_meta("road_chicane_enabled", has_chicane)
 	city.set_meta("road_piece_source", "Models/road_segments STL")
-	print("Generated modular road seed: %d | %.1f m total | box %.1f x %.1f m | chicane %s" % [seed, _total_centerline_length_mm * MILLIMETERS_TO_METERS, box_size_m.x, box_size_m.y, str(has_chicane)])
+	LaunchConfig.log_line("Generated modular road seed: %d | %.1f m total | box %.1f x %.1f m | chicane %s" % [seed, _total_centerline_length_mm * MILLIMETERS_TO_METERS, box_size_m.x, box_size_m.y, str(has_chicane)])
 
 
 func _build_layout(straight_x_mm: float, straight_z_mm: float, depth_mm: float, bypass_mm: float, has_chicane: bool) -> void:

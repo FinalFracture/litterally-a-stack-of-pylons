@@ -271,7 +271,7 @@ func build(city: Node3D, center: Vector3, requested_seed: int = 0) -> void:
 	city.set_meta("road_overlap_worst", _overlap_worst)
 	city.set_meta("signal_mats", _signal_mats)
 	city.set_meta("street_bulb_mat", _part_mats.get("bulbs_industrial", null))
-	print("District mesh seed %d | %d districts %s | arteries %d mode %d | span %.0f m | %d crossings | %d turns | %d closed | %d buildings | paint %d | bare %d | medians %d | decor %d | walks %d/%d/%d | lots %d | empty %d | joint %.3f m | overlaps %d worst %.3f | %d chunks" % [seed, _district_count, _district_label, _artery_count, _artery_mode, _span_min, _crossings, _turns, _closed, _blocks.size(), _paint_count, _bare_count, _medians.size(), _decors.size(), _walk_straight, _walk_turns, _walk_flares, _lots.size(), _empty_mouths, _joint_error, _overlap_pairs, _overlap_worst, window.size()])
+	LaunchConfig.log_line("District mesh seed %d | %d districts %s | arteries %d mode %d | span %.0f m | %d crossings | %d turns | %d closed | %d buildings | paint %d | bare %d | medians %d | decor %d | walks %d/%d/%d | lots %d | empty %d | joint %.3f m | overlaps %d worst %.3f | %d chunks" % [seed, _district_count, _district_label, _artery_count, _artery_mode, _span_min, _crossings, _turns, _closed, _blocks.size(), _paint_count, _bare_count, _medians.size(), _decors.size(), _walk_straight, _walk_turns, _walk_flares, _lots.size(), _empty_mouths, _joint_error, _overlap_pairs, _overlap_worst, window.size()])
 
 
 func _reset_build(center: Vector3) -> void:
@@ -1782,7 +1782,7 @@ func _audit_links(window: Array[Vector2i]) -> void:
 		else:
 			_portal_gaps += 1
 			if _portal_gaps <= 8:
-				print("PORTAL_GAP %s at %s from %s missing %s" % [edge2, loc2, str(here), str(nxt)])
+				LaunchConfig.log_line("PORTAL_GAP %s at %s from %s missing %s" % [edge2, loc2, str(here), str(nxt)])
 	_open_edges = 0
 	for chunk2 in window:
 		var east := Vector2i(chunk2.x + 1, chunk2.y)
@@ -6350,6 +6350,8 @@ func _rect_pen(a: Rect2, b: Rect2) -> Vector2:
 
 
 func _append_overlap(lines: PackedStringArray) -> void:
+	if not LaunchConfig.logs:
+		return
 	var path: String = ProjectSettings.globalize_path("res://../logs/road_overlap.log")
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file: FileAccess = null

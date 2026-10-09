@@ -1254,7 +1254,7 @@ func _scatter_cone_stacks() -> void:
 		var yaw: float = float(spec["yaw"])
 		_cone_stack(at, count, yaw, index)
 		index += 1
-	print("Cone stacks %d" % index)
+	LaunchConfig.log_line("Cone stacks %d" % index)
 
 
 func _cone_stack(at: Vector3, count: int, yaw: float, index: int) -> void:

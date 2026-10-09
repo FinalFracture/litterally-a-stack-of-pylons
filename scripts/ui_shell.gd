@@ -186,7 +186,7 @@ func _on_console_submit(text: String) -> void:
 	_refresh_console_note(message)
 	_console_line.text = ""
 	_console_line.grab_focus()
-	print(message)
+	LaunchConfig.log_line(message)
 
 
 func _refresh_console_note(message: String) -> void:
