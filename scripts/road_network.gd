@@ -175,6 +175,18 @@ var _walk_flares := 0
 var _empty_mouths := 0
 var _bare_count := 0
 var _paved_walk_rects: Array = []
+## Streaming (M2): set by the chunk generator. Off for the legacy one-shot build().
+var stream_mode := false
+var _stream_home := Vector2i.ZERO
+var _foreign_obstacles: Array[Rect2] = []
+var _cover_grid: Dictionary = {}
+## Streaming: lot-top heights at decor spots, worked out on the worker thread.
+var _box_batch := 0
+var _mm_parts: Array = []
+var _top_memo: Dictionary = {}
+var _obst_grid: Dictionary = {}
+var _obst_list: Array = []
+var _cover_rects: Array = []
 var _paved_walk_grid: Dictionary = {}
 
 
@@ -372,13 +384,8 @@ func _roll_seed(requested_seed: int) -> int:
 
 
 func _chunk_seed(world_seed: int, chunk: Vector2i) -> int:
-	var n: int = world_seed & 0x7fffffff
-	n = (n * 1103515245 + chunk.x * 12345 + 12345) & 0x7fffffff
-	n = (n * 1103515245 + chunk.y * 67890 + 67890) & 0x7fffffff
-	if n == 0:
-		n = 1
-	return n
-
+	# M2: one seed formula for the whole game (64-bit splitmix64, WorldConfig).
+	return WorldConfig.chunk_seed(world_seed, chunk)
 
 func _mix(n: int) -> int:
 	var x: int = n & 0x7fffffff
@@ -2857,7 +2864,7 @@ func _decor_ok(at: Vector3) -> bool:
 func _publish_cone_stacks(city: Node3D) -> void:
 	var rng := RandomNumberGenerator.new()
 	# Chunk content: seeded from the world seed plus the home chunk's grid coords.
-	rng.seed = _chunk_seed(_world_seed, _Layout.chunk_of(_clear_at.x, _clear_at.y)) + 4817
+	rng.seed = WorldConfig.feature_seed(_chunk_seed(_world_seed, _Layout.chunk_of(_clear_at.x, _clear_at.y)), "spawn")
 	var candidates: Array[Vector3] = []
 	for box in _walk_boxes:
 		var length: float = float(box["length"])
@@ -3196,7 +3203,7 @@ func _spawn_medians(root: Node3D) -> void:
 		host2.add_child(view)
 
 
-func _spawn_decor(root: Node3D) -> void:
+func _spawn_decor_visuals(root: Node3D) -> void:
 	var visual: Dictionary = {}
 	for spec in _decors:
 		var at: Vector3 = spec["at"]
@@ -3244,6 +3251,10 @@ func _spawn_decor(root: Node3D) -> void:
 		view.material_override = _part_mat(part2)
 		view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		host.add_child(view)
+
+
+func _spawn_decor(root: Node3D) -> void:
+	_spawn_decor_visuals(root)
 	_spawn_decor_hits(root)
 	_spawn_lamp_lights(root)
 
@@ -3399,6 +3410,9 @@ func _audit_blocks() -> void:
 
 
 func _chunk_node(root: Node3D, chunk: Vector2i) -> Node3D:
+	if stream_mode:
+		# Streaming: everything one generate() call produced belongs to that chunk's host.
+		return root
 	var node_name := "RoadChunk_%d_%d" % [chunk.x, chunk.y]
 	return _child_node(root, node_name)
 
@@ -3686,6 +3700,11 @@ func _seat_lane(point: Vector3, center: Vector3) -> Vector3:
 
 func _covered(x: float, z: float) -> bool:
 	var spot := Vector2(x, z)
+	if not _cover_grid.is_empty():
+		for n in _rect_grid_query(_cover_grid, Rect2(spot, Vector2.ZERO)):
+			if (_cover_rects[n] as Rect2).has_point(spot):
+				return true
+		return false
 	for item in _rects_pending:
 		var area: Rect2 = item["area"]
 		if area.has_point(spot):
@@ -4607,6 +4626,12 @@ func _x_specs(mesh: Mesh) -> Array[Dictionary]:
 
 func _plan_lots(map_center: Vector3) -> void:
 	_lots.clear()
+	_obst_list = []
+	for block in _obstacle_blocks():
+		if block.size.x < 0.05 or block.size.y < 0.05:
+			continue
+		_obst_list.append(block)
+	_obst_grid = _rect_grid(_obst_list)
 	for key in _lattice.keys():
 		var parts: PackedStringArray = String(key).split("|")
 		var i: int = int(parts[0])
@@ -4627,10 +4652,37 @@ func _plan_lots(map_center: Vector3) -> void:
 			if _beside_walk(rect):
 				top = WALK_TOP - 0.003
 			_lots.append({"chunk": chunk, "rect": rect, "top": top})
+	_obst_grid = {}
+	_obst_list = []
+	if stream_mode:
+		# Streaming: a chunk only fills the cells it owns. Its ground slab covers the rest.
+		var own: Array[Dictionary] = []
+		for lot in _lots:
+			if lot["chunk"] == _stream_home:
+				own.append(lot)
+		_lots = own
+		return
 	_add_field(map_center)
 
 
 func _cut_obstacles(free: Array) -> Array:
+	if not _obst_grid.is_empty() and free.size() == 1:
+		# Same cuts in the same order as the full scan: blocks that miss the cell never cut it.
+		var cell: Rect2 = free[0]
+		var rest_fast: Array = free
+		for n in _rect_grid_query(_obst_grid, cell):
+			rest_fast = _cut_list(rest_fast, _obst_list[n])
+		return rest_fast
+	var blocks: Array[Rect2] = _obstacle_blocks()
+	var rest: Array = free
+	for block in blocks:
+		if block.size.x < 0.05 or block.size.y < 0.05:
+			continue
+		rest = _cut_list(rest, block)
+	return rest
+
+
+func _obstacle_blocks() -> Array[Rect2]:
 	var blocks: Array[Rect2] = []
 	for item in _rects_pending:
 		var road: Rect2 = item["area"]
@@ -4639,12 +4691,9 @@ func _cut_obstacles(free: Array) -> Array:
 		blocks.append(_grow_rect(walk, -0.04))
 	for med in _medians:
 		blocks.append(_median_block(med))
-	var rest: Array = free
-	for block in blocks:
-		if block.size.x < 0.05 or block.size.y < 0.05:
-			continue
-		rest = _cut_list(rest, block)
-	return rest
+	for foreign in _foreign_obstacles:
+		blocks.append(foreign)
+	return blocks
 
 
 func _median_block(spec: Dictionary) -> Rect2:
@@ -4732,6 +4781,8 @@ func _lift_blocks() -> void:
 
 func _lot_top_at(x: float, z: float) -> float:
 	var at := Vector2(x, z)
+	if _top_memo.has(at):
+		return _top_memo[at]
 	var best_d: float = 0.8
 	var top: float = 0.0
 	var inside := false
@@ -6456,3 +6507,506 @@ func _append_overlap(lines: PackedStringArray) -> void:
 	for line in lines:
 		file.store_line(line)
 	file.close()
+
+
+# ---------------------------------------------------------------------------
+# M2 chunk streaming. Used by scripts/world/road_chunk_generator.gd.
+# stream_generate() is pure data and runs on a WorkerThreadPool thread.
+# stream_jobs() returns small main-thread steps that put the chunk in the scene.
+# ---------------------------------------------------------------------------
+
+const KIT_FIELDS: PackedStringArray = [
+	"_mesh", "_used_glb", "_asphalt_mat", "_gravel_mat", "_concrete_mat", "_dirt_straight_mat",
+	"_dirt_turn_mat", "_dirt_cross_mat", "_yellow_mat", "_white_mat", "_wall_mats", "_curb_mat",
+	"_plant_mat", "_trunk_mat", "_canopy_mat", "_lamp_mat", "_ground_mat", "_part_mats",
+	"_lamp_locals", "_signal_arm_y", "_signal_glow_local", "_signal_mats", "_split_profile",
+	"_turn_specs", "_flare_specs",
+]
+const STREAM_BATCH := 48
+
+
+## Main thread, once: load meshes and materials, and warm every mesh's face cache
+## so worker threads only ever read them.
+func prepare_kit() -> bool:
+	shadow_mutex = Mutex.new()
+	var ok: bool = _load_modules()
+	_make_materials()
+	for key in _mesh.keys():
+		var mesh: Mesh = _mesh[key]
+		if mesh != null:
+			mesh.get_faces()
+			mesh.get_aabb()
+	return ok
+
+
+## Kit-side cache of neighbour "shadows" (a chunk's road skeleton as seen by its
+## neighbours). A shadow depends only on (seed, chunk), so streaming a new column reuses
+## the ones its loaded neighbours already computed. Guarded by a mutex (worker threads).
+var shadow_cache: Dictionary = {}
+var shadow_order: Array = []
+var shadow_mutex: Mutex
+const SHADOW_CACHE_MAX := 24
+var shadow_hits := 0
+var shadow_misses := 0
+
+
+func _shadow_of(kit: RefCounted, world_seed: int, chunk: Vector2i, half: float) -> Dictionary:
+	var key := Vector3i(chunk.x, chunk.y, world_seed & 0x7fffffff)
+	var lock: Mutex = kit.get("shadow_mutex")
+	if lock != null:
+		lock.lock()
+		var hit: Variant = (kit.get("shadow_cache") as Dictionary).get(key)
+		if hit != null:
+			kit.set("shadow_hits", int(kit.get("shadow_hits")) + 1)
+		lock.unlock()
+		if hit != null:
+			return hit
+	var shadow = get_script().new()
+	shadow.stream_mode = true
+	shadow._stream_home = chunk
+	var o2: Vector2 = _Layout.chunk_origin(chunk)
+	shadow._reset_build(Vector3(o2.x + half, 0.0, o2.y + half))
+	shadow.adopt_kit(kit)
+	shadow._world_seed = world_seed
+	var only: Array[Vector2i] = [chunk]
+	shadow._prepare_plan(world_seed, only)
+	shadow._build_chunk(world_seed, chunk, false)
+	var rects: Array = []
+	var obstacles: Array[Rect2] = []
+	for item in shadow._rects_pending:
+		var area: Rect2 = item["area"]
+		rects.append(area)
+		obstacles.append(_grow_rect(area, WALK_W))
+	for med in shadow._medians:
+		obstacles.append(_median_block(med))
+	var out := {"rects": rects, "obstacles": obstacles, "raw": shadow._drive_raw()}
+	if lock != null:
+		lock.lock()
+		var cache: Dictionary = kit.get("shadow_cache")
+		var order: Array = kit.get("shadow_order")
+		if not cache.has(key):
+			cache[key] = out
+			order.append(key)
+			while order.size() > SHADOW_CACHE_MAX:
+				cache.erase(order.pop_front())
+		kit.set("shadow_misses", int(kit.get("shadow_misses")) + 1)
+		lock.unlock()
+	return out
+
+
+func adopt_kit(kit: RefCounted) -> void:
+	for field in KIT_FIELDS:
+		set(field, kit.get(field))
+
+
+## Builds one chunk's data. Thread-safe as long as `kit` is read-only.
+func stream_generate(world_seed: int, home: Vector2i, kit: RefCounted) -> Dictionary:
+	stream_mode = true
+	_stream_home = home
+	_stage_t = Time.get_ticks_usec()
+	_stage_ms = {}
+	var origin: Vector2 = _Layout.chunk_origin(home)
+	var half: float = _Layout.CHUNK_SIZE_M * 0.5
+	var center := Vector3(origin.x + half, 0.0, origin.y + half)
+	_reset_build(center)
+	adopt_kit(kit)
+	_world_seed = world_seed
+	# Shadow pass: the 8 neighbours' street skeleton. It is never spawned. It only
+	# tells this chunk where foreign roads, sidewalks and lane ends are, so lots stay
+	# off them and lane joins across the border match what the neighbour emits.
+	var ring: Array[Vector2i] = []
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			ring.append(home + Vector2i(dx, dz))
+	# Each neighbour is replayed exactly as its own generate() would run that stage
+	# (fresh instance, its own window and spawn clearance), so this view of it is exact.
+	_foreign_obstacles.clear()
+	var foreign_rects: Array = []
+	var foreign_raw: Array[Dictionary] = []
+	for chunk in ring:
+		if chunk == home:
+			continue
+		var sh: Dictionary = _shadow_of(kit, world_seed, chunk, half)
+		foreign_rects.append_array(sh["rects"])
+		_foreign_obstacles.append_array(sh["obstacles"])
+		# Deep copy: the cached shadow is shared between worker threads, never mutated.
+		foreign_raw.append_array((sh["raw"] as Array).duplicate(true))
+	_stage_lap("shadow")
+	var window: Array[Vector2i] = [home]
+	_prepare_plan(world_seed, window)
+	_stage_lap("_prepare_plan")
+	_build_chunk(world_seed, home, false)
+	_stage_lap("_build_chunk")
+	_audit_links(window)
+	_stage_lap("_audit_links")
+	_drop_bare_paint()
+	_stage_lap("_drop_bare_paint")
+	_audit_mouths()
+	_stage_lap("_audit_mouths")
+	_audit_arteries(home, window)
+	_stage_lap("_audit_arteries")
+	_plan_lots(center)
+	_stage_lap("_plan_lots")
+	_lift_blocks()
+	_stage_lap("_lift_blocks")
+	_plan_decor()
+	_stage_lap("_plan_decor")
+	_gap_sidewalks()
+	_stage_lap("_gap_sidewalks")
+	_plan_median_tiles()
+	_stage_lap("_plan_median_tiles")
+	_audit_overlaps(world_seed)
+	_stage_lap("_audit_overlaps")
+	var sites: Array[Dictionary] = _stream_cone_sites()
+	_stage_lap("cone_sites")
+	_top_memo.clear()
+	for d in _decors:
+		var d_at: Vector3 = d["at"]
+		_top_memo[Vector2(d_at.x, d_at.z)] = _lot_top_at(d_at.x, d_at.z)
+	var drive: Array = _stream_drive(foreign_raw, foreign_rects)
+	_stage_lap("drive")
+	_pack_multimesh()
+	_stage_lap("pack_multimesh")
+	var spawn: Vector3 = sidewalk_spawn(Vector2(center.x, center.z))
+	var rects: Array = []
+	for item2 in _rects_pending:
+		rects.append({"area": item2["area"], "name": item2["name"]})
+	var segments: Array = []
+	for seg in _segments:
+		segments.append({"from": seg["from"], "to": seg["to"], "name": str(seg["name"]), "kind": str(seg.get("kind", "arterial"))})
+	var walks: Array = []
+	for box in _walk_boxes:
+		walks.append({"mid": box["mid"], "angle": float(box["angle"]), "length": float(box["length"]), "width": float(box["width"])})
+	var blocks: Array = []
+	for spec in _blocks:
+		var pos: Vector3 = spec["pos"]
+		var size: Vector3 = spec["size"]
+		blocks.append(Rect2(pos.x - size.x * 0.5, pos.z - size.z * 0.5, size.x, size.z))
+	return {
+		"rects": rects,
+		"segments": segments,
+		"drive_edges": drive,
+		"controls": _controls.duplicate(true),
+		"junctions": _cross_points.duplicate(),
+		"walk_boxes": walks,
+		"blocks": blocks,
+		"cone_sites": sites,
+		"portals": _portals.duplicate(true),
+		"spawn": spawn,
+		"stats": {
+			"tiles": _tiles, "crossings": _crossings, "buildings": _blocks.size(), "lots": _lots.size(),
+			"decor": _decors.size(), "walk_boxes": _walk_boxes.size(), "pavement_boxes": _boxes.size(),
+			"districts": _district_label, "joint_error": _joint_error, "overlaps": _overlap_pairs,
+			"stage_ms": _stage_ms,
+		},
+		"hash": _stream_hash(drive, sites),
+	}
+
+
+var _stage_t := 0
+var _stage_ms: Dictionary = {}
+
+
+func _stage_lap(label: String) -> void:
+	var now := Time.get_ticks_usec()
+	_stage_ms[label] = snappedf(float(now - _stage_t) / 1000.0, 0.1)
+	_stage_t = now
+
+
+func _stream_cone_sites() -> Array[Dictionary]:
+	var holder := Node3D.new()
+	_publish_cone_stacks(holder)
+	var sites: Array[Dictionary] = []
+	for spec in _stack_sites:
+		sites.append(spec)
+	holder.free()
+	return sites
+
+
+## Lane graph for this chunk. Join seeking sees the neighbours' lanes too, so a
+## street end that meets a foreign road gets its link (and the neighbour, which sees
+## this chunk the same way, cuts its own lane at the same point).
+func _stream_drive(foreign_raw: Array[Dictionary], foreign_rects: Array) -> Array:
+	_cover_rects = []
+	for item in _rects_pending:
+		_cover_rects.append(item["area"])
+	for area in foreign_rects:
+		_cover_rects.append(area)
+	_cover_grid = _rect_grid(_cover_rects)
+	var own: Array[Dictionary] = _drive_raw()
+	var own_n: int = own.size()
+	var raw: Array[Dictionary] = []
+	raw.append_array(own)
+	raw.append_array(foreign_raw)
+	var seg_boxes: Array = []
+	for item in raw:
+		var a: Vector3 = item["a"]
+		var b: Vector3 = item["b"]
+		seg_boxes.append(Rect2(Vector2(minf(a.x, b.x), minf(a.z, b.z)), Vector2(absf(a.x - b.x), absf(a.z - b.z))).grow(7.3))
+	var seg_grid: Dictionary = _rect_grid(seg_boxes)
+	var cuts: Array = []
+	cuts.resize(raw.size())
+	for i in raw.size():
+		cuts[i] = []
+	var links: Array[Dictionary] = []
+	for i in raw.size():
+		var near_a: PackedInt32Array = _rect_grid_query(seg_grid, Rect2(Vector2(raw[i]["a"].x, raw[i]["a"].z), Vector2.ZERO))
+		var near_b: PackedInt32Array = _rect_grid_query(seg_grid, Rect2(Vector2(raw[i]["b"].x, raw[i]["b"].z), Vector2.ZERO))
+		var got: Array[Dictionary] = []
+		_seek_join_in(raw, near_a, cuts, got, i, raw[i]["a"])
+		_seek_join_in(raw, near_b, cuts, got, i, raw[i]["b"])
+		if i < own_n:
+			links.append_array(got)
+	var sliced: Array[Dictionary] = []
+	for i2 in own_n:
+		_slice_segment(sliced, raw[i2], cuts[i2])
+	for link in links:
+		sliced.append(link)
+	var edges: Array = []
+	var linked: Dictionary = {}
+	for item in sliced:
+		var a: Vector3 = item["a"]
+		var b: Vector3 = item["b"]
+		var kind: String = str(item["kind"])
+		var through: bool = bool(item.get("through", false))
+		var length: float = Vector2(b.x - a.x, b.z - a.z).length()
+		if length < 0.4:
+			continue
+		var forward: PackedVector3Array = _lane_line(a, b, through)
+		var back: PackedVector3Array = _lane_line(b, a, through)
+		if forward.size() < 2 or back.size() < 2:
+			continue
+		edges.append({"ax": a.x, "az": a.z, "bx": b.x, "bz": b.z, "kind": kind, "length": length,
+			"through": through, "forward": forward, "back": back})
+		linked[_link_key(a, b)] = true
+		linked[_link_key(b, a)] = true
+	_add_mouth_links(edges, linked)
+	_cover_grid = {}
+	_cover_rects = []
+	return edges
+
+
+## _seek_join restricted to candidate indices (ascending, so ties resolve as in the full scan).
+func _seek_join_in(raw: Array[Dictionary], candidates: PackedInt32Array, cuts: Array, links: Array[Dictionary], self_i: int, end_point: Vector3) -> void:
+	var best_j := -1
+	var best_t := 0.0
+	var best_d := 7.2
+	var best_q := Vector3.ZERO
+	for j in candidates:
+		if j == self_i:
+			continue
+		var other: Dictionary = raw[j]
+		var a: Vector3 = other["a"]
+		var b: Vector3 = other["b"]
+		var ab := Vector2(b.x - a.x, b.z - a.z)
+		var span: float = ab.length()
+		if span < 4.0:
+			continue
+		var rel := Vector2(end_point.x - a.x, end_point.z - a.z)
+		var t: float = clampf(rel.dot(ab) / (span * span), 0.0, 1.0)
+		if t < 0.03 or t > 0.97:
+			continue
+		var q := Vector3(a.x + ab.x * t, 0.0, a.z + ab.y * t)
+		var gap: float = Vector2(end_point.x - q.x, end_point.z - q.z).length()
+		if gap < 2.2 or gap >= best_d:
+			continue
+		var join := Vector3(end_point.x - q.x, 0.0, end_point.z - q.z) / gap
+		var road := Vector3(ab.x / span, 0.0, ab.y / span)
+		if absf(join.dot(road)) > 0.45:
+			continue
+		best_d = gap
+		best_j = j
+		best_t = t
+		best_q = q
+	if best_j < 0:
+		return
+	var host: Dictionary = raw[best_j]
+	var host_a: Vector3 = host["a"]
+	var host_b: Vector3 = host["b"]
+	var host_span: float = Vector2(host_b.x - host_a.x, host_b.z - host_a.z).length()
+	if minf(best_t, 1.0 - best_t) * host_span < 0.85:
+		var snap: Vector3 = host_a if best_t <= 0.5 else host_b
+		links.append({"a": end_point, "b": snap, "kind": "join", "through": true})
+		return
+	(cuts[best_j] as Array).append(best_t)
+	links.append({"a": end_point, "b": best_q, "kind": "join", "through": true})
+
+
+func _stream_hash(drive: Array, sites: Array[Dictionary]) -> String:
+	var ctx := HashingContext.new()
+	ctx.start(HashingContext.HASH_SHA256)
+	var keys: Array = _xf.keys()
+	keys.sort()
+	for key in keys:
+		var line := PackedStringArray([str(key)])
+		for xf in (_xf[key] as Array):
+			var o: Vector3 = (xf as Transform3D).origin
+			line.append("%.2f,%.2f,%.2f" % [o.x, o.y, o.z])
+		ctx.update(("|".join(line) + "\n").to_utf8_buffer())
+	var rows := PackedStringArray()
+	for box in _boxes:
+		var m: Vector3 = box["mid"]
+		rows.append("B%.2f,%.2f,%.2f,%.2f" % [m.x, m.z, float(box["length"]), float(box["width"])])
+	for walk in _walk_boxes:
+		var w: Vector3 = walk["mid"]
+		rows.append("W%.2f,%.2f,%.2f,%.2f" % [w.x, w.z, float(walk["length"]), float(walk["width"])])
+	for spec in _blocks:
+		var p: Vector3 = spec["pos"]
+		rows.append("H%.2f,%.2f,%.2f" % [p.x, p.y, p.z])
+	for lot in _lots:
+		rows.append("L%s" % str(lot["rect"]))
+	for d in _decors:
+		var at: Vector3 = d["at"]
+		rows.append("D%s%.2f,%.2f" % [str(d["kind"]), at.x, at.z])
+	for e in drive:
+		rows.append("E%.2f,%.2f,%.2f,%.2f" % [float(e["ax"]), float(e["az"]), float(e["bx"]), float(e["bz"])])
+	for c in sites:
+		var ca: Vector3 = c["at"]
+		rows.append("C%.2f,%.2f,%d" % [ca.x, ca.z, int(c["count"])])
+	rows.sort()
+	ctx.update("\n".join(rows).to_utf8_buffer())
+	return ctx.finish().hex_encode()
+
+
+## Small main-thread steps that put this chunk's content under `root`.
+## Each step stays around a millisecond so the streamer can budget them.
+func stream_jobs(root: Node3D) -> Array[Callable]:
+	var jobs: Array[Callable] = []
+	if _mm_parts.is_empty():
+		_pack_multimesh()
+	for part in _mm_parts:
+		jobs.append(_job_multimesh_buf.bind(root, str(part[0]), part[1], int(part[2])))
+	var b := 0
+	while b < _boxes.size():
+		jobs.append(_job_boxes.bind(root, _boxes.slice(b, b + STREAM_BATCH), false))
+		b += STREAM_BATCH
+	var w := 0
+	while w < _walk_boxes.size():
+		jobs.append(_job_boxes.bind(root, _walk_boxes.slice(w, w + STREAM_BATCH), true))
+		w += STREAM_BATCH
+	_slice_jobs(jobs, "_aprons", 24, _spawn_aprons, root)
+	_slice_jobs(jobs, "_cut_walks", 12, _spawn_cut_walks, root)
+	_slice_jobs(jobs, "_lots", STREAM_BATCH, _spawn_lots, root)
+	jobs.append(_spawn_blocks.bind(root))
+	jobs.append(_spawn_medians.bind(root))
+	jobs.append(_spawn_decor_visuals.bind(root))
+	jobs.append(_spawn_decor_hits.bind(root))
+	_slice_jobs(jobs, "_decors", 16, _spawn_lamp_lights, root)
+	return jobs
+
+
+func _slice_jobs(jobs: Array[Callable], field: String, size: int, fn: Callable, root: Node3D) -> void:
+	var all: Array = get(field)
+	var at := 0
+	while at < all.size():
+		jobs.append(_job_swapped.bind(field, all.slice(at, at + size), fn, root))
+		at += size
+
+
+func _job_swapped(field: String, part: Array, fn: Callable, root: Node3D) -> void:
+	var keep: Variant = get(field)
+	var typed: Variant = keep.duplicate()
+	typed.clear()
+	typed.append_array(part)
+	set(field, typed)
+	fn.call(root)
+	set(field, keep)
+
+
+## Worker side: pack every MultiMesh transform buffer (768 instances per part) so the
+## main thread only hands finished buffers to the renderer.
+func _pack_multimesh() -> void:
+	_mm_parts.clear()
+	var keys: Array = _xf.keys()
+	keys.sort()
+	for key in keys:
+		var kind: String = String(key).split("|")[2]
+		if not _mesh.has(kind):
+			continue
+		var list: Array = _xf[key]
+		var at := 0
+		while at < list.size():
+			var part: Array = list.slice(at, at + 768)
+			var buf := PackedFloat32Array()
+			buf.resize(part.size() * 12)
+			var k := 0
+			for item in part:
+				var xf: Transform3D = item
+				var bs: Basis = xf.basis
+				buf[k] = bs.x.x; buf[k + 1] = bs.y.x; buf[k + 2] = bs.z.x; buf[k + 3] = xf.origin.x
+				buf[k + 4] = bs.x.y; buf[k + 5] = bs.y.y; buf[k + 6] = bs.z.y; buf[k + 7] = xf.origin.y
+				buf[k + 8] = bs.x.z; buf[k + 9] = bs.y.z; buf[k + 10] = bs.z.z; buf[k + 11] = xf.origin.z
+				k += 12
+			_mm_parts.append([kind, buf, part.size()])
+			at += 768
+
+
+func _job_multimesh_buf(root: Node3D, kind: String, buf: PackedFloat32Array, count: int) -> void:
+	var many := MultiMesh.new()
+	many.transform_format = MultiMesh.TRANSFORM_3D
+	many.mesh = _mesh[kind]
+	many.instance_count = count
+	many.buffer = buf
+	var view := MultiMeshInstance3D.new()
+	view.name = kind
+	view.multimesh = many
+	view.material_override = _material_for(kind)
+	view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(view)
+
+
+func _job_multimesh(root: Node3D, kind: String, list: Array) -> void:
+	if not _mesh.has(kind):
+		return
+	var many := MultiMesh.new()
+	many.transform_format = MultiMesh.TRANSFORM_3D
+	many.mesh = _mesh[kind]
+	many.instance_count = list.size()
+	var buf := PackedFloat32Array()
+	buf.resize(list.size() * 12)
+	var k := 0
+	for item in list:
+		var xf: Transform3D = item
+		var bs: Basis = xf.basis
+		buf[k] = bs.x.x; buf[k + 1] = bs.y.x; buf[k + 2] = bs.z.x; buf[k + 3] = xf.origin.x
+		buf[k + 4] = bs.x.y; buf[k + 5] = bs.y.y; buf[k + 6] = bs.z.y; buf[k + 7] = xf.origin.y
+		buf[k + 8] = bs.x.z; buf[k + 9] = bs.y.z; buf[k + 10] = bs.z.z; buf[k + 11] = xf.origin.z
+		k += 12
+	many.buffer = buf
+	var view := MultiMeshInstance3D.new()
+	view.name = kind
+	view.multimesh = many
+	view.material_override = _material_for(kind)
+	view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(view)
+
+
+func _job_boxes(root: Node3D, list: Array, walk: bool) -> void:
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 1
+	var walk_top: float = ROAD_Y + 6.0 * UNIT
+	# Streaming builds these in batches; give each batch a readable unique name that
+	# still starts with the M1 name (Sidewalk / Pavement).
+	_box_batch += 1
+	if walk:
+		body.name = "Sidewalk" if _box_batch == 1 else "Sidewalk%d" % _box_batch
+		body.add_to_group("sidewalk")
+	else:
+		body.name = "Pavement" if _box_batch == 1 else "Pavement%d" % _box_batch
+		body.position = Vector3(0.0, -0.25, 0.0)
+		body.add_to_group("pavement")
+	for box in list:
+		var shape := CollisionShape3D.new()
+		var cube := BoxShape3D.new()
+		var angle: float = float(box["angle"])
+		var mid: Vector3 = box["mid"]
+		if walk:
+			cube.size = Vector3(float(box["length"]), walk_top, float(box["width"]))
+			shape.transform = Transform3D(Basis(_dir(angle), Vector3.UP, _right(angle)), Vector3(mid.x, walk_top * 0.5, mid.z))
+		else:
+			cube.size = Vector3(float(box["length"]), 0.5, float(box["width"]))
+			shape.transform = Transform3D(Basis(_dir(angle), Vector3.UP, _right(angle)), Vector3(mid.x, 0.0, mid.z))
+		shape.shape = cube
+		body.add_child(shape)
+	root.add_child(body)
