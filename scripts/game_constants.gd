@@ -8,12 +8,14 @@ const BARREL_H := 1.0
 const BARREL_EXTRA := 0.38
 # No stack height cap (M1 decision): the old 12 ft CAP_M was never enforced and is removed.
 const BASE_R := 0.14
-# World cone physics (M1, REAL-001/005). Jared: ~3 kg, as for a real 28" cone.
-# The in-game standard cone is the 18" model; the mass follows Jared's number.
-const STANDARD_MASS_KG := 3.0
-const MINI_MASS_KG := 1.4
+# World cone physics (M1, REAL-001/005; M1.1 mass decision).
+# Real-life masses for the shipped models: an 18" cone with a black base is 3 lb (1.36 kg),
+# a 12" cone about 2 lb (0.9 kg). Barrel stays a gameplay estimate.
+const STANDARD_MASS_KG := 1.4
+const MINI_MASS_KG := 0.9
 const BARREL_MASS_KG := 8.0
-# Centre of mass above each piece's own bottom: weighted rubber base, so low.
+# Centre of mass above each piece's own bottom. About half of an 18" cone's 3 lb is the
+# rubber base (0.028 m thick), the rest is the PVC shell; that puts the CoM near 0.10 m.
 const STANDARD_COM_M := 0.10
 const MINI_COM_M := 0.07
 const BARREL_COM_M := 0.30
