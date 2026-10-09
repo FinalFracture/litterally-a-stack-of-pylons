@@ -39,11 +39,9 @@ func _physics_process(delta: float) -> void:
 		return
 	_clamp_drops()
 	_settle(delta)
-	if Input.is_action_just_pressed("drop"):
-		_drop_bottom()
-	if Input.is_action_just_pressed("drop_top"):
-		_drop_top()
-	if Input.is_action_just_pressed("swap"):
+	# Controls canon (M1): Shift = swap, E = drop the top cone and take control of it,
+	# left click = add to stack, right click = drop one. Q and R are unbound; F and X are reserved.
+	if Input.is_action_just_pressed("hop_top"):
 		_hop_off_top()
 	if Input.is_action_just_pressed("soul_transfer"):
 		_try_swap()
@@ -457,17 +455,6 @@ func _facing() -> Vector3:
 	if hop.length_squared() < 0.0001:
 		return Vector3(0.0, 0.0, -1.0)
 	return hop.normalized()
-
-
-func _drop_top() -> void:
-	var pieces := _pieces()
-	if pieces.size() <= 1:
-		print("dull click")
-		return
-	var top := pieces[pieces.size() - 1] as Node3D
-	_spawn_loose(top, _facing() * 1.3 + Vector3.UP * 2.0, false)
-	_queue_settle()
-	print("drop top")
 
 
 func _hop_off_top() -> void:
