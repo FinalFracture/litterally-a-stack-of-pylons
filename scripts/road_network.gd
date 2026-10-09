@@ -45,6 +45,8 @@ const CORNER_AY := 1082.121337890625
 const CORNER_ALONG := 78.0 * UNIT
 const WALK_W := 54.0 * UNIT
 const WALK_TOP := ROAD_Y + 6.0 * UNIT
+## Poly Haven gravel_concrete_03 covers 2.1 m x 2.1 m in real life (one texture tile).
+const CONCRETE_TILE_M := 2.1
 const SIDE_LIFT := 0.001
 const SHOULDER_U := 20.0
 const SPAWN_CLEAR := 18.0
@@ -3797,9 +3799,16 @@ func _make_materials() -> void:
 	_concrete_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_concrete_mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
 	_concrete_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	# World-space triplanar: curb sides sample a vertical plane instead of the
+	# top-down mesh UVs (which smeared into streaks), for any curb height, and
+	# neighbouring pieces line up whatever their rotation or mirroring.
+	_concrete_mat.uv1_triplanar = true
+	_concrete_mat.uv1_world_triplanar = true
+	_concrete_mat.uv1_scale = Vector3.ONE / CONCRETE_TILE_M
+	_concrete_mat.uv1_triplanar_sharpness = 4.0
 	var concrete: Texture2D = load("res://materials/gravel_concrete_02/textures/gravel_concrete_03_diff_2k.jpg") as Texture2D
 	var concrete_n: Texture2D = load("res://materials/gravel_concrete_02/textures/gravel_concrete_03_nor_gl_2k.png") as Texture2D
-	var concrete_r: Texture2D = load("res://materials/gravel_concrete_02/textures/gravel_concrete_03_rough_2k.png") as Texture2D
+	var concrete_r: Texture2D = load("res://materials/gravel_concrete_02/textures/gravel_concrete_03_rough_2k_from_exr.png") as Texture2D
 	if concrete == null:
 		push_error("Concrete color map failed to load.")
 		_concrete_mat.albedo_color = Color(0.62, 0.60, 0.56)
