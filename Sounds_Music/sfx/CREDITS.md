@@ -16,6 +16,6 @@ checked to carry the CC0 licence; saved copies of the pages are kept with that d
 | `sfx_knock_01.ogg` .. `sfx_knock_03.ogg` | `knock` | [614057](https://freesound.org/people/Snstro/sounds/614057/) "plastic knock.aif" | Snstro | CC0 1.0 |
 | `sfx_dull_click_01.ogg` | `dull_click` | [151778](https://freesound.org/people/slappy13/sounds/151778/) "Clip In.wav" | slappy13 | CC0 1.0 |
 | `sfx_dull_click_02.ogg` | `dull_click` | [653370](https://freesound.org/people/TriqyStudio/sounds/653370/) "DullThud.wav" | TriqyStudio | CC0 1.0 |
-
-`placeholder_thunk.wav` (slot `thunk`) is a synthesized placeholder made for this project in M1; it has no
-third-party source.
+| `sfx_cone_impact_ground_hard_01.ogg` | `thunk` | [451327](https://freesound.org/people/kyles/sounds/451327/) "bucket plastic down on hard surface thud on offmic India.flac" | kyles | CC0 1.0 |
+| `sfx_cone_impact_ground_hard_02.ogg` | `thunk` | [342538](https://freesound.org/people/sgrowe/sounds/342538/) "Plastic Thud 2" | sgrowe | CC0 1.0 |
+| `sfx_cone_impact_ground_hard_03.ogg` | `thunk` | [525099](https://freesound.org/people/jomse/sounds/525099/) "PlasticImpactA9.wav" | jomse | CC0 1.0 |

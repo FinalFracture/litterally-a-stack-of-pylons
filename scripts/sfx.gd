@@ -1,6 +1,6 @@
 extends Node
 
-## One-shot positional sound effects (M1, real CC0 audio since M1.1).
+## One-shot positional sound effects (M1; all slots use CC0 audio since M1.1).
 ## Each slot lists one or more files; several files are played through an AudioStreamRandomizer.
 ## To swap a sound, drop a new file into Sounds_Music/sfx/ and change its path below (wav or ogg).
 ## Licences and sources: Sounds_Music/sfx/CREDITS.md.
@@ -20,9 +20,9 @@ const SOUNDS := {
 		"files": ["sfx_knock_01.ogg", "sfx_knock_02.ogg", "sfx_knock_03.ogg"],
 		"volume_db": -4.0, "unit_size": 6.0, "max_distance": 25.0,
 	},
-	"thunk": { # a cone dropped or landing hard. Still the M1 placeholder: the CC0 set has no "thunk" slot.
-		"files": ["placeholder_thunk.wav"],
-		"volume_db": 0.0, "unit_size": 6.0, "max_distance": 60.0,
+	"thunk": { # a cone dropped or landing hard (manifest: cone impact on ground, hard)
+		"files": ["sfx_cone_impact_ground_hard_01.ogg", "sfx_cone_impact_ground_hard_02.ogg", "sfx_cone_impact_ground_hard_03.ogg"],
+		"volume_db": 0.0, "unit_size": 4.0, "max_distance": 35.0,
 	},
 }
 const MAX_VOICES := 16

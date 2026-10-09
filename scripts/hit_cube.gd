@@ -1217,6 +1217,12 @@ func _crash_with(body: Node) -> void:
 		body.stop_at_impact()
 
 
+## Public entry so the other car in a crash is stopped as well (called from _crash_with).
+## Idempotent: a car that is already flagged is left alone, so nothing is applied twice.
+func stop_at_impact() -> void:
+	_stop_at_impact()
+
+
 func _stop_at_impact() -> void:
 	if _wrecked or wrecker or code_three:
 		return
