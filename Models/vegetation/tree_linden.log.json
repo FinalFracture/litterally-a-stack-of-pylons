@@ -1,0 +1,16 @@
+{
+  "name": "tree_linden",
+  "height_m": 12.0,
+  "crown_d_m": 8.0,
+  "clear_trunk_m": 2.9,
+  "trunk_d_m": 0.3,
+  "clusters": 120,
+  "tris_trunk": 28,
+  "tris_crown": 780,
+  "tris": 808,
+  "textures": [
+    "bark_grey_brown_256x512.jpg",
+    "foliage_linden_512.png"
+  ],
+  "collision": "'_trunk-col' -> StaticBody3D trimesh of the trunk only; crown has none"
+}

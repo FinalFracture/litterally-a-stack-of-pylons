@@ -1,0 +1,122 @@
+{
+  "name": "traffic_signal_mast_9p1",
+  "tris": 792,
+  "nodes": [
+    {
+      "node": "traffic_signal_pole-col",
+      "parent": null,
+      "tris": 184
+    },
+    {
+      "node": "signal_head_1",
+      "parent": null,
+      "tris": 124
+    },
+    {
+      "node": "signal_head_1_red",
+      "parent": "signal_head_1",
+      "tris": 44
+    },
+    {
+      "node": "signal_head_1_yellow",
+      "parent": "signal_head_1",
+      "tris": 44
+    },
+    {
+      "node": "signal_head_1_green",
+      "parent": "signal_head_1",
+      "tris": 44
+    },
+    {
+      "node": "signal_head_2",
+      "parent": null,
+      "tris": 124
+    },
+    {
+      "node": "signal_head_2_red",
+      "parent": "signal_head_2",
+      "tris": 44
+    },
+    {
+      "node": "signal_head_2_yellow",
+      "parent": "signal_head_2",
+      "tris": 44
+    },
+    {
+      "node": "signal_head_2_green",
+      "parent": "signal_head_2",
+      "tris": 44
+    },
+    {
+      "node": "ped_head_1",
+      "parent": null,
+      "tris": 24
+    },
+    {
+      "node": "ped_head_1_hand",
+      "parent": "ped_head_1",
+      "tris": 12
+    },
+    {
+      "node": "ped_head_1_walk",
+      "parent": "ped_head_1",
+      "tris": 12
+    },
+    {
+      "node": "ped_head_2",
+      "parent": null,
+      "tris": 24
+    },
+    {
+      "node": "ped_head_2_hand",
+      "parent": "ped_head_2",
+      "tris": 12
+    },
+    {
+      "node": "ped_head_2_walk",
+      "parent": "ped_head_2",
+      "tris": 12
+    }
+  ],
+  "size_m_xyz_blender": [
+    9.6151,
+    0.815,
+    7.68
+  ],
+  "pivot": "bottom centre of mesh bounds; heads face -Z (Godot)",
+  "collision": "'-col' on the pole + mast arm node only -> StaticBody3D trimesh; heads have none",
+  "anchors_godot_m": {
+    "pole_axis_at_ground": [
+      -4.2926,
+      0.0,
+      0.1075
+    ],
+    "arm_tip": [
+      4.8074,
+      6.6382,
+      0.1075
+    ],
+    "signal_head_1_bottom_centre": [
+      0.7074,
+      5.2009,
+      0.1075
+    ],
+    "signal_head_2_bottom_centre": [
+      4.1074,
+      5.2899,
+      0.1075
+    ]
+  },
+  "pole_m": 7.6,
+  "arm_m": 9.1,
+  "arm_centre_height_m": 6.4,
+  "heads": 2,
+  "head_offsets_from_pole_m": [
+    5.0,
+    8.4
+  ],
+  "lens_d_m": 0.3,
+  "ped_heads": 2,
+  "ped_head_bottom_m": 2.4,
+  "push_button_height_m": 1.07
+}

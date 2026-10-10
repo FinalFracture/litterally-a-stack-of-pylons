@@ -1,0 +1,74 @@
+{
+  "name": "sign_street_name_1st_st__elm_st",
+  "tris": 36,
+  "size_m_xyz_blender": [
+    0.9144,
+    0.9144,
+    3.05
+  ],
+  "pivot": "bottom centre of mesh bounds; front faces -Z (Godot)",
+  "materials": [
+    "face_d3-1_1st_st",
+    "sign_back_alu",
+    "galv_steel",
+    "face_d3-1_elm_st"
+  ],
+  "collision": "none in glb (knockable); scene shapes in sign_street_name_1st_st__elm_st_breakaway.tscn (make_sign_scenes.py)",
+  "anchors_godot_m": {
+    "post_axis_at_ground": [
+      0.0,
+      0.0,
+      -0.0
+    ]
+  },
+  "mass_kg": 11.0,
+  "proposed_scene_shapes": [
+    {
+      "name": "blade_0",
+      "centre_godot": [
+        0.0,
+        2.93,
+        -0.0
+      ],
+      "size_godot": [
+        0.9144,
+        0.2032,
+        0.02
+      ]
+    },
+    {
+      "name": "blade_1",
+      "centre_godot": [
+        0.0,
+        2.69,
+        -0.0
+      ],
+      "size_godot": [
+        0.02,
+        0.2032,
+        0.9144
+      ]
+    },
+    {
+      "name": "post",
+      "centre_godot": [
+        0.0,
+        1.525,
+        -0.0
+      ],
+      "size_godot": [
+        0.0508,
+        3.05,
+        0.0508
+      ]
+    }
+  ],
+  "panel": "2 x D3-1 36x8 in, two-sided, crossed at 90 deg (placeholder names)",
+  "post_top_m": 3.05,
+  "blade_bottoms_m": [
+    2.828,
+    2.588
+  ],
+  "knockable": "CE 2026-10-09; see *_breakaway.tscn",
+  "mass_note": "post 9.0 kg + 2 blades 2.04 kg"
+}

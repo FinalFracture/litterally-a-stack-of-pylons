@@ -1,0 +1,37 @@
+{
+ "name": "bld_t2_mixed_quest",
+ "tris": 938,
+ "materials": [
+  "brick_red",
+  "coping",
+  "door_dark",
+  "glass_dark",
+  "roof_membrane"
+ ],
+ "size_godot_m": [
+  12.62,
+  9.07,
+  15.63
+ ],
+ "pivot_shift_applied": [
+  -6.3,
+  0,
+  -7.795
+ ],
+ "anchors": {
+  "front_face_centre_ground": [
+   0.0,
+   0,
+   -7.795
+  ]
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "tier": "T2",
+ "deck_m": 8.0,
+ "climb_face": "front (-Z), flush",
+ "rises_m": [
+  8.0
+ ],
+ "variant": "Quest (2-box modules)"
+}

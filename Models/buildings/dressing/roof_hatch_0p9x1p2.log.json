@@ -1,0 +1,11 @@
+{
+ "collision": "'-col' on the curb only; lid 'hatch' node has none (add a scene shape if it must block)",
+ "pivot": "bottom-centre; lid origin on the +Z hinge edge",
+ "opening_m": [
+  0.9,
+  1.2
+ ],
+ "place": "T2+ roofs, away from the landing edge (town-core roof caches)",
+ "name": "roof_hatch_0p9x1p2",
+ "tris": 24
+}

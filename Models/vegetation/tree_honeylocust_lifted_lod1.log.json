@@ -1,0 +1,16 @@
+{
+  "name": "tree_honeylocust_lifted_lod1",
+  "height_m": 13.0,
+  "crown_d_m": 8.5,
+  "clear_trunk_m": 4.0,
+  "trunk_d_m": 0.3,
+  "clusters": 36,
+  "tris_trunk": 28,
+  "tris_crown": 216,
+  "tris": 244,
+  "textures": [
+    "bark_grey_brown_256x512.jpg",
+    "foliage_honeylocust_512.png"
+  ],
+  "collision": "'_trunk-col' -> StaticBody3D trimesh of the trunk only; crown has none"
+}

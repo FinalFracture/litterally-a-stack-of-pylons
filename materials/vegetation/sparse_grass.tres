@@ -1,0 +1,21 @@
+[gd_resource type="StandardMaterial3D" load_steps=4 format=3]
+
+; PROPOSAL (Asset Manager): Poly Haven sparse_grass (CC0, Amal Kumar) at its published 2.0 m tile; role: rough verge / dirt shoulder, world triplanar.
+; Expects the 1K maps at res://materials/sparse_grass/ (Developer decides placement). ARM = R AO, G roughness, B metal.
+
+[ext_resource type="Texture2D" path="res://materials/sparse_grass/sparse_grass_diff_1k.jpg" id="1"]
+[ext_resource type="Texture2D" path="res://materials/sparse_grass/sparse_grass_nor_gl_1k.jpg" id="2"]
+[ext_resource type="Texture2D" path="res://materials/sparse_grass/sparse_grass_arm_1k.jpg" id="3"]
+
+[resource]
+albedo_texture = ExtResource("1")
+roughness_texture = ExtResource("3")
+roughness_texture_channel = 1
+normal_enabled = true
+normal_texture = ExtResource("2")
+ao_enabled = true
+ao_texture = ExtResource("3")
+ao_texture_channel = 0
+uv1_scale = Vector3(0.5, 0.5, 0.5)
+uv1_triplanar = true
+uv1_world_triplanar = true

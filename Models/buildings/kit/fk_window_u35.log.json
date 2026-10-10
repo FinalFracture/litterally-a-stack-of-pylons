@@ -1,0 +1,24 @@
+{
+ "name": "fk_window_u35",
+ "tris": 78,
+ "materials": [
+  "brick_red",
+  "coping",
+  "glass_dark",
+  "mullion_alu"
+ ],
+ "size_godot_m": [
+  3.0,
+  3.5,
+  0.33
+ ],
+ "pivot_shift_applied": [
+  -0.0,
+  0,
+  -0.135
+ ],
+ "anchors": {},
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "module": "3.0 x 3.5 upper punched window 1.5 x 1.8, sill 0.9"
+}

@@ -1,0 +1,44 @@
+{
+ "name": "curb_straight_3p66",
+ "tris": 18,
+ "materials": [
+  "concrete_curb"
+ ],
+ "size_godot_m": [
+  3.66,
+  0.2116,
+  3.04
+ ],
+ "pivot_shift_applied": [
+  -0.0,
+  0,
+  -0.92
+ ],
+ "anchors": {
+  "port_w": {
+   "pos": [
+    -1.83,
+    0.025,
+    -0.92
+   ],
+   "dir": [
+    -1,
+    0,
+    0
+   ]
+  },
+  "port_e": {
+   "pos": [
+    1.83,
+    0.025,
+    -0.92
+   ],
+   "dir": [
+    1,
+    0,
+    0
+   ]
+  }
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh"
+}

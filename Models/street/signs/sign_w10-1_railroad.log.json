@@ -1,0 +1,59 @@
+{
+  "name": "sign_w10-1_railroad",
+  "tris": 136,
+  "size_m_xyz_blender": [
+    0.9144,
+    0.0538,
+    3.048
+  ],
+  "pivot": "bottom centre of mesh bounds; front faces -Z (Godot)",
+  "materials": [
+    "face_w10-1_railroad",
+    "sign_back_alu",
+    "galv_steel"
+  ],
+  "collision": "none in glb (knockable); scene shapes in sign_w10-1_railroad_breakaway.tscn (make_sign_scenes.py)",
+  "anchors_godot_m": {
+    "post_axis_at_ground": [
+      -0.0,
+      0.0,
+      0.0015
+    ]
+  },
+  "mass_kg": 12.6,
+  "proposed_scene_shapes": [
+    {
+      "name": "plate",
+      "centre_godot": [
+        0.0,
+        2.5908,
+        -0.0254
+      ],
+      "size_godot": [
+        0.9144,
+        0.9144,
+        0.02
+      ]
+    },
+    {
+      "name": "post",
+      "centre_godot": [
+        -0.0,
+        1.514,
+        0.0015
+      ],
+      "size_godot": [
+        0.0508,
+        3.028,
+        0.0508
+      ]
+    }
+  ],
+  "panel": "W10-1 railroad advance warning 36 in",
+  "panel_w_m": 0.9144,
+  "panel_h_m": 0.9144,
+  "bottom_m": 2.134,
+  "post_top_m": 3.028,
+  "knockable": "CE 2026-10-09; see *_breakaway.tscn",
+  "mass_note": "post 9.0 kg + plate 3.58 kg"
+}

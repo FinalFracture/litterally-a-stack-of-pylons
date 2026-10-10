@@ -1,0 +1,7 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[resource]
+resource_name = "door_red"
+albedo_color = Color(0.3, 0.015, 0.012, 1)
+roughness = 0.5
+metallic = 0.1

@@ -1,0 +1,37 @@
+{
+ "name": "bld_t1_shop_quest",
+ "tris": 458,
+ "materials": [
+  "coping",
+  "door_dark",
+  "glass_dark",
+  "roof_membrane",
+  "stucco_tan"
+ ],
+ "size_godot_m": [
+  12.62,
+  5.57,
+  15.63
+ ],
+ "pivot_shift_applied": [
+  -6.3,
+  0,
+  -7.795
+ ],
+ "anchors": {
+  "front_face_centre_ground": [
+   0.0,
+   0,
+   -7.795
+  ]
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "tier": "T1",
+ "deck_m": 4.5,
+ "climb_face": "front (-Z), flush",
+ "rises_m": [
+  4.5
+ ],
+ "variant": "Quest (2-box modules)"
+}

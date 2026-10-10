@@ -1,0 +1,74 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://vfx/vfx_effect.gd" id="1_2li6h"]
+[ext_resource type="Texture2D" path="res://vfx/textures/spark_streak_16x64.png" id="2_0y6pt"]
+[ext_resource type="AudioStream" path="res://vfx/sounds/sfx_metal_scrape_loop.ogg" id="3_hl3kp"]
+
+[sub_resource type="Gradient" id="Gradient_tebow"]
+offsets = PackedFloat32Array(0, 0.25, 0.7, 1)
+colors = PackedColorArray(1, 0.95, 0.8, 1, 1, 0.72, 0.3, 1, 0.95, 0.35, 0.08, 0.9, 0.5, 0.1, 0.02, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_10mqf"]
+gradient = SubResource("Gradient_tebow")
+width = 64
+
+[sub_resource type="Curve" id="Curve_7p0rn"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.25), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_gev3d"]
+width = 64
+curve = SubResource("Curve_7p0rn")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_tfrr8"]
+emission_shape = 1
+emission_sphere_radius = 0.03
+direction = Vector3(0, 0.3303504, -0.9438583)
+spread = 22.0
+initial_velocity_min = 3.0
+initial_velocity_max = 6.5
+damping_min = 0.5
+damping_max = 1.5
+scale_min = 0.6
+scale_max = 1.2
+scale_curve = SubResource("CurveTexture_gev3d")
+color_ramp = SubResource("GradientTexture1D_10mqf")
+collision_mode = 1
+collision_friction = 0.3
+collision_bounce = 0.35
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_nj7i2"]
+transparency = 1
+cull_mode = 2
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_texture = ExtResource("2_0y6pt")
+
+[sub_resource type="QuadMesh" id="QuadMesh_c1qrw"]
+material = SubResource("StandardMaterial3D_nj7i2")
+size = Vector2(0.03, 0.22)
+
+[node name="VfxSparksScrape" type="Node3D" unique_id=493217079]
+script = ExtResource("1_2li6h")
+continuous = true
+sfx_volume_db = -2.0
+
+[node name="Sparks" type="GPUParticles3D" parent="." unique_id=690014446]
+cast_shadow = 0
+emitting = false
+amount = 24
+lifetime = 0.35
+visibility_aabb = AABB(-2, -0.5, -4, 4, 2.5, 5)
+transform_align = 3
+process_material = SubResource("ParticleProcessMaterial_tfrr8")
+draw_pass_1 = SubResource("QuadMesh_c1qrw")
+
+[node name="SceneCollision" type="GPUParticlesCollisionHeightField3D" parent="." unique_id=1346749305]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+size = Vector3(12, 6, 12)
+resolution = 0
+
+[node name="Sfx" type="AudioStreamPlayer3D" parent="." unique_id=570612135]
+stream = ExtResource("3_hl3kp")
+unit_size = 6.0
+max_distance = 50.0

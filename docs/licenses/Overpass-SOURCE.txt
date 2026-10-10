@@ -1,0 +1,4 @@
+Overpass (Red Hat / The Overpass Project Authors), SIL Open Font License 1.1 (OFL.txt here).
+Source: https://github.com/RedHatOfficial/Overpass (fonts/ttf), downloaded 2026-10-09.
+Use: sign-face textures only (glyphs rasterised into PNG). OFL approved by the Assistant Director (2026-10-09).
+Overpass is inspired by the FHWA Highway Gothic alphabets; it is NOT the official FHWA Series E(M).

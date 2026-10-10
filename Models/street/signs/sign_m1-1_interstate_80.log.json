@@ -1,0 +1,59 @@
+{
+  "name": "sign_m1-1_interstate_80",
+  "tris": 48,
+  "size_m_xyz_blender": [
+    0.5852,
+    0.0538,
+    2.7336
+  ],
+  "pivot": "bottom centre of mesh bounds; front faces -Z (Godot)",
+  "materials": [
+    "face_m1-1_interstate_80",
+    "sign_back_alu",
+    "galv_steel"
+  ],
+  "collision": "none in glb (knockable); scene shapes in sign_m1-1_interstate_80_breakaway.tscn (make_sign_scenes.py)",
+  "anchors_godot_m": {
+    "post_axis_at_ground": [
+      -0.0,
+      0.0,
+      0.0015
+    ]
+  },
+  "mass_kg": 10.4,
+  "proposed_scene_shapes": [
+    {
+      "name": "plate",
+      "centre_godot": [
+        0.0,
+        2.4384,
+        -0.0254
+      ],
+      "size_godot": [
+        0.6096,
+        0.6096,
+        0.02
+      ]
+    },
+    {
+      "name": "post",
+      "centre_godot": [
+        -0.0,
+        1.3668,
+        0.0015
+      ],
+      "size_godot": [
+        0.0508,
+        2.7336,
+        0.0508
+      ]
+    }
+  ],
+  "panel": "M1-1 Interstate shield 24 in (route number placeholder)",
+  "panel_w_m": 0.6096,
+  "panel_h_m": 0.6096,
+  "bottom_m": 2.134,
+  "post_top_m": 2.734,
+  "knockable": "CE 2026-10-09; see *_breakaway.tscn",
+  "mass_note": "post 9.0 kg + plate 1.39 kg"
+}

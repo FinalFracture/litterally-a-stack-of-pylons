@@ -1,0 +1,12 @@
+{
+ "collision": "'-col' boxes",
+ "pivot": "bottom-centre",
+ "size_m": [
+  14.0,
+  0.45,
+  1.05
+ ],
+ "caveat": "rises 3 x 0.15 to a 0.45 landing; needs the City Hall floor/plinth level confirmed (see README)",
+ "name": "cityhall_entry_steps",
+ "tris": 36
+}

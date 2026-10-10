@@ -1,0 +1,45 @@
+{
+ "name": "median_straight_1p80",
+ "tris": 18,
+ "materials": [
+  "concrete_curb",
+  "median_fill_concrete"
+ ],
+ "size_godot_m": [
+  3.66,
+  0.175,
+  1.8
+ ],
+ "pivot_shift_applied": [
+  -0.0,
+  0,
+  0.0
+ ],
+ "anchors": {
+  "port_w": {
+   "pos": [
+    -1.83,
+    0.175,
+    0.0
+   ],
+   "dir": [
+    -1,
+    0,
+    0
+   ]
+  },
+  "port_e": {
+   "pos": [
+    1.83,
+    0.175,
+    0.0
+   ],
+   "dir": [
+    1,
+    0,
+    0
+   ]
+  }
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh"
+}

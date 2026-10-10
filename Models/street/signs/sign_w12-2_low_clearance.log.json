@@ -1,0 +1,59 @@
+{
+  "name": "sign_w12-2_low_clearance",
+  "tris": 24,
+  "size_m_xyz_blender": [
+    0.762,
+    0.0538,
+    2.8956
+  ],
+  "pivot": "bottom centre of mesh bounds; front faces -Z (Godot)",
+  "materials": [
+    "face_w12-2_low_clearance",
+    "sign_back_alu",
+    "galv_steel"
+  ],
+  "collision": "none in glb (knockable); scene shapes in sign_w12-2_low_clearance_breakaway.tscn (make_sign_scenes.py)",
+  "anchors_godot_m": {
+    "post_axis_at_ground": [
+      -0.0,
+      0.0,
+      0.0015
+    ]
+  },
+  "mass_kg": 10.6,
+  "proposed_scene_shapes": [
+    {
+      "name": "plate",
+      "centre_godot": [
+        0.0,
+        2.5146,
+        -0.0254
+      ],
+      "size_godot": [
+        0.762,
+        0.762,
+        0.02
+      ]
+    },
+    {
+      "name": "post",
+      "centre_godot": [
+        -0.0,
+        1.4378,
+        0.0015
+      ],
+      "size_godot": [
+        0.0508,
+        2.8756,
+        0.0508
+      ]
+    }
+  ],
+  "panel": "W12-2 low clearance 30 in (legend 12'-6\")",
+  "panel_w_m": 0.762,
+  "panel_h_m": 0.762,
+  "bottom_m": 2.134,
+  "post_top_m": 2.876,
+  "knockable": "CE 2026-10-09; see *_breakaway.tscn",
+  "mass_note": "post 9.0 kg + plate 1.59 kg"
+}

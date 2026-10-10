@@ -1,0 +1,98 @@
+{
+ "name": "bld_hospital",
+ "tris": 8616,
+ "materials": [
+  "cmu_grey",
+  "coping",
+  "door_dark",
+  "glass_dark",
+  "mullion_alu",
+  "roof_membrane",
+  "stucco_tan",
+  "trim_dark"
+ ],
+ "size_godot_m": [
+  24.66,
+  18.0,
+  21.66
+ ],
+ "pivot_shift_applied": [
+  -12.3,
+  0,
+  -10.8
+ ],
+ "anchors": {
+  "ray|deck0": [
+   0.0,
+   4.5,
+   -7.8
+  ],
+  "ray|edge0": [
+   0.0,
+   4.5,
+   -10.75
+  ],
+  "ray|guard0": [
+   -12.15,
+   5.57,
+   -7.8
+  ],
+  "ray|deck1": [
+   0.0,
+   11.5,
+   -3.3
+  ],
+  "ray|edge1": [
+   0.0,
+   11.5,
+   -4.75
+  ],
+  "ray|guard1": [
+   -12.15,
+   12.57,
+   -3.3
+  ],
+  "ray|deck2": [
+   0.0,
+   15.0,
+   -0.8
+  ],
+  "ray|edge2": [
+   0.0,
+   15.0,
+   -1.75
+  ],
+  "ray|guard2": [
+   -12.15,
+   16.07,
+   -0.8
+  ],
+  "front_face_centre_ground": [
+   0.0,
+   0,
+   -10.8
+  ]
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "rises_m": [
+  4.5,
+  7.0,
+  3.5
+ ],
+ "decks_m": [
+  4.5,
+  11.5,
+  15.0
+ ],
+ "landings_m": [
+  6.0,
+  3.0
+ ],
+ "climb_face": "-Z, flush edges; guards 1.07 on the other faces",
+ "footprint_m": [
+  24.6,
+  21.6
+ ],
+ "use": "hospital (W ring); ambulance canopy is the separate hospital_ambulance_canopy glb"
+}

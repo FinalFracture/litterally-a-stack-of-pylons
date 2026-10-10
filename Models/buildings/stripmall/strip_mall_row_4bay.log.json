@@ -1,0 +1,41 @@
+{
+ "name": "strip_mall_row_4bay",
+ "tris": 1030,
+ "materials": [
+  "canopy_fascia",
+  "coping",
+  "door_dark",
+  "glass_dark",
+  "mullion_alu",
+  "roof_membrane",
+  "sign_band",
+  "stucco_tan",
+  "trim_dark"
+ ],
+ "size_godot_m": [
+  29.8,
+  6.1,
+  24.33
+ ],
+ "pivot_shift_applied": [
+  -14.6,
+  0,
+  -9.165
+ ],
+ "anchors": {
+  "storefront_line_centre": [
+   0.0,
+   0,
+   -9.165
+  ],
+  "canopy_edge_centre": [
+   0.0,
+   3.6,
+   -12.165
+  ]
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "bays": 4,
+ "length_m": 29.8
+}

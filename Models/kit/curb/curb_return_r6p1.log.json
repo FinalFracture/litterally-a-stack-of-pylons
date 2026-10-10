@@ -1,0 +1,52 @@
+{
+ "name": "curb_return_r6p1",
+ "tris": 148,
+ "materials": [
+  "concrete_curb"
+ ],
+ "size_godot_m": [
+  6.7,
+  0.2116,
+  6.7
+ ],
+ "pivot_shift_applied": [
+  -3.35,
+  0,
+  3.35
+ ],
+ "anchors": {
+  "port_start_curbface": {
+   "pos": [
+    -3.35,
+    0.025,
+    -2.75
+   ],
+   "dir": [
+    -1,
+    0,
+    0
+   ]
+  },
+  "port_end_curbface": {
+   "pos": [
+    2.75,
+    0.025,
+    3.35
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ]
+  },
+  "arc_centre": {
+   "pos": [
+    -3.35,
+    0.025,
+    3.35
+   ],
+   "dir": null
+  }
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh"
+}

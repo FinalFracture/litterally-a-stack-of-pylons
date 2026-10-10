@@ -1,0 +1,83 @@
+{
+ "name": "bld_police",
+ "tris": 4428,
+ "materials": [
+  "brick_buff",
+  "coping",
+  "door_dark",
+  "door_red",
+  "glass_dark",
+  "mullion_alu",
+  "roof_membrane",
+  "trim_dark"
+ ],
+ "size_godot_m": [
+  33.96,
+  9.07,
+  15.66
+ ],
+ "pivot_shift_applied": [
+  -16.95,
+  0,
+  -7.8
+ ],
+ "anchors": {
+  "ray|wing_deck": [
+   -10.65,
+   4.5,
+   -0.0
+  ],
+  "ray|wing_edge": [
+   -10.65,
+   4.5,
+   -7.75
+  ],
+  "ray|wing_guard_left": [
+   -16.8,
+   5.57,
+   -0.0
+  ],
+  "ray|main_deck": [
+   6.15,
+   8.0,
+   -0.0
+  ],
+  "ray|main_edge_over_wing": [
+   -4.6,
+   8.0,
+   -0.0
+  ],
+  "ray|main_guard_front": [
+   6.15,
+   9.07,
+   -7.65
+  ],
+  "ray|main_guard_right": [
+   16.8,
+   9.07,
+   -0.0
+  ],
+  "front_face_centre_ground": [
+   -0.0,
+   0,
+   -7.8
+  ]
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "rises_m": [
+  4.5,
+  3.5
+ ],
+ "decks_m": [
+  4.5,
+  8.0
+ ],
+ "landing_m": 12.0,
+ "footprint_m": [
+  33.9,
+  15.6
+ ],
+ "climb": "wing front (-Z) from the walk, then the main block's -X wall from the wing roof; both edges flush",
+ "use": "police station + 2-bay sally port (service-sites \u00a73)"
+}

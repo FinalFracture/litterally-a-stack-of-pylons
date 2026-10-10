@@ -1,0 +1,21 @@
+{
+ "name": "fk_corner_pier_3p5",
+ "tris": 10,
+ "materials": [
+  "brick_red"
+ ],
+ "size_godot_m": [
+  0.3,
+  3.5,
+  0.3
+ ],
+ "pivot_shift_applied": [
+  -0.15,
+  0,
+  -0.15
+ ],
+ "anchors": {},
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "module": "0.3 x 0.3 corner pier, 3.5 tall (also 4.0/4.5 via scale_y)"
+}

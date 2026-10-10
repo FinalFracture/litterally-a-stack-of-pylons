@@ -1,0 +1,117 @@
+{
+ "name": "bld_t4_sixstorey_apartments",
+ "tris": 9620,
+ "materials": [
+  "brick_buff",
+  "cmu_grey",
+  "coping",
+  "door_dark",
+  "glass_dark",
+  "mullion_alu",
+  "roof_membrane",
+  "trim_dark"
+ ],
+ "size_godot_m": [
+  15.66,
+  25.0,
+  18.63
+ ],
+ "pivot_shift_applied": [
+  -7.8,
+  0,
+  -9.315
+ ],
+ "anchors": {
+  "ray|deck0": [
+   -0.0,
+   4.5,
+   -7.815
+  ],
+  "ray|edge0": [
+   -0.0,
+   4.5,
+   -9.265
+  ],
+  "ray|guard0": [
+   -7.65,
+   5.57,
+   -7.815
+  ],
+  "ray|deck1": [
+   -0.0,
+   11.5,
+   -4.815
+  ],
+  "ray|edge1": [
+   -0.0,
+   11.5,
+   -6.265
+  ],
+  "ray|guard1": [
+   -7.65,
+   12.57,
+   -4.815
+  ],
+  "ray|deck2": [
+   -0.0,
+   18.5,
+   -1.815
+  ],
+  "ray|edge2": [
+   -0.0,
+   18.5,
+   -3.265
+  ],
+  "ray|guard2": [
+   -7.65,
+   19.57,
+   -1.815
+  ],
+  "ray|deck3": [
+   -0.0,
+   22.0,
+   0.685
+  ],
+  "ray|edge3": [
+   -0.0,
+   22.0,
+   -0.265
+  ],
+  "ray|guard3": [
+   -7.65,
+   23.07,
+   0.685
+  ],
+  "front_face_centre_ground": [
+   -0.0,
+   0,
+   -9.315
+  ]
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "rises_m": [
+  4.5,
+  7.0,
+  7.0,
+  3.5
+ ],
+ "decks_m": [
+  4.5,
+  11.5,
+  18.5,
+  22.0
+ ],
+ "landings_m": [
+  3.0,
+  3.0,
+  3.0
+ ],
+ "climb_face": "-Z, flush edges; guards 1.07 on the other faces",
+ "footprint_m": [
+  15.6,
+  18.6
+ ],
+ "tier": "T4 (6 storeys, town-core 'about 24 m')",
+ "top_m": 25.0
+}

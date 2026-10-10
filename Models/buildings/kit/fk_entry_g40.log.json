@@ -1,0 +1,25 @@
+{
+ "name": "fk_entry_g40",
+ "tris": 118,
+ "materials": [
+  "brick_red",
+  "door_dark",
+  "glass_dark",
+  "mullion_alu",
+  "trim_dark"
+ ],
+ "size_godot_m": [
+  3.0,
+  4.0,
+  0.3
+ ],
+ "pivot_shift_applied": [
+  -0.0,
+  0,
+  -0.15
+ ],
+ "anchors": {},
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "module": "3.0 x 4.0 ground entry (door + sidelight)"
+}

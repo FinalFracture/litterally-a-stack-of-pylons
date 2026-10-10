@@ -1,0 +1,21 @@
+{
+ "name": "fk_roof_slab_3x3",
+ "tris": 10,
+ "materials": [
+  "roof_membrane"
+ ],
+ "size_godot_m": [
+  3.0,
+  0.3,
+  3.0
+ ],
+ "pivot_shift_applied": [
+  -0.0,
+  0,
+  0.0
+ ],
+ "anchors": {},
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "module": "3 x 3 x 0.3 roof slab (membrane top)"
+}

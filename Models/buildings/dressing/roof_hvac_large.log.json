@@ -1,0 +1,12 @@
+{
+ "collision": "'-col' box body (trimesh of 12 tris)",
+ "pivot": "bottom-centre",
+ "size_m": [
+  2.6,
+  1.3399999999999999,
+  1.6
+ ],
+ "place": "on roof decks >= 1.5 m from the climb-face parapet so it does not block landings",
+ "name": "roof_hvac_large",
+ "tris": 84
+}

@@ -1,0 +1,57 @@
+{
+ "name": "curb_ramp_perpendicular",
+ "tris": 40,
+ "materials": [
+  "concrete_curb",
+  "detectable_warning"
+ ],
+ "size_godot_m": [
+  4.88,
+  0.2116,
+  3.04
+ ],
+ "pivot_shift_applied": [
+  -0.0,
+  0,
+  -0.92
+ ],
+ "anchors": {
+  "port_w": {
+   "pos": [
+    -2.44,
+    0.025,
+    -0.92
+   ],
+   "dir": [
+    -1,
+    0,
+    0
+   ]
+  },
+  "port_e": {
+   "pos": [
+    2.44,
+    0.025,
+    -0.92
+   ],
+   "dir": [
+    1,
+    0,
+    0
+   ]
+  },
+  "route_top_centre": {
+   "pos": [
+    0.0,
+    0.2087,
+    1.33
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ]
+  }
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh"
+}

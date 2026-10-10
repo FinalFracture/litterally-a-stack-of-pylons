@@ -1,0 +1,10 @@
+[gd_resource type="ORMMaterial3D" load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://materials/buildings/tex/trim_sheet_albedo_1k.png" id="1"]
+[ext_resource type="Texture2D" path="res://materials/buildings/tex/trim_sheet_orm_1k.png" id="2"]
+
+[resource]
+resource_name = "canopy_fascia"
+albedo_texture = ExtResource("1")
+orm_texture = ExtResource("2")
+texture_filter = 5

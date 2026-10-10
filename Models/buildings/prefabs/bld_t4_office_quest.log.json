@@ -1,0 +1,42 @@
+{
+ "name": "bld_t4_office_quest",
+ "tris": 2908,
+ "materials": [
+  "coping",
+  "door_dark",
+  "glass_dark",
+  "metal_panel",
+  "roof_membrane"
+ ],
+ "size_godot_m": [
+  18.62,
+  20.07,
+  21.93
+ ],
+ "pivot_shift_applied": [
+  -9.3,
+  0,
+  -10.945
+ ],
+ "anchors": {
+  "front_face_centre_ground": [
+   -0.0,
+   0,
+   -10.945
+  ]
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "tier": "T4",
+ "podium_deck_m": 4.5,
+ "setback_deck_m": 12.0,
+ "setback_terrace_depth_m": 2.7,
+ "deck_m": 19.0,
+ "climb_face": "front (-Z), flush",
+ "rises_m": [
+  4.5,
+  7.5,
+  7.0
+ ],
+ "variant": "Quest (2-box modules)"
+}

@@ -1,0 +1,24 @@
+{
+ "name": "fk_storefront_g45",
+ "tris": 102,
+ "materials": [
+  "brick_red",
+  "glass_dark",
+  "mullion_alu",
+  "trim_dark"
+ ],
+ "size_godot_m": [
+  3.0,
+  4.5,
+  0.3
+ ],
+ "pivot_shift_applied": [
+  -0.0,
+  0,
+  -0.15
+ ],
+ "anchors": {},
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "module": "3.0 x 4.5 ground storefront"
+}

@@ -1,0 +1,81 @@
+{
+ "name": "bld_school_quest",
+ "tris": 2168,
+ "materials": [
+  "brick_red",
+  "coping",
+  "door_dark",
+  "glass_dark",
+  "roof_membrane"
+ ],
+ "size_godot_m": [
+  48.92,
+  9.07,
+  18.63
+ ],
+ "pivot_shift_applied": [
+  -24.45,
+  0,
+  -9.295
+ ],
+ "anchors": {
+  "ray|wing_deck": [
+   -18.15,
+   4.5,
+   0.005
+  ],
+  "ray|wing_edge": [
+   -18.15,
+   4.5,
+   -9.245
+  ],
+  "ray|wing_guard_left": [
+   -24.3,
+   5.57,
+   0.005
+  ],
+  "ray|main_deck": [
+   6.15,
+   8.0,
+   0.005
+  ],
+  "ray|main_edge_over_wing": [
+   -12.1,
+   8.0,
+   0.005
+  ],
+  "ray|main_guard_front": [
+   6.15,
+   9.07,
+   -9.145
+  ],
+  "ray|main_guard_right": [
+   24.3,
+   9.07,
+   0.005
+  ],
+  "front_face_centre_ground": [
+   0.0,
+   0,
+   -9.295
+  ]
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "rises_m": [
+  4.5,
+  3.5
+ ],
+ "decks_m": [
+  4.5,
+  8.0
+ ],
+ "landing_m": 12.0,
+ "footprint_m": [
+  48.9,
+  18.6
+ ],
+ "climb": "wing front (-Z) from the walk, then the main block's -X wall from the wing roof; both edges flush",
+ "use": "school (N ring); gym wing + 2-storey classrooms",
+ "variant": "Quest (2-box modules)"
+}

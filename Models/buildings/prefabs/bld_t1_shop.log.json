@@ -1,0 +1,38 @@
+{
+ "name": "bld_t1_shop",
+ "tris": 1232,
+ "materials": [
+  "coping",
+  "door_dark",
+  "glass_dark",
+  "mullion_alu",
+  "roof_membrane",
+  "stucco_tan",
+  "trim_dark"
+ ],
+ "size_godot_m": [
+  12.66,
+  5.57,
+  15.63
+ ],
+ "pivot_shift_applied": [
+  -6.3,
+  0,
+  -7.815
+ ],
+ "anchors": {
+  "front_face_centre_ground": [
+   -0.0,
+   0,
+   -7.815
+  ]
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "tier": "T1",
+ "deck_m": 4.5,
+ "climb_face": "front (-Z), flush",
+ "rises_m": [
+  4.5
+ ]
+}

@@ -1,0 +1,97 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://vfx/vfx_effect.gd" id="1_iwfnw"]
+[ext_resource type="Texture2D" path="res://vfx/textures/puff_flipbook_4x4.png" id="2_a5mbs"]
+[ext_resource type="AudioStream" path="res://Sounds_Music/sfx/sfx_cone_impact_ground_hard_01.ogg" id="3_xoh4r"]
+[ext_resource type="AudioStream" path="res://Sounds_Music/sfx/sfx_cone_impact_ground_hard_02.ogg" id="4_cf164"]
+[ext_resource type="AudioStream" path="res://Sounds_Music/sfx/sfx_cone_impact_ground_hard_03.ogg" id="5_8frv1"]
+
+[sub_resource type="Gradient" id="Gradient_e48nw"]
+offsets = PackedFloat32Array(0, 0.12, 0.5, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.7, 1, 1, 1, 0.38, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_8npdl"]
+gradient = SubResource("Gradient_e48nw")
+width = 64
+
+[sub_resource type="Curve" id="Curve_bgjs1"]
+_data = [Vector2(0, 0.35), 0.0, 0.0, 0, 0, Vector2(0.4, 0.8), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_oap7k"]
+width = 64
+curve = SubResource("Curve_bgjs1")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_5ul3d"]
+emission_shape = 6
+emission_ring_axis = Vector3(0, 1, 0)
+emission_ring_height = 0.02
+emission_ring_radius = 0.18
+emission_ring_inner_radius = 0.05
+emission_ring_cone_angle = 90.0
+angle_max = 360.0
+direction = Vector3(0, 1, 0)
+spread = 75.0
+initial_velocity_min = 0.4
+initial_velocity_max = 1.1
+angular_velocity_min = -30.0
+angular_velocity_max = 30.0
+radial_velocity_min = 0.4
+radial_velocity_max = 0.9
+gravity = Vector3(0, -0.3, 0)
+damping_min = 1.5
+damping_max = 2.5
+scale_min = 0.7
+scale_max = 1.2
+scale_curve = SubResource("CurveTexture_oap7k")
+color = Color(0.6, 0.57, 0.52, 1)
+color_ramp = SubResource("GradientTexture1D_8npdl")
+anim_speed_min = 1.0
+anim_speed_max = 1.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_bqk2m"]
+transparency = 1
+cull_mode = 2
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_texture = ExtResource("2_a5mbs")
+billboard_mode = 3
+billboard_keep_scale = true
+particles_anim_h_frames = 4
+particles_anim_v_frames = 4
+particles_anim_loop = false
+proximity_fade_enabled = true
+proximity_fade_distance = 0.25
+
+[sub_resource type="QuadMesh" id="QuadMesh_a3p8q"]
+material = SubResource("StandardMaterial3D_bqk2m")
+size = Vector2(0.5, 0.5)
+
+[sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_8i4po"]
+random_pitch = 1.08
+random_volume_offset_db = 2.0
+streams_count = 3
+stream_0/stream = ExtResource("3_xoh4r")
+stream_1/stream = ExtResource("4_cf164")
+stream_2/stream = ExtResource("5_8frv1")
+
+[node name="VfxDustPuff" type="Node3D" unique_id=1139783320]
+script = ExtResource("1_iwfnw")
+sfx_volume_db = -2.0
+
+[node name="Dust" type="GPUParticles3D" parent="." unique_id=624001942]
+cast_shadow = 0
+emitting = false
+amount = 10
+lifetime = 0.9
+one_shot = true
+explosiveness = 1.0
+randomness = 0.2
+visibility_aabb = AABB(-1.5, -0.2, -1.5, 3, 2, 3)
+process_material = SubResource("ParticleProcessMaterial_5ul3d")
+draw_pass_1 = SubResource("QuadMesh_a3p8q")
+
+[node name="Sfx" type="AudioStreamPlayer3D" parent="." unique_id=1470885145]
+stream = SubResource("AudioStreamRandomizer_8i4po")
+unit_size = 4.0
+max_distance = 35.0

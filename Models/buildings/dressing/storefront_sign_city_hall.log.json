@@ -1,0 +1,13 @@
+{
+ "collision": "none (0.02 m, sits on the sign band)",
+ "pivot": "bottom-centre of the back face",
+ "size_m": [
+  4.8,
+  0.6,
+  0.02
+ ],
+ "front": "-Z",
+ "brand": "fictional, in-house, no real brands",
+ "name": "storefront_sign_city_hall",
+ "tris": 14
+}

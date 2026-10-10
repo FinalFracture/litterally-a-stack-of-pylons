@@ -1,0 +1,56 @@
+{
+ "name": "driveway_flush_3p66",
+ "tris": 30,
+ "materials": [
+  "concrete_curb"
+ ],
+ "size_godot_m": [
+  8.16,
+  0.2116,
+  3.04
+ ],
+ "pivot_shift_applied": [
+  -0.0,
+  0,
+  -0.92
+ ],
+ "anchors": {
+  "port_w": {
+   "pos": [
+    -4.08,
+    0.025,
+    -0.92
+   ],
+   "dir": [
+    -1,
+    0,
+    0
+   ]
+  },
+  "port_e": {
+   "pos": [
+    4.08,
+    0.025,
+    -0.92
+   ],
+   "dir": [
+    1,
+    0,
+    0
+   ]
+  },
+  "driveway_back_centre": {
+   "pos": [
+    0.0,
+    0.025,
+    1.52
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ]
+  }
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh"
+}

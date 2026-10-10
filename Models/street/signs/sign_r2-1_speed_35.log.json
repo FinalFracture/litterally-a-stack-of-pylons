@@ -1,0 +1,57 @@
+{
+  "name": "sign_r2-1_speed_35",
+  "tris": 26,
+  "size_m_xyz_blender": [
+    0.6096,
+    0.0543,
+    2.9256
+  ],
+  "pivot": "bottom centre of mesh bounds; front faces -Z (Godot)",
+  "materials": [
+    "r2-1_face_35",
+    "sign_back_alu",
+    "galv_steel"
+  ],
+  "collision": "none in glb (knockable); scene shapes in sign_r2-1_speed_35_breakaway.tscn (make_sign_scenes.py)",
+  "anchors_godot_m": {
+    "post_axis_at_ground": [
+      -0.0,
+      0.0,
+      0.0018
+    ]
+  },
+  "mass_kg": 11.5,
+  "proposed_scene_shapes": [
+    {
+      "name": "plate",
+      "centre_godot": [
+        0.0,
+        2.5146,
+        -0.0251
+      ],
+      "size_godot": [
+        0.6096,
+        0.762,
+        0.02
+      ]
+    },
+    {
+      "name": "post",
+      "centre_godot": [
+        -0.0,
+        1.4628,
+        0.0018
+      ],
+      "size_godot": [
+        0.0508,
+        2.9256,
+        0.0508
+      ]
+    }
+  ],
+  "panel_in": "24x30",
+  "bottom_m": 2.134,
+  "post_top_m": 2.926,
+  "knockable": "CE 2026-10-09; see *_breakaway.tscn",
+  "mass_note": "post 9.0 kg + plate 2.55 kg"
+}

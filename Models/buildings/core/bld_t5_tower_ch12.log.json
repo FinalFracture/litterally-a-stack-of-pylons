@@ -1,0 +1,99 @@
+{
+ "name": "bld_t5_tower_ch12",
+ "tris": 12328,
+ "materials": [
+  "cmu_grey",
+  "coping",
+  "door_dark",
+  "glass_dark",
+  "metal_panel",
+  "mullion_alu",
+  "roof_membrane",
+  "trim_dark"
+ ],
+ "size_godot_m": [
+  27.66,
+  49.5,
+  27.63
+ ],
+ "pivot_shift_applied": [
+  -13.8,
+  0,
+  -13.815
+ ],
+ "anchors": {
+  "ray|podium_deck": [
+   0.0,
+   4.5,
+   -12.315
+  ],
+  "ray|podium_edge": [
+   0.0,
+   4.5,
+   -13.765
+  ],
+  "ray|podium_guard_left": [
+   -13.65,
+   5.57,
+   -0.015
+  ],
+  "ray|roof_deck": [
+   0.0,
+   46.5,
+   -7.815
+  ],
+  "ray|roof_guard_front": [
+   -4.0,
+   47.57,
+   -10.665
+  ],
+  "ray|drop_gap_centre_edge": [
+   0.0,
+   46.5,
+   -10.765
+  ],
+  "ray|drop_gap_left_inside": [
+   -1.1,
+   46.5,
+   -10.665
+  ],
+  "ray|drop_gap_right_inside": [
+   1.1,
+   46.5,
+   -10.665
+  ],
+  "ray|guard_beside_gap": [
+   -1.3,
+   47.57,
+   -10.665
+  ],
+  "ray|bulkhead_top": [
+   0.0,
+   49.5,
+   7.785
+  ],
+  "ch12_drop_gap_centre": [
+   0.0,
+   46.5,
+   -10.815
+  ],
+  "front_face_centre_ground": [
+   0.0,
+   0,
+   -13.815
+  ]
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "tier": "T5 tower (13 storeys)",
+ "roof_walking_m": 46.5,
+ "top_m": 49.5,
+ "podium_deck_m": 4.5,
+ "podium_landing_m": 2.7,
+ "climb": "podium only (4.5 from the walk); tower roof by stairs/lift per building-height-tiers T5 (CH-12 is a drop, not a climb)",
+ "ch12_drop_gap_m": 2.4,
+ "footprint_m": [
+  27.6,
+  27.6
+ ]
+}

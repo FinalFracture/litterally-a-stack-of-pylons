@@ -1,0 +1,87 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://vfx/vfx_effect.gd" id="1_tdon8"]
+[ext_resource type="AudioStream" path="res://vfx/sounds/sfx_gravel_scatter_01.ogg" id="2_ipver"]
+[ext_resource type="AudioStream" path="res://vfx/sounds/sfx_gravel_scatter_02.ogg" id="3_xu6s4"]
+[ext_resource type="AudioStream" path="res://vfx/sounds/sfx_gravel_scatter_03.ogg" id="4_ynhha"]
+
+[sub_resource type="Gradient" id="Gradient_e6222"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(0.3, 0.29, 0.27, 1, 0.45, 0.43, 0.4, 1, 0.55, 0.5, 0.44, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_orjdn"]
+gradient = SubResource("Gradient_e6222")
+width = 64
+
+[sub_resource type="Curve" id="Curve_rbgjt"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.85, 1), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_gpdwv"]
+width = 64
+curve = SubResource("Curve_rbgjt")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_fk8mk"]
+particle_flag_rotate_y = true
+emission_shape = 1
+emission_sphere_radius = 0.1
+angle_max = 360.0
+direction = Vector3(0, 1, 0)
+spread = 60.0
+initial_velocity_min = 1.5
+initial_velocity_max = 3.2
+angular_velocity_min = -360.0
+angular_velocity_max = 360.0
+scale_min = 0.5
+scale_max = 1.4
+scale_curve = SubResource("CurveTexture_gpdwv")
+color_initial_ramp = SubResource("GradientTexture1D_orjdn")
+collision_mode = 1
+collision_friction = 0.8
+collision_bounce = 0.2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_bx415"]
+vertex_color_use_as_albedo = true
+roughness = 0.95
+
+[sub_resource type="SphereMesh" id="SphereMesh_iemn3"]
+material = SubResource("StandardMaterial3D_bx415")
+radius = 0.012
+height = 0.02
+radial_segments = 5
+rings = 2
+
+[sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_ab5gg"]
+random_pitch = 1.08
+random_volume_offset_db = 2.0
+streams_count = 3
+stream_0/stream = ExtResource("2_ipver")
+stream_1/stream = ExtResource("3_xu6s4")
+stream_2/stream = ExtResource("4_ynhha")
+
+[node name="VfxDebrisGravel" type="Node3D" unique_id=972225998]
+script = ExtResource("1_tdon8")
+
+[node name="Gravel" type="GPUParticles3D" parent="." unique_id=795612129]
+cast_shadow = 0
+emitting = false
+amount = 14
+lifetime = 1.3
+one_shot = true
+explosiveness = 1.0
+randomness = 0.2
+collision_base_size = 0.02
+visibility_aabb = AABB(-2, -0.2, -2, 4, 2.5, 4)
+process_material = SubResource("ParticleProcessMaterial_fk8mk")
+draw_pass_1 = SubResource("SphereMesh_iemn3")
+
+[node name="SceneCollision" type="GPUParticlesCollisionHeightField3D" parent="." unique_id=456153270]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+size = Vector3(12, 6, 12)
+resolution = 0
+
+[node name="Sfx" type="AudioStreamPlayer3D" parent="." unique_id=1027233485]
+stream = SubResource("AudioStreamRandomizer_ab5gg")
+volume_db = -4.0
+unit_size = 4.0
+max_distance = 30.0

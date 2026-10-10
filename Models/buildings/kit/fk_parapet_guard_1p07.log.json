@@ -1,0 +1,21 @@
+{
+ "name": "fk_parapet_guard_1p07",
+ "tris": 22,
+ "materials": [
+  "coping"
+ ],
+ "size_godot_m": [
+  3.0,
+  1.07,
+  0.3
+ ],
+ "pivot_shift_applied": [
+  -0.0,
+  0,
+  -0.15
+ ],
+ "anchors": {},
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "module": "3.0 x 1.07 x 0.3 guard parapet (non-climb faces)"
+}

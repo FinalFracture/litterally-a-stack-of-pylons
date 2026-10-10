@@ -1,0 +1,116 @@
+{
+ "name": "bld_t4_sixstorey_office_quest",
+ "tris": 2396,
+ "materials": [
+  "cmu_grey",
+  "coping",
+  "door_dark",
+  "glass_dark",
+  "metal_panel",
+  "roof_membrane"
+ ],
+ "size_godot_m": [
+  18.62,
+  25.0,
+  21.63
+ ],
+ "pivot_shift_applied": [
+  -9.3,
+  0,
+  -10.795
+ ],
+ "anchors": {
+  "ray|deck0": [
+   -0.0,
+   4.5,
+   -9.295
+  ],
+  "ray|edge0": [
+   -0.0,
+   4.5,
+   -10.745
+  ],
+  "ray|guard0": [
+   -9.15,
+   5.57,
+   -9.295
+  ],
+  "ray|deck1": [
+   -0.0,
+   11.5,
+   -6.295
+  ],
+  "ray|edge1": [
+   -0.0,
+   11.5,
+   -7.745
+  ],
+  "ray|guard1": [
+   -9.15,
+   12.57,
+   -6.295
+  ],
+  "ray|deck2": [
+   -0.0,
+   18.5,
+   -3.295
+  ],
+  "ray|edge2": [
+   -0.0,
+   18.5,
+   -4.745
+  ],
+  "ray|guard2": [
+   -9.15,
+   19.57,
+   -3.295
+  ],
+  "ray|deck3": [
+   -0.0,
+   22.0,
+   -0.795
+  ],
+  "ray|edge3": [
+   -0.0,
+   22.0,
+   -1.745
+  ],
+  "ray|guard3": [
+   -9.15,
+   23.07,
+   -0.795
+  ],
+  "front_face_centre_ground": [
+   -0.0,
+   0,
+   -10.795
+  ]
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "rises_m": [
+  4.5,
+  7.0,
+  7.0,
+  3.5
+ ],
+ "decks_m": [
+  4.5,
+  11.5,
+  18.5,
+  22.0
+ ],
+ "landings_m": [
+  3.0,
+  3.0,
+  3.0
+ ],
+ "climb_face": "-Z, flush edges; guards 1.07 on the other faces",
+ "footprint_m": [
+  18.6,
+  21.6
+ ],
+ "tier": "T4 (6 storeys, town-core 'about 24 m')",
+ "top_m": 25.0,
+ "variant": "Quest (2-box modules)"
+}

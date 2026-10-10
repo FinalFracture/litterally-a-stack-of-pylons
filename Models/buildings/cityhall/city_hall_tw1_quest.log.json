@@ -1,0 +1,72 @@
+{
+ "name": "city_hall_tw1_quest",
+ "tris": 4114,
+ "materials": [
+  "clock_bezel",
+  "clock_face",
+  "coping",
+  "door_dark",
+  "glass_dark",
+  "louvre_dark",
+  "roof_membrane",
+  "stone_limestone"
+ ],
+ "size_godot_m": [
+  30.02,
+  29.07,
+  28.01
+ ],
+ "pivot_shift_applied": [
+  -0.0,
+  0,
+  -10.005
+ ],
+ "anchors": {
+  "portico_face_pad_centre": [
+   0.0,
+   0,
+   -14.005
+  ],
+  "portico_deck_centre": [
+   0.0,
+   4.5,
+   -12.005
+  ],
+  "main_roof_pad_at_tower": [
+   0.0,
+   12.0,
+   -4.005
+  ],
+  "belfry_deck_front_centre": [
+   0.0,
+   20.0,
+   -2.205
+  ],
+  "gallery_centre_summit": [
+   0.0,
+   28.0,
+   1.995
+  ],
+  "clock_front_centre": [
+   0.0,
+   26.0,
+   -0.875
+  ]
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "source": "world bible 06 TW-1",
+ "portico": "12 x 4 m, deck 4.5",
+ "main_block": "30 x 24 m, roof 12.0 (storeys 4.5/3.75/3.75)",
+ "tower": "shaft 11 x 11 to 20.0 (1.07 x 0.15 rails on 3 sides, 2.5 m clear inside them); upper stage 5.7 x 5.7 (2.65 m setback); gallery walking surface 28.0, flush climb edge, 1.07 rails on 3 sides",
+ "clock_faces": "4 x D 3.0 m, centre 26.00 m",
+ "rises_m_from_ground": [
+  4.5,
+  7.5,
+  8.0,
+  8.0
+ ],
+ "rise_from_0p175_walk_m": 4.325,
+ "climb_face": "-Z (front); all climb edges flush (CE 2026-10-09)",
+ "variant": "Quest (2-box modules)"
+}

@@ -1,0 +1,8 @@
+{
+ "collision": "'-col' on the pole only (base and flag have no collider)",
+ "pivot": "bottom-centre of pole",
+ "place": "City Hall forecourt, e.g. (-8, 0.175, -17) in City Hall local coords",
+ "flag": "in-house fictional city flag, no real emblem",
+ "name": "cityhall_flagpole_10m",
+ "tris": 162
+}

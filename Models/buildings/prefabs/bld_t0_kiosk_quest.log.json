@@ -1,0 +1,35 @@
+{
+ "name": "bld_t0_kiosk_quest",
+ "tris": 44,
+ "materials": [
+  "canopy_fascia",
+  "coping",
+  "glass_dark",
+  "metal_panel",
+  "roof_membrane"
+ ],
+ "size_godot_m": [
+  3.6,
+  3.0,
+  3.6
+ ],
+ "pivot_shift_applied": [
+  -1.8,
+  0,
+  -1.2
+ ],
+ "anchors": {
+  "front_face_centre_ground": [
+   0.0,
+   0,
+   -1.2
+  ]
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "tier": "T0",
+ "deck_m": 3.0,
+ "climb": "all faces flush",
+ "note": "awning 2.3-2.45 m projects 0.6 m: not a stack pad face",
+ "variant": "Quest (2-box modules)"
+}

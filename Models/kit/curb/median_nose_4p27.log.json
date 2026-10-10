@@ -1,0 +1,45 @@
+{
+ "name": "median_nose_4p27",
+ "tris": 66,
+ "materials": [
+  "concrete_curb",
+  "median_fill_grass"
+ ],
+ "size_godot_m": [
+  2.135,
+  0.175,
+  4.27
+ ],
+ "pivot_shift_applied": [
+  -1.0675,
+  0,
+  0.0
+ ],
+ "anchors": {
+  "port_w_flat_end": {
+   "pos": [
+    -1.0675,
+    0.175,
+    0.0
+   ],
+   "dir": [
+    -1,
+    0,
+    0
+   ]
+  },
+  "nose_tip": {
+   "pos": [
+    1.0675,
+    0.175,
+    0.0
+   ],
+   "dir": [
+    1,
+    0,
+    0
+   ]
+  }
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh"
+}

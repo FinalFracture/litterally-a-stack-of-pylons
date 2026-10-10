@@ -1,0 +1,26 @@
+{
+  "name": "street_light_cobra_9m",
+  "tris": 204,
+  "size_m_xyz_blender": [
+    0.4,
+    3.22,
+    9.1392
+  ],
+  "pivot": "bottom centre of mesh bounds; front faces -Z (Godot)",
+  "materials": [
+    "galv_steel",
+    "luminaire_grey",
+    "luminaire_lens"
+  ],
+  "collision": "'-col' on the visible mesh -> Godot StaticBody3D + trimesh of the render mesh",
+  "anchors_godot_m": {
+    "pole_base_centre": [
+      0.0,
+      0.0,
+      1.41
+    ]
+  },
+  "mounting_height_m": 9.1,
+  "arm_m": 2.4,
+  "arm_direction": "toward the street = forward (-Z Godot)"
+}

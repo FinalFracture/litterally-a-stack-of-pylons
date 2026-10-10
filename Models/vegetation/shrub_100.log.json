@@ -1,0 +1,11 @@
+{
+  "name": "shrub_100",
+  "height_m": 0.964,
+  "spread_m": 1.2,
+  "clusters": 14,
+  "tris": 84,
+  "textures": [
+    "foliage_shrub_512.png"
+  ],
+  "collision": "'shrub_100_body-convcolonly' -> StaticBody3D with one 16-point convex cylinder, r 0.42 m, h 0.82 m"
+}

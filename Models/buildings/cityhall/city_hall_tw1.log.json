@@ -1,0 +1,74 @@
+{
+ "name": "city_hall_tw1",
+ "tris": 11810,
+ "materials": [
+  "clock_bezel",
+  "clock_face",
+  "coping",
+  "door_dark",
+  "glass_dark",
+  "louvre_dark",
+  "louvre_slat",
+  "mullion_alu",
+  "roof_membrane",
+  "stone_limestone",
+  "trim_dark"
+ ],
+ "size_godot_m": [
+  30.06,
+  29.07,
+  28.03
+ ],
+ "pivot_shift_applied": [
+  -0.0,
+  0,
+  -10.015
+ ],
+ "anchors": {
+  "portico_face_pad_centre": [
+   0.0,
+   0,
+   -14.015
+  ],
+  "portico_deck_centre": [
+   0.0,
+   4.5,
+   -12.015
+  ],
+  "main_roof_pad_at_tower": [
+   0.0,
+   12.0,
+   -4.015
+  ],
+  "belfry_deck_front_centre": [
+   0.0,
+   20.0,
+   -2.215
+  ],
+  "gallery_centre_summit": [
+   0.0,
+   28.0,
+   1.985
+  ],
+  "clock_front_centre": [
+   0.0,
+   26.0,
+   -0.885
+  ]
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "source": "world bible 06 TW-1",
+ "portico": "12 x 4 m, deck 4.5",
+ "main_block": "30 x 24 m, roof 12.0 (storeys 4.5/3.75/3.75)",
+ "tower": "shaft 11 x 11 to 20.0 (1.07 x 0.15 rails on 3 sides, 2.5 m clear inside them); upper stage 5.7 x 5.7 (2.65 m setback); gallery walking surface 28.0, flush climb edge, 1.07 rails on 3 sides",
+ "clock_faces": "4 x D 3.0 m, centre 26.00 m",
+ "rises_m_from_ground": [
+  4.5,
+  7.5,
+  8.0,
+  8.0
+ ],
+ "rise_from_0p175_walk_m": 4.325,
+ "climb_face": "-Z (front); all climb edges flush (CE 2026-10-09)"
+}

@@ -1,0 +1,32 @@
+{
+ "name": "strip_mall_end_right",
+ "tris": 56,
+ "materials": [
+  "canopy_fascia",
+  "coping",
+  "roof_membrane",
+  "stucco_tan"
+ ],
+ "size_godot_m": [
+  0.3,
+  6.1,
+  24.3
+ ],
+ "pivot_shift_applied": [
+  -0.15,
+  0,
+  -9.15
+ ],
+ "anchors": {
+  "attach_storefront_line": [
+   -0.15,
+   0,
+   -9.15
+  ]
+ },
+ "collision": "'-col' -> StaticBody3D trimesh of the visible mesh",
+ "uv": "metres (1 UV = 1 m)",
+ "thickness_m": 0.3,
+ "side_edge": "flush at deck 5.5",
+ "note": "attach_storefront_line meets the outer storefront_line_* of the end bay; right end adds the last canopy column"
+}
