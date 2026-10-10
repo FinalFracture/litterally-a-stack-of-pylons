@@ -141,6 +141,7 @@ func _process(_delta: float) -> void:
 	_poll_tasks()
 	var t2 := Time.get_ticks_usec()
 	_run_jobs(t2)
+	_service_near(t2)
 	var t3 := Time.get_ticks_usec()
 	if _window_dirty and not _building():
 		_window_dirty = false
@@ -172,6 +173,14 @@ func _callable_name(job: Callable) -> String:
 	var args := job.get_bound_arguments()
 	if method == "_budget_job" and not args.is_empty():
 		return str(args[0])
+	if method == "_job_part_buf" and args.size() >= 4:
+		return "_job_part_buf %s n=%d" % [str(args[1]), int(args[3])]
+	if method == "_job_multimesh_buf" and args.size() >= 4:
+		return "_job_multimesh_buf %s n=%d" % [str(args[1]), int(args[3])]
+	if method == "_job_trimesh" and args.size() >= 2:
+		var packed: Array = args[1]
+		var faces: PackedVector3Array = packed[2]
+		return "_job_trimesh %s f=%d" % [str(packed[0]), faces.size()]
 	if method == "":
 		return "lambda"
 	return method
@@ -295,7 +304,12 @@ func _plan_build(coord: Vector2i) -> void:
 	jobs.append_array(generator_for(coord).build_jobs(data, host))
 	if _city != null and _city.has_method("register_jobs"):
 		jobs.append_array(_city.register_jobs(coord, data))
-	jobs.append_array(persistence.restore_jobs(coord, data))
+	# Cone stacks are real rigid bodies. Only the chunk the player is in (and the
+	# chunks they are about to enter) spawn them; the rest wait until the player is close.
+	if _want_cones(coord):
+		jobs.append_array(persistence.restore_jobs(coord, data))
+	else:
+		e["cones_later"] = true
 
 
 func _building() -> bool:
@@ -343,6 +357,60 @@ func _run_jobs(t0: int) -> void:
 		else:
 			_finish_unload(c, e)
 			_phase("finish_unload", Time.get_ticks_usec() - tf)
+
+
+func _want_cones(coord: Vector2i) -> bool:
+	# Boot builds the spawn chunk before City assigns a target. Only that chunk gets cones.
+	if target == null or not is_instance_valid(target):
+		return coord == center
+	var at := Vector2(target.global_position.x, target.global_position.z)
+	return WorldConfig.chunk_rect(coord).grow(90.0).has_point(at)
+
+
+## Lamp nodes and small prop collision stay near the player. One short slice per frame.
+func _service_near(t0: int) -> void:
+	if target == null or not is_instance_valid(target):
+		return
+	if Time.get_ticks_usec() - t0 >= frame_budget_usec:
+		return
+	var focus := Vector2(target.global_position.x, target.global_position.z)
+	for c in _entries.keys():
+		if Time.get_ticks_usec() - t0 >= frame_budget_usec:
+			return
+		var e: Dictionary = _entries[c]
+		var st := str(e["state"])
+		if st != "loaded" and st != "build":
+			continue
+		var data: ChunkData = e["data"]
+		var rn = data.payload
+		if rn == null or not rn.has_method("service_near"):
+			continue
+		var left := frame_budget_usec - (Time.get_ticks_usec() - t0)
+		if left < 200:
+			return
+		var host: Node3D = e["host"]
+		var js := Time.get_ticks_usec()
+		rn.call("service_near", host, focus, mini(left, 800))
+		var took := Time.get_ticks_usec() - js
+		if took > 50:
+			_note_job(c, "service_near", took)
+		if bool(e.get("cones_later", false)) and _want_cones(c):
+			if Time.get_ticks_usec() - t0 >= frame_budget_usec:
+				return
+			var job: Callable = e.get("cone_job", Callable())
+			if not job.is_valid():
+				var made: Array = persistence.restore_jobs(c, e["data"])
+				if made.is_empty():
+					e["cones_later"] = false
+					continue
+				job = made[0]
+				e["cone_job"] = job
+			var js2 := Time.get_ticks_usec()
+			var step: Variant = job.call()
+			_note_job(c, "restore_later", Time.get_ticks_usec() - js2)
+			if step != true:
+				e["cones_later"] = false
+				e.erase("cone_job")
 
 
 func _finish_build(coord: Vector2i, e: Dictionary) -> void:

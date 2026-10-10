@@ -932,7 +932,8 @@ func _blocks_car(body: Node) -> bool:
 		return false
 	if body.is_in_group("hitter") or body.is_in_group("vehicle") or body.is_in_group("soul") or body.is_in_group("pedestrian"):
 		return false
-	if body.is_in_group("pavement") or body.is_in_group("stack_target") or body.is_in_group("overhead"):
+	# Sidewalks are a low floor (shorter than 0.5 m). A merged trimesh has no box height to test.
+	if body.is_in_group("pavement") or body.is_in_group("sidewalk") or body.is_in_group("stack_target") or body.is_in_group("overhead"):
 		return false
 	if _is_cone_body(body):
 		return false

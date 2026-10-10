@@ -107,6 +107,8 @@ func _nearest_pavement() -> Vector3:
 
 
 func _closest_on_body(body: StaticBody3D, here: Vector3) -> Vector3:
+	if body.has_meta("respawn_boxes"):
+		return _closest_on_records(body, body.get_meta("respawn_boxes"), here)
 	var best := Vector3(here.x, body.global_position.y + 0.15, here.z)
 	var best_d := 100000.0
 	var found := false
@@ -117,6 +119,35 @@ func _closest_on_body(body: StaticBody3D, here: Vector3) -> Vector3:
 		if not (shape_node.shape is BoxShape3D):
 			continue
 		var spot := _closest_on_box(shape_node, here)
+		var dist := Vector2(here.x - spot.x, here.z - spot.z).length()
+		if not found or dist < best_d:
+			best = spot
+			best_d = dist
+			found = true
+	if found:
+		return best
+	var center := body.global_position
+	var x := clampf(here.x, center.x - 5.0, center.x + 5.0)
+	var z := clampf(here.z, center.z - 5.0, center.z + 5.0)
+	return Vector3(x, center.y + 0.15, z)
+
+
+func _closest_on_records(body: StaticBody3D, records: Array, here: Vector3) -> Vector3:
+	var best := Vector3(here.x, body.global_position.y + 0.15, here.z)
+	var best_d := 100000.0
+	var found := false
+	var body_xf := body.global_transform
+	for rec in records:
+		if not (rec is Dictionary):
+			continue
+		var item: Dictionary = rec
+		var size: Vector3 = item["size"]
+		var xf: Transform3D = body_xf * (item["xf"] as Transform3D)
+		var half := size * 0.5
+		var local: Vector3 = xf.affine_inverse() * here
+		var ix: float = maxf(half.x - RESPAWN_INSET, 0.0)
+		var iz: float = maxf(half.z - RESPAWN_INSET, 0.0)
+		var spot := xf * Vector3(clampf(local.x, -ix, ix), half.y, clampf(local.z, -iz, iz)) + Vector3(0.0, 0.05, 0.0)
 		var dist := Vector2(here.x - spot.x, here.z - spot.z).length()
 		if not found or dist < best_d:
 			best = spot

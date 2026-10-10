@@ -184,7 +184,20 @@ var _cover_grid: Dictionary = {}
 var _mm_parts: Array = []
 ## Worker-packed visual buffers (lots, blocks, medians, decor). Main thread only uploads them.
 var _extra_mm: Array = []
+## Merged apron and cut-walk meshes: [name, mesh, material key].
+var _merged_views: Array = []
+## Structural collision, a few boxes per trimesh: [name, group, faces, respawn records].
+var _col_packed: Array = []
 var _visuals_packed := false
+var _near_lights: Array = []
+var _near_lights_ready := false
+var _near_focus := Vector2(1.0e9, 1.0e9)
+var _near_decor_i := 0
+var _near_light_i := 0
+var _near_done := false
+## Keys of props already given a near-player node. Not the decor-body batch dict.
+var _near_on: Dictionary = {}
+var _near_nodes: Array = []
 var _unit_cube: BoxMesh
 var _top_memo: Dictionary = {}
 var _obst_grid: Dictionary = {}
@@ -361,7 +374,12 @@ func _reset_build(center: Vector3) -> void:
 	_walks.clear()
 	_lots.clear()
 	_extra_mm = []
+	_merged_views = []
+	_col_packed = []
 	_visuals_packed = false
+	_near_lights = []
+	_near_lights_ready = false
+	_reset_near_runtime()
 	_walk_straight = 0
 	_walk_turns = 0
 	_walk_flares = 0
@@ -5294,9 +5312,9 @@ func _spawn_lamp_lights(root: Node3D) -> void:
 			_spawn_signal_light(root, spec)
 
 
-func _spawn_street_light(root: Node3D, spec: Dictionary) -> void:
+func _spawn_street_light(root: Node3D, spec: Dictionary) -> Node3D:
 	if _lamp_locals.is_empty():
-		return
+		return null
 	var at: Vector3 = spec["at"]
 	var dir: Vector3 = spec["dir"]
 	var y: float = _lot_top_at(at.x, at.z) + float(spec["lift"])
@@ -5315,9 +5333,10 @@ func _spawn_street_light(root: Node3D, spec: Dictionary) -> void:
 		host.add_child(omni)
 	var chunk: Vector2i = _Layout.chunk_of(at.x, at.z)
 	_chunk_node(root, chunk).add_child(host)
+	return host
 
 
-func _spawn_signal_light(root: Node3D, spec: Dictionary) -> void:
+func _spawn_signal_light(root: Node3D, spec: Dictionary) -> Node3D:
 	var at: Vector3 = spec["at"]
 	var aim: Vector3 = spec["dir"]
 	var base_y: float = _lot_top_at(at.x, at.z)
@@ -5342,6 +5361,7 @@ func _spawn_signal_light(root: Node3D, spec: Dictionary) -> void:
 	omni.shadow_enabled = false
 	var chunk: Vector2i = _Layout.chunk_of(at.x, at.z)
 	_chunk_node(root, chunk).add_child(omni)
+	return omni
 
 
 func _spawn_aprons(root: Node3D) -> void:
@@ -6534,6 +6554,17 @@ const JOB_SLICE_USEC := 1200
 const SHAPES_PER_BODY := 8
 ## Visual MultiMesh uploads above this many instances are split so one assign stays small.
 const MM_UPLOAD := 192
+## Boxes welded into one concave shape. Small enough that registering the shape stays under the frame budget.
+const COL_BOXES := 40
+## Decor collision and lamp nodes exist only this close to the player. The rest of a chunk is visuals plus the merged floor.
+const NEAR_M := 75.0
+## Drop a near-player prop only after it is this far, so a small step does not spawn and free it.
+const NEAR_DROP_M := 95.0
+## Small decor and medians are split into cells so the visibility range uses a small AABB.
+## One multimesh per 500 m chunk would hide a prop across the street when the chunk centre is far.
+const RANGE_CELL_M := 64.0
+const DECOR_RANGE_M := 80.0
+const MEDIAN_RANGE_M := 140.0
 
 
 ## Main thread, once: load meshes and materials, and warm every mesh's face cache
@@ -6887,6 +6918,8 @@ func _stream_hash(drive: Array, sites: Array[Dictionary]) -> String:
 ## when it still has items left.
 func stream_jobs(root: Node3D) -> Array[Callable]:
 	var jobs: Array[Callable] = []
+	# A cached chunk keeps this object. Drop handles to nodes the last host already freed.
+	_reset_near_runtime()
 	if _mm_parts.is_empty():
 		_pack_multimesh()
 	if not _visuals_packed:
@@ -6895,15 +6928,10 @@ func stream_jobs(root: Node3D) -> Array[Callable]:
 		jobs.append(_job_multimesh_buf.bind(root, str(part[0]), part[1], int(part[2])))
 	for extra in _extra_mm:
 		jobs.append(_job_part_buf.bind(root, str(extra[0]), extra[1], int(extra[2])))
-	_add_budgeted(jobs, "_job_boxes", _boxes, _emit_road_box, root)
-	_add_budgeted(jobs, "_job_boxes_walk", _walk_boxes, _emit_walk_box, root)
-	_add_budgeted(jobs, "_spawn_aprons", _aprons, _emit_apron, root)
-	_add_budgeted(jobs, "_spawn_cut_walks", _cut_walks, _emit_cut_walk, root)
-	_add_budgeted(jobs, "_spawn_lots", _lots, _emit_lot_shape, root)
-	_add_budgeted(jobs, "_spawn_blocks", _blocks, _emit_block_shape, root)
-	_add_budgeted(jobs, "_spawn_medians", _medians, _emit_median_body, root)
-	_add_budgeted(jobs, "_spawn_decor_hits", _decors, _emit_decor_hit, root)
-	_add_budgeted(jobs, "_spawn_lamp_lights", _light_specs(), _emit_one_light, root)
+	for view in _merged_views:
+		jobs.append(_job_merged.bind(root, view))
+	for col in _col_packed:
+		jobs.append(_job_trimesh.bind(root, col))
 	return jobs
 
 
@@ -6969,17 +6997,37 @@ func _pack_stream_visuals() -> void:
 			(dec_by[part3] as Array).append(xf)
 	for part4 in dec_order:
 		_push_mm("decor|%s" % str(part4), dec_by[part4], "xf")
-	for apron in _aprons:
-		if apron.has("verts"):
-			apron["mesh"] = _pack_flat(apron["verts"])
-			apron.erase("verts")
-	for walk in _cut_walks:
-		if walk.has("verts"):
-			walk["mesh"] = _pack_walk(walk["verts"])
-			walk.erase("verts")
+	_pack_merged_meshes()
+	_pack_collision()
+	_near_lights = _light_specs()
+	_near_lights_ready = true
 
 
 func _push_mm(kind: String, list: Array, mode: String) -> void:
+	if list.is_empty():
+		return
+	if kind.begins_with("decor|") or kind.begins_with("median|"):
+		var cells := {}
+		var order: Array = []
+		for item in list:
+			var xz := _visual_xz(mode, item)
+			var cell := Vector2i(int(floor(xz.x / RANGE_CELL_M)), int(floor(xz.y / RANGE_CELL_M)))
+			if not cells.has(cell):
+				cells[cell] = []
+				order.append(cell)
+			(cells[cell] as Array).append(item)
+		for cell2 in order:
+			_push_mm_span(kind, cells[cell2], mode)
+		return
+	_push_mm_span(kind, list, mode)
+
+
+func _visual_xz(mode: String, item: Variant) -> Vector2:
+	var xf := _visual_xf(mode, item)
+	return Vector2(xf.origin.x, xf.origin.z)
+
+
+func _push_mm_span(kind: String, list: Array, mode: String) -> void:
 	var at := 0
 	while at < list.size():
 		var last := mini(at + MM_UPLOAD, list.size())
@@ -7003,6 +7051,28 @@ func _visual_xf(mode: String, item: Variant) -> Transform3D:
 	if mode == "median":
 		return _median_visual_xf(item)
 	return item as Transform3D
+
+
+## AABB of a packed MultiMesh buffer. Eight corners of the mesh bounds, not every vertex.
+func _instances_aabb(mesh: Mesh, buf: PackedFloat32Array, count: int) -> AABB:
+	var local := mesh.get_aabb()
+	var out := AABB()
+	var started := false
+	for n in count:
+		var k := n * 12
+		var basis := Basis(
+			Vector3(buf[k], buf[k + 4], buf[k + 8]),
+			Vector3(buf[k + 1], buf[k + 5], buf[k + 9]),
+			Vector3(buf[k + 2], buf[k + 6], buf[k + 10]))
+		var box: AABB = Transform3D(basis, Vector3(buf[k + 3], buf[k + 7], buf[k + 11])) * local
+		if started:
+			out = out.merge(box)
+		else:
+			out = box
+			started = true
+	if not started:
+		return local
+	return out
 
 
 func _write_xf(buf: PackedFloat32Array, k: int, xf: Transform3D) -> int:
@@ -7098,6 +7168,9 @@ func _job_part_buf(root: Node3D, kind: String, buf: PackedFloat32Array, count: i
 		return
 	var many := MultiMesh.new()
 	many.transform_format = MultiMesh.TRANSFORM_3D
+	# Set before the mesh and the instance count. Godot otherwise transforms every
+	# vertex of every instance to build the AABB, which hitches on a dense decor mesh.
+	many.custom_aabb = _instances_aabb(mesh, buf, count)
 	many.mesh = mesh
 	many.instance_count = count
 	many.buffer = buf
@@ -7107,7 +7180,297 @@ func _job_part_buf(root: Node3D, kind: String, buf: PackedFloat32Array, count: i
 	if mat != null:
 		view.material_override = mat
 	view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Range cull only. A fade mode compiles a new shader variant on first use (~45 ms on this GPU).
+	if kind.begins_with("decor|"):
+		view.visibility_range_end = DECOR_RANGE_M
+		view.visibility_range_end_margin = 12.0
+	elif kind.begins_with("median|"):
+		view.visibility_range_end = MEDIAN_RANGE_M
+		view.visibility_range_end_margin = 20.0
 	root.add_child(view)
+
+
+func _job_merged(root: Node3D, view: Array) -> void:
+	var mesh: Mesh = view[1]
+	if mesh == null:
+		return
+	var inst := MeshInstance3D.new()
+	inst.name = str(view[0])
+	inst.mesh = mesh
+	var key := str(view[2])
+	if key == "gravel":
+		inst.material_override = _gravel_mat
+	elif key == "asphalt":
+		inst.material_override = _asphalt_mat
+	else:
+		inst.material_override = _material_for(key)
+	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(inst)
+
+
+func _job_trimesh(root: Node3D, packed: Array) -> void:
+	var faces: PackedVector3Array = packed[2]
+	if faces.size() < 3:
+		return
+	var body := StaticBody3D.new()
+	body.name = str(packed[0])
+	body.collision_layer = 1
+	body.collision_mask = 1
+	var group := str(packed[1])
+	if group != "":
+		body.add_to_group(group)
+	var shape := CollisionShape3D.new()
+	var solid := ConcavePolygonShape3D.new()
+	solid.backface_collision = true
+	solid.set_faces(faces)
+	shape.shape = solid
+	body.add_child(shape)
+	var records: Array = packed[3]
+	if not records.is_empty():
+		body.set_meta("respawn_boxes", records)
+	root.add_child(body)
+
+
+## Weld the repeated apron and cut-walk meshes into one draw per material.
+func _pack_merged_meshes() -> void:
+	_merged_views = []
+	var dirt := PackedVector3Array()
+	var road := PackedVector3Array()
+	for apron in _aprons:
+		var dirt_apron: bool = bool(apron["dirt"])
+		if apron.has("verts"):
+			var src: PackedVector3Array = apron["verts"]
+			if dirt_apron:
+				dirt.append_array(src)
+			else:
+				road.append_array(src)
+			apron.erase("verts")
+		else:
+			var size := Vector3(float(apron["length"]), 0.03, float(apron["width"]))
+			var mid: Vector3 = apron["mid"]
+			var angle := float(apron["angle"])
+			var xf := Transform3D(Basis(_dir(angle), Vector3.UP, _right(angle)), Vector3(mid.x, ROAD_Y, mid.z))
+			if dirt_apron:
+				dirt = _append_box(dirt, xf, size)
+			else:
+				road = _append_box(road, xf, size)
+		apron.erase("mesh")
+	if dirt.size() >= 3:
+		_merged_views.append(["ApronDirt", _pack_flat(dirt), "gravel"])
+	if road.size() >= 3:
+		_merged_views.append(["ApronRoad", _pack_flat(road), "asphalt"])
+	var by := {}
+	var order: Array = []
+	for walk in _cut_walks:
+		if not walk.has("verts"):
+			continue
+		var kind := str(walk["kind"])
+		var verts: PackedVector3Array = walk["verts"]
+		var at: Vector3 = walk["at"]
+		var ang := float(walk["angle"])
+		var right := _right(ang)
+		if bool(walk["mirrored"]):
+			right = -right
+		var placed := Transform3D(Basis(_dir(ang), Vector3.UP, right), at)
+		var dest := PackedVector3Array()
+		if by.has(kind):
+			dest = by[kind]
+		else:
+			order.append(kind)
+		for v in verts:
+			dest.append(placed * v)
+		by[kind] = dest
+		walk.erase("verts")
+		walk.erase("mesh")
+	for kind2 in order:
+		var faces: PackedVector3Array = by[kind2]
+		if faces.size() < 3:
+			continue
+		_merged_views.append(["Walk_%s" % str(kind2), _pack_walk(faces), str(kind2)])
+
+
+## One concave shape per handful of boxes, instead of a CollisionShape3D per box.
+func _pack_collision() -> void:
+	_col_packed = []
+	var road_b := {"name": "Pavement", "group": "pavement", "tris": PackedVector3Array(), "recs": []}
+	for box in _boxes:
+		var angle := float(box["angle"])
+		var mid: Vector3 = box["mid"]
+		var size := Vector3(float(box["length"]), 0.5, float(box["width"]))
+		var origin := Vector3(mid.x, -0.25, mid.z)
+		var xf := Transform3D(Basis(_dir(angle), Vector3.UP, _right(angle)), origin)
+		_push_col(road_b, xf, size, true)
+	_flush_col(road_b)
+	var walk_b := {"name": "Sidewalk", "group": "sidewalk", "tris": PackedVector3Array(), "recs": []}
+	for box2 in _walk_boxes:
+		var ang2 := float(box2["angle"])
+		var mid2: Vector3 = box2["mid"]
+		var size2 := Vector3(float(box2["length"]), WALK_TOP, float(box2["width"]))
+		var origin2 := Vector3(mid2.x, WALK_TOP * 0.5, mid2.z)
+		var xf2 := Transform3D(Basis(_dir(ang2), Vector3.UP, _right(ang2)), origin2)
+		_push_col(walk_b, xf2, size2, true)
+	_flush_col(walk_b)
+	var lot_b := {"name": "LotGrass", "group": "lot", "tris": PackedVector3Array(), "recs": []}
+	for spec in _lots:
+		var rect: Rect2 = spec["rect"]
+		var top: float = float(spec["top"])
+		var size3 := Vector3(rect.size.x, LOT_THICK, rect.size.y)
+		var origin3 := Vector3(rect.position.x + rect.size.x * 0.5, top - LOT_THICK * 0.5, rect.position.y + rect.size.y * 0.5)
+		_push_col(lot_b, Transform3D(Basis.IDENTITY, origin3), size3, false)
+	_flush_col(lot_b)
+	var block_b := {"name": "Blocks", "group": "", "tris": PackedVector3Array(), "recs": []}
+	for spec2 in _blocks:
+		var size4: Vector3 = spec2["size"]
+		var pos: Vector3 = spec2["pos"]
+		_push_col(block_b, Transform3D(Basis.IDENTITY, pos), size4, false)
+	_flush_col(block_b)
+	var med_b := {"name": "Medians", "group": "", "tris": PackedVector3Array(), "recs": []}
+	for spec3 in _medians:
+		var height := float(spec3["height"])
+		var length := float(spec3["length"])
+		var width := float(spec3["width"])
+		var mid3: Vector3 = spec3["mid"]
+		var ang3 := float(spec3["angle"])
+		var pos3 := Vector3(mid3.x, ROAD_Y + height * 0.5, mid3.z)
+		var xf3 := Transform3D(Basis(_dir(ang3), Vector3.UP, _right(ang3)), pos3)
+		_push_col(med_b, xf3, Vector3(length, height, width), false)
+	_flush_col(med_b)
+
+
+func _push_col(bucket: Dictionary, xf: Transform3D, size: Vector3, record: bool) -> void:
+	var tris: PackedVector3Array = bucket["tris"]
+	tris = _append_box(tris, xf, size)
+	bucket["tris"] = tris
+	if record:
+		(bucket["recs"] as Array).append({"size": size, "xf": xf})
+	if (bucket["recs"] as Array).size() >= COL_BOXES or (not record and tris.size() >= COL_BOXES * 36):
+		_flush_col(bucket)
+
+
+func _flush_col(bucket: Dictionary) -> void:
+	var tris: PackedVector3Array = bucket["tris"]
+	if tris.size() < 3:
+		return
+	_col_packed.append([bucket["name"], bucket["group"], tris.duplicate(), (bucket["recs"] as Array).duplicate()])
+	bucket["tris"] = PackedVector3Array()
+	bucket["recs"] = []
+
+
+func _append_box(tris: PackedVector3Array, xf: Transform3D, size: Vector3) -> PackedVector3Array:
+	var hx := size.x * 0.5
+	var hy := size.y * 0.5
+	var hz := size.z * 0.5
+	var corner: Array[Vector3] = [
+		xf * Vector3(-hx, -hy, -hz),
+		xf * Vector3(hx, -hy, -hz),
+		xf * Vector3(hx, hy, -hz),
+		xf * Vector3(-hx, hy, -hz),
+		xf * Vector3(-hx, -hy, hz),
+		xf * Vector3(hx, -hy, hz),
+		xf * Vector3(hx, hy, hz),
+		xf * Vector3(-hx, hy, hz),
+	]
+	var idx := PackedInt32Array([
+		0, 3, 2, 0, 2, 1,
+		4, 5, 6, 4, 6, 7,
+		0, 1, 5, 0, 5, 4,
+		3, 7, 6, 3, 6, 2,
+		0, 4, 7, 0, 7, 3,
+		1, 2, 6, 1, 6, 5,
+	])
+	for i in idx:
+		tris.append(corner[i])
+	return tris
+
+
+## Drop handles from the previous time this chunk was in the tree. Packed meshes stay.
+func _reset_near_runtime() -> void:
+	_near_focus = Vector2(1.0e9, 1.0e9)
+	_near_decor_i = 0
+	_near_light_i = 0
+	_near_done = false
+	_near_on = {}
+	_near_nodes = []
+
+
+## Decor hits and lamp nodes follow the player. A loaded neighbour does not grow them until you are close.
+func service_near(root: Node3D, focus: Vector2, budget_usec: int) -> void:
+	var t0 := Time.get_ticks_usec()
+	if not _near_lights_ready:
+		_near_lights = _light_specs()
+		_near_lights_ready = true
+	if _near_focus.distance_to(focus) > 12.0:
+		_cull_near(focus)
+		_near_focus = focus
+		_near_decor_i = 0
+		_near_light_i = 0
+		_near_done = false
+	elif _near_done:
+		return
+	while _near_decor_i < _decors.size():
+		var spec: Dictionary = _decors[_near_decor_i]
+		_near_decor_i += 1
+		var at: Vector3 = spec["at"]
+		var key := "d%s:%.1f,%.1f" % [str(spec["kind"]), at.x, at.z]
+		if Vector2(at.x, at.z).distance_to(focus) <= NEAR_M and not _near_on.has(key):
+			# Fresh state: one body per prop, so a prop that leaves range can be freed on its own.
+			var state := {}
+			_emit_decor_hit(root, spec, state)
+			var body: Object = state.get("body")
+			if body is Node:
+				var hit := body as Node
+				_tag_near(hit, key, Vector2(at.x, at.z))
+			else:
+				_near_on[key] = true
+		if Time.get_ticks_usec() - t0 >= budget_usec:
+			return
+	while _near_light_i < _near_lights.size():
+		var spec2: Dictionary = _near_lights[_near_light_i]
+		_near_light_i += 1
+		var at2: Vector3 = spec2["at"]
+		var key2 := "l%s:%.1f,%.1f" % [str(spec2["kind"]), at2.x, at2.z]
+		if Vector2(at2.x, at2.z).distance_to(focus) <= NEAR_M and not _near_on.has(key2):
+			var node := _spawn_near_light(root, spec2)
+			if node != null:
+				_tag_near(node, key2, Vector2(at2.x, at2.z))
+			else:
+				_near_on[key2] = true
+		if Time.get_ticks_usec() - t0 >= budget_usec:
+			return
+	_near_done = true
+
+
+func _tag_near(node: Node, key: String, xz: Vector2) -> void:
+	node.set_meta("near_key", key)
+	node.set_meta("near_xz", xz)
+	_near_on[key] = true
+	_near_nodes.append(node)
+
+
+func _cull_near(focus: Vector2) -> void:
+	var keep: Array = []
+	for node in _near_nodes:
+		if not is_instance_valid(node):
+			continue
+		var n := node as Node
+		var xz: Vector2 = n.get_meta("near_xz", Vector2.ZERO)
+		if xz.distance_to(focus) > NEAR_DROP_M:
+			var key := str(n.get_meta("near_key", ""))
+			if key != "":
+				_near_on.erase(key)
+			n.queue_free()
+			continue
+		keep.append(n)
+	_near_nodes = keep
+
+
+func _spawn_near_light(root: Node3D, spec: Dictionary) -> Node3D:
+	var kind := str(spec["kind"])
+	if kind == "lamp":
+		return _spawn_street_light(root, spec)
+	if kind.begins_with("signal_head"):
+		return _spawn_signal_light(root, spec)
+	return null
 
 
 func _needs_body(state: Dictionary) -> bool:
@@ -7320,6 +7683,7 @@ func _pack_multimesh() -> void:
 func _job_multimesh_buf(root: Node3D, kind: String, buf: PackedFloat32Array, count: int) -> void:
 	var many := MultiMesh.new()
 	many.transform_format = MultiMesh.TRANSFORM_3D
+	many.custom_aabb = _instances_aabb(_mesh[kind], buf, count)
 	many.mesh = _mesh[kind]
 	many.instance_count = count
 	many.buffer = buf
