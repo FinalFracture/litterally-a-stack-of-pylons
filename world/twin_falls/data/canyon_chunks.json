@@ -1,0 +1,356 @@
+{
+ "criteria": "99th-percentile slope > 45 deg (1 m-class grid) OR relief > 40 m within chunk",
+ "count": 35,
+ "chunks": [
+  {
+   "cx": 6,
+   "cz": 0,
+   "reason": "p99 slope 48.7 deg > 45",
+   "relief_m": 26.7,
+   "max_slope_deg": 78.0,
+   "p99_slope_deg": 48.7,
+   "hi_min_y": 170.547,
+   "hi_max_y": 197.245
+  },
+  {
+   "cx": 3,
+   "cz": 2,
+   "reason": "p99 slope 49.9 deg > 45",
+   "relief_m": 26.94,
+   "max_slope_deg": 74.5,
+   "p99_slope_deg": 49.9,
+   "hi_min_y": 159.674,
+   "hi_max_y": 186.613
+  },
+  {
+   "cx": 2,
+   "cz": 3,
+   "reason": "p99 slope 48.3 deg > 45",
+   "relief_m": 29.96,
+   "max_slope_deg": 73.2,
+   "p99_slope_deg": 48.3,
+   "hi_min_y": 155.386,
+   "hi_max_y": 185.344
+  },
+  {
+   "cx": 0,
+   "cz": 4,
+   "reason": "p99 slope 45.9 deg > 45",
+   "relief_m": 27.06,
+   "max_slope_deg": 74.7,
+   "p99_slope_deg": 45.9,
+   "hi_min_y": 148.217,
+   "hi_max_y": 175.278
+  },
+  {
+   "cx": 1,
+   "cz": 4,
+   "reason": "p99 slope 46.4 deg > 45",
+   "relief_m": 27.12,
+   "max_slope_deg": 74.2,
+   "p99_slope_deg": 46.4,
+   "hi_min_y": 151.906,
+   "hi_max_y": 179.03
+  },
+  {
+   "cx": 8,
+   "cz": 11,
+   "reason": "relief 52.6 m > 40",
+   "relief_m": 52.64,
+   "max_slope_deg": 81.4,
+   "p99_slope_deg": 24.8,
+   "hi_min_y": 108.405,
+   "hi_max_y": 161.049
+  },
+  {
+   "cx": 9,
+   "cz": 11,
+   "reason": "p99 slope 45.4 deg > 45; relief 53.9 m > 40",
+   "relief_m": 53.9,
+   "max_slope_deg": 84.5,
+   "p99_slope_deg": 45.4,
+   "hi_min_y": 104.349,
+   "hi_max_y": 158.245
+  },
+  {
+   "cx": 3,
+   "cz": 12,
+   "reason": "p99 slope 77.0 deg > 45; relief 126.4 m > 40",
+   "relief_m": 126.43,
+   "max_slope_deg": 87.9,
+   "p99_slope_deg": 77.0,
+   "hi_min_y": 27.473,
+   "hi_max_y": 153.899
+  },
+  {
+   "cx": 4,
+   "cz": 12,
+   "reason": "p99 slope 71.6 deg > 45; relief 127.9 m > 40",
+   "relief_m": 127.91,
+   "max_slope_deg": 85.4,
+   "p99_slope_deg": 71.6,
+   "hi_min_y": 27.481,
+   "hi_max_y": 155.391
+  },
+  {
+   "cx": 5,
+   "cz": 12,
+   "reason": "p99 slope 69.2 deg > 45; relief 117.3 m > 40",
+   "relief_m": 117.33,
+   "max_slope_deg": 84.6,
+   "p99_slope_deg": 69.2,
+   "hi_min_y": 37.68,
+   "hi_max_y": 155.009
+  },
+  {
+   "cx": 7,
+   "cz": 12,
+   "reason": "p99 slope 68.3 deg > 45; relief 142.0 m > 40",
+   "relief_m": 142.03,
+   "max_slope_deg": 86.1,
+   "p99_slope_deg": 68.3,
+   "hi_min_y": 9.174,
+   "hi_max_y": 151.201
+  },
+  {
+   "cx": 8,
+   "cz": 12,
+   "reason": "p99 slope 78.7 deg > 45; relief 157.8 m > 40",
+   "relief_m": 157.84,
+   "max_slope_deg": 84.2,
+   "p99_slope_deg": 78.7,
+   "hi_min_y": -5.24,
+   "hi_max_y": 152.599
+  },
+  {
+   "cx": 9,
+   "cz": 12,
+   "reason": "p99 slope 74.7 deg > 45; relief 159.1 m > 40",
+   "relief_m": 159.13,
+   "max_slope_deg": 85.8,
+   "p99_slope_deg": 74.7,
+   "hi_min_y": -5.24,
+   "hi_max_y": 153.893
+  },
+  {
+   "cx": 1,
+   "cz": 13,
+   "reason": "p99 slope 62.1 deg > 45; relief 121.1 m > 40",
+   "relief_m": 121.12,
+   "max_slope_deg": 86.4,
+   "p99_slope_deg": 62.1,
+   "hi_min_y": 28.179,
+   "hi_max_y": 149.302
+  },
+  {
+   "cx": 2,
+   "cz": 13,
+   "reason": "p99 slope 72.4 deg > 45; relief 134.5 m > 40",
+   "relief_m": 134.51,
+   "max_slope_deg": 86.5,
+   "p99_slope_deg": 72.4,
+   "hi_min_y": 14.582,
+   "hi_max_y": 149.094
+  },
+  {
+   "cx": 3,
+   "cz": 13,
+   "reason": "relief 129.7 m > 40",
+   "relief_m": 129.72,
+   "max_slope_deg": 86.3,
+   "p99_slope_deg": 41.2,
+   "hi_min_y": -5.24,
+   "hi_max_y": 124.479
+  },
+  {
+   "cx": 4,
+   "cz": 13,
+   "reason": "p99 slope 64.8 deg > 45; relief 53.2 m > 40",
+   "relief_m": 53.15,
+   "max_slope_deg": 85.2,
+   "p99_slope_deg": 64.8,
+   "hi_min_y": -5.24,
+   "hi_max_y": 47.911
+  },
+  {
+   "cx": 5,
+   "cz": 13,
+   "reason": "p99 slope 75.5 deg > 45; relief 152.4 m > 40",
+   "relief_m": 152.38,
+   "max_slope_deg": 86.9,
+   "p99_slope_deg": 75.5,
+   "hi_min_y": -5.24,
+   "hi_max_y": 147.137
+  },
+  {
+   "cx": 6,
+   "cz": 13,
+   "reason": "p99 slope 77.5 deg > 45; relief 152.3 m > 40",
+   "relief_m": 152.34,
+   "max_slope_deg": 86.7,
+   "p99_slope_deg": 77.5,
+   "hi_min_y": -5.24,
+   "hi_max_y": 147.1
+  },
+  {
+   "cx": 7,
+   "cz": 13,
+   "reason": "p99 slope 76.3 deg > 45; relief 148.6 m > 40",
+   "relief_m": 148.56,
+   "max_slope_deg": 86.5,
+   "p99_slope_deg": 76.3,
+   "hi_min_y": -5.24,
+   "hi_max_y": 143.323
+  },
+  {
+   "cx": 8,
+   "cz": 13,
+   "reason": "p99 slope 80.6 deg > 45; relief 160.0 m > 40",
+   "relief_m": 160.05,
+   "max_slope_deg": 88.2,
+   "p99_slope_deg": 80.6,
+   "hi_min_y": -5.24,
+   "hi_max_y": 154.808
+  },
+  {
+   "cx": 9,
+   "cz": 13,
+   "reason": "p99 slope 82.5 deg > 45; relief 161.5 m > 40",
+   "relief_m": 161.51,
+   "max_slope_deg": 88.1,
+   "p99_slope_deg": 82.5,
+   "hi_min_y": -5.19,
+   "hi_max_y": 156.323
+  },
+  {
+   "cx": 0,
+   "cz": 14,
+   "reason": "p99 slope 62.4 deg > 45; relief 122.7 m > 40",
+   "relief_m": 122.75,
+   "max_slope_deg": 86.2,
+   "p99_slope_deg": 62.4,
+   "hi_min_y": 18.944,
+   "hi_max_y": 141.693
+  },
+  {
+   "cx": 1,
+   "cz": 14,
+   "reason": "p99 slope 72.6 deg > 45; relief 139.3 m > 40",
+   "relief_m": 139.32,
+   "max_slope_deg": 86.4,
+   "p99_slope_deg": 72.6,
+   "hi_min_y": 3.862,
+   "hi_max_y": 143.184
+  },
+  {
+   "cx": 4,
+   "cz": 14,
+   "reason": "relief 50.9 m > 40",
+   "relief_m": 50.89,
+   "max_slope_deg": 61.3,
+   "p99_slope_deg": 35.4,
+   "hi_min_y": -5.24,
+   "hi_max_y": 45.654
+  },
+  {
+   "cx": 5,
+   "cz": 14,
+   "reason": "p99 slope 75.1 deg > 45; relief 150.3 m > 40",
+   "relief_m": 150.33,
+   "max_slope_deg": 84.9,
+   "p99_slope_deg": 75.1,
+   "hi_min_y": 0.755,
+   "hi_max_y": 151.084
+  },
+  {
+   "cx": 6,
+   "cz": 14,
+   "reason": "p99 slope 79.1 deg > 45; relief 139.2 m > 40",
+   "relief_m": 139.23,
+   "max_slope_deg": 87.7,
+   "p99_slope_deg": 79.1,
+   "hi_min_y": 12.484,
+   "hi_max_y": 151.711
+  },
+  {
+   "cx": 7,
+   "cz": 14,
+   "reason": "p99 slope 74.4 deg > 45; relief 132.0 m > 40",
+   "relief_m": 132.01,
+   "max_slope_deg": 87.6,
+   "p99_slope_deg": 74.4,
+   "hi_min_y": 24.604,
+   "hi_max_y": 156.615
+  },
+  {
+   "cx": 8,
+   "cz": 14,
+   "reason": "relief 59.1 m > 40",
+   "relief_m": 59.14,
+   "max_slope_deg": 79.6,
+   "p99_slope_deg": 17.4,
+   "hi_min_y": 100.74,
+   "hi_max_y": 159.875
+  },
+  {
+   "cx": 9,
+   "cz": 14,
+   "reason": "relief 75.5 m > 40",
+   "relief_m": 75.51,
+   "max_slope_deg": 86.9,
+   "p99_slope_deg": 39.9,
+   "hi_min_y": 88.621,
+   "hi_max_y": 164.133
+  },
+  {
+   "cx": 0,
+   "cz": 15,
+   "reason": "p99 slope 73.7 deg > 45; relief 144.2 m > 40",
+   "relief_m": 144.17,
+   "max_slope_deg": 86.4,
+   "p99_slope_deg": 73.7,
+   "hi_min_y": -6.36,
+   "hi_max_y": 137.811
+  },
+  {
+   "cx": 2,
+   "cz": 15,
+   "reason": "p99 slope 55.9 deg > 45; relief 138.3 m > 40",
+   "relief_m": 138.34,
+   "max_slope_deg": 86.8,
+   "p99_slope_deg": 55.9,
+   "hi_min_y": -5.24,
+   "hi_max_y": 133.104
+  },
+  {
+   "cx": 3,
+   "cz": 15,
+   "reason": "p99 slope 70.1 deg > 45; relief 138.6 m > 40",
+   "relief_m": 138.58,
+   "max_slope_deg": 85.5,
+   "p99_slope_deg": 70.1,
+   "hi_min_y": -5.24,
+   "hi_max_y": 133.335
+  },
+  {
+   "cx": 4,
+   "cz": 15,
+   "reason": "p99 slope 74.8 deg > 45; relief 128.4 m > 40",
+   "relief_m": 128.37,
+   "max_slope_deg": 86.6,
+   "p99_slope_deg": 74.8,
+   "hi_min_y": 22.485,
+   "hi_max_y": 150.859
+  },
+  {
+   "cx": 5,
+   "cz": 15,
+   "reason": "p99 slope 76.0 deg > 45; relief 126.1 m > 40",
+   "relief_m": 126.12,
+   "max_slope_deg": 86.4,
+   "p99_slope_deg": 76.0,
+   "hi_min_y": 27.518,
+   "hi_max_y": 153.64
+  }
+ ]
+}

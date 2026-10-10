@@ -1,0 +1,28 @@
+{
+ "spawn": {
+  "x": 3359.38,
+  "z_north": 6546.88,
+  "godot_z": -6546.88,
+  "y": 140.243
+ },
+ "lat": 42.5980008,
+ "lon": -114.4537377,
+ "utm_e": 708895.38,
+ "utm_n": 4719317.88,
+ "dem_m": 1098.193,
+ "setback_from_steep_m": 15.2,
+ "local_max_slope_deg_9x9": 4.65,
+ "chunk": [
+  6,
+  13
+ ],
+ "south_abutment_est": {
+  "x": 3371.09,
+  "z_north": 6557.62,
+  "godot_z": -6557.62,
+  "y": 138.847
+ },
+ "method": "Rim = first sample walking north along lon -114.4537 from 42.5953 with mean slope > 40 deg. Spawn = nearest sample to it with slope < 5 deg in a 9x9 (~9 m) window and 15-30 m from any slope > 30 deg cell, on the south side.",
+ "axes": "x east, y up, z_north north; godot_z = -z_north",
+ "facing_hint": "north (toward bridge/canyon)"
+}

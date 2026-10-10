@@ -16,6 +16,8 @@ var hold_column := false
 var ragdoll := false
 ## City sets this until the spawn sidewalk exists. Physics must not drop the body through the world.
 var boot_held := false
+## City sidewalks sit near y = 0. Twin Falls turns this off so the canyon (below y = -4) and the map edge stay falls.
+@export var recover_falls := true
 # Respawn clamp: the loaded chunk's real bounds (City meta "chunk_bounds"), not the disabled Ground box.
 var _bounds := Rect2(0.0, 0.0, 500.0, 500.0)
 var _bounds_read := false
@@ -65,6 +67,8 @@ func _physics_process(delta: float) -> void:
 
 
 func _recover_if_fallen() -> void:
+	if not recover_falls:
+		return
 	if global_position.y > FALL_Y:
 		return
 	global_position = _nearest_pavement()

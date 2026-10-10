@@ -1,3 +1,6 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# Scratch diagnostics (probes, screenshots, logs). Never commit.
+_diag/

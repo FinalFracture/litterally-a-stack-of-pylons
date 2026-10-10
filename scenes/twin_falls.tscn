@@ -1,0 +1,60 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/twin_falls_world.gd" id="1_world"]
+[ext_resource type="Script" path="res://scripts/soul_body.gd" id="2_soul"]
+[ext_resource type="Script" path="res://scripts/stack_controller.gd" id="3_stack"]
+[ext_resource type="PackedScene" uid="uid://dncgl25a25s8j" path="res://scenes/player/standard_cone.tscn" id="4_cone"]
+[ext_resource type="Script" path="res://scripts/camera_rig.gd" id="5_cam"]
+[ext_resource type="Script" path="res://scripts/twin_falls_ambience.gd" id="6_amb"]
+
+[sub_resource type="CameraAttributesPractical" id="CamAttr"]
+dof_blur_far_enabled = false
+
+[sub_resource type="Environment" id="Environment_tf"]
+background_mode = 1
+background_color = Color(0.53, 0.7, 0.88, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.7, 0.76, 0.82, 1)
+ambient_light_energy = 0.55
+fog_enabled = true
+fog_light_color = Color(0.73, 0.8, 0.86, 1)
+fog_density = 0.00032
+fog_aerial_perspective = 0.12
+fog_sky_affect = 0.8
+
+[node name="TwinFalls" type="Node3D"]
+script = ExtResource("1_world")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_tf")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation = Vector3(-0.95, 0.55, 0)
+light_color = Color(1, 0.96, 0.9, 1)
+light_energy = 1.35
+shadow_enabled = false
+
+[node name="SoulBody" type="CharacterBody3D" parent="." groups=["soul"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3359.38, 142, -6546.88)
+collision_layer = 1
+collision_mask = 5
+script = ExtResource("2_soul")
+recover_falls = false
+
+[node name="StackController" type="Node" parent="SoulBody"]
+script = ExtResource("3_stack")
+
+[node name="StandardCone" parent="SoulBody" instance=ExtResource("4_cone")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2286, 0)
+
+[node name="CameraRig" type="Node3D" parent="."]
+script = ExtResource("5_cam")
+target_path = NodePath("../SoulBody")
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig"]
+attributes = SubResource("CamAttr")
+current = true
+fov = 70.0
+
+[node name="Ambience" type="Node" parent="."]
+script = ExtResource("6_amb")
