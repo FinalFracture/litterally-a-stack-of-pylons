@@ -17,6 +17,8 @@ signal chunk_loaded(coord: Vector2i, data: ChunkData)
 signal chunk_unloading(coord: Vector2i)
 signal chunk_unloaded(coord: Vector2i)
 signal window_changed(loaded: Array)
+## Spawn chunk: ground and the road/sidewalk under the player are in the tree.
+signal spawn_floor_ready(spawn: Vector3)
 
 const _Persistence := preload("res://scripts/world/chunk_persistence.gd")
 
@@ -53,6 +55,35 @@ var frame_usec_hist: PackedInt32Array = PackedInt32Array()
 var last_frame_usec := 0
 var job_usec_max := 0
 var job_usec_max_name := ""
+## Boot generate runs on a plain Thread so its shadow tasks can wait on the pool.
+var _boot_thread: Thread
+## Keeps the worker object alive. The thread callable does not.
+var _boot_job: RefCounted
+var _boot_box: Dictionary = {}
+var _boot_coord := Vector2i.ZERO
+var _boot_floor_done := false
+## Milliseconds since process start, for the boot probe.
+var boot_started_ms := 0
+var boot_floor_at_ms := -1
+var boot_gen_at_ms := -1
+var boot_floor_build_usec := 0
+
+
+## One-shot worker for the spawn chunk. Not a pool task: it waits on shadow tasks.
+class _BootRun:
+	extends RefCounted
+	var gen: ChunkGenerator
+	var coord: Vector2i
+	var seed: int
+	var box: Dictionary
+
+	func run() -> void:
+		var data: ChunkData = gen.generate(coord, seed, box)
+		var lock: Mutex = box["mutex"]
+		lock.lock()
+		box["data"] = data
+		box["done"] = true
+		lock.unlock()
 
 
 func setup(city: Node, seed: int, generator: ChunkGenerator, core: ChunkGenerator = null) -> void:
@@ -110,7 +141,7 @@ func busy() -> bool:
 	return false
 
 
-## Boot (and teleport): build `coord` right now on the main thread, then stream the rest.
+## Synchronous load (tools, teleport). Boot uses start_boot so the first frame is not this.
 func load_now(coord: Vector2i) -> ChunkData:
 	center = coord
 	var data: ChunkData = _cached(coord)
@@ -128,6 +159,47 @@ func load_now(coord: Vector2i) -> ChunkData:
 	return data
 
 
+## Spawn chunk: ground goes in now, generation runs off the main thread.
+## `focus` is the stand point when the launch overrides the sidewalk spawn.
+func start_boot(coord: Vector2i, focus: Variant = null) -> void:
+	center = coord
+	_boot_coord = coord
+	_boot_floor_done = false
+	boot_started_ms = Time.get_ticks_msec()
+	var host := Node3D.new()
+	host.name = "Chunk_%d_%d" % [coord.x, coord.y]
+	host.set_meta("chunk", coord)
+	add_child(host)
+	var gen := generator_for(coord)
+	if gen.has_method("_ground_job"):
+		gen.call("_ground_job", coord, host)
+	var box := {
+		"boot": true,
+		"ready": false,
+		"done": false,
+		"data": null,
+		"spawn": Vector3.ZERO,
+		"cols": [],
+		"mutex": Mutex.new(),
+		"has_focus": focus is Vector3,
+		"focus": focus if focus is Vector3 else Vector3.ZERO,
+	}
+	_boot_box = box
+	_entries[coord] = {"state": "boot", "host": host, "drop": false}
+	var job := _BootRun.new()
+	job.gen = gen
+	job.coord = coord
+	job.seed = world_seed
+	job.box = box
+	_boot_job = job
+	_boot_thread = Thread.new()
+	var err := _boot_thread.start(job.run)
+	if err != OK:
+		_boot_thread = null
+		_boot_job = null
+		push_error("Spawn chunk thread failed to start (%s)." % error_string(err))
+
+
 func _process(_delta: float) -> void:
 	var t0 := Time.get_ticks_usec()
 	_flush_graveyard()
@@ -139,6 +211,7 @@ func _process(_delta: float) -> void:
 	_phase("graveyard", ta - t0)
 	_phase("track", tb - ta)
 	_poll_tasks()
+	_poll_boot()
 	var t2 := Time.get_ticks_usec()
 	_run_jobs(t2)
 	_service_near(t2)
@@ -214,6 +287,10 @@ func _track_target() -> void:
 
 
 func _schedule() -> void:
+	# Neighbour generates share the generator object. Wait until the boot thread
+	# has finished with it. The pool stays free for that thread's shadow tasks.
+	if _boot_thread != null:
+		return
 	var want: Array[Vector2i] = WorldConfig.window(center)
 	var wanted: Dictionary = {}
 	for c in want:
@@ -284,10 +361,13 @@ func _note_gen(data: ChunkData) -> void:
 func _start_build(coord: Vector2i, data: ChunkData) -> Dictionary:
 	_cache.erase(coord)
 	_cache_order.erase(coord)
-	var host := Node3D.new()
-	host.name = "Chunk_%d_%d" % [coord.x, coord.y]
-	host.set_meta("chunk", coord)
-	add_child(host)
+	var prior: Dictionary = _entries.get(coord, {})
+	var host: Node3D = prior.get("host")
+	if host == null or not is_instance_valid(host):
+		host = Node3D.new()
+		host.name = "Chunk_%d_%d" % [coord.x, coord.y]
+		host.set_meta("chunk", coord)
+		add_child(host)
 	# The job list itself is made by the first job, so starting a build costs ~nothing.
 	var jobs: Array[Callable] = []
 	var e := {"state": "build", "data": data, "host": host, "jobs": jobs, "job_i": 0}
@@ -539,7 +619,80 @@ func _phase_ms() -> Dictionary:
 	return out
 
 
+func _poll_boot() -> void:
+	if _boot_thread == null:
+		return
+	var box: Dictionary = _boot_box
+	var lock: Mutex = box["mutex"]
+	lock.lock()
+	var floor_ready: bool = bool(box["ready"]) and not _boot_floor_done
+	var done: bool = bool(box["done"])
+	var spawn: Vector3 = box["spawn"]
+	var cols: Array = box["cols"]
+	lock.unlock()
+	if floor_ready:
+		_boot_floor_done = true
+		var host: Node3D = _entries[_boot_coord]["host"]
+		var t0 := Time.get_ticks_usec()
+		for packed in cols:
+			_add_floor_body(host, packed)
+		boot_floor_build_usec = Time.get_ticks_usec() - t0
+		boot_floor_at_ms = Time.get_ticks_msec()
+		if LaunchConfig.logs:
+			LaunchConfig.log_line("PYLONS_BOOT floor_at=%d since_boot=%d build_us=%d bodies=%d" % [boot_floor_at_ms, boot_floor_at_ms - boot_started_ms, boot_floor_build_usec, cols.size()])
+		spawn_floor_ready.emit(spawn)
+	if not done:
+		return
+	var thread := _boot_thread
+	_boot_thread = null
+	thread.wait_to_finish()
+	_boot_job = null
+	lock.lock()
+	var data: ChunkData = box["data"]
+	lock.unlock()
+	boot_gen_at_ms = Time.get_ticks_msec()
+	if data == null:
+		push_error("Spawn chunk %s failed to generate." % str(_boot_coord))
+		var host_gone: Node3D = _entries[_boot_coord]["host"] if _entries.has(_boot_coord) else null
+		if host_gone != null and is_instance_valid(host_gone):
+			host_gone.free()
+		_entries.erase(_boot_coord)
+		return
+	_note_gen(data)
+	if LaunchConfig.logs:
+		var stage: Variant = data.stats.get("stage_ms", {})
+		LaunchConfig.log_line("PYLONS_BOOT gen_at=%d since_boot=%d gen_us=%d stage=%s" % [boot_gen_at_ms, boot_gen_at_ms - boot_started_ms, data.gen_usec, stage])
+	_start_build(_boot_coord, data)
+
+
+func _add_floor_body(host: Node3D, packed: Array) -> void:
+	var faces: PackedVector3Array = packed[2]
+	if faces.size() < 3:
+		return
+	var body := StaticBody3D.new()
+	body.name = str(packed[0])
+	body.collision_layer = 1
+	body.collision_mask = 1
+	var group := str(packed[1])
+	if group != "":
+		body.add_to_group(group)
+	var shape := CollisionShape3D.new()
+	var solid := ConcavePolygonShape3D.new()
+	solid.backface_collision = true
+	solid.set_faces(faces)
+	shape.shape = solid
+	body.add_child(shape)
+	var records: Array = packed[3]
+	if not records.is_empty():
+		body.set_meta("respawn_boxes", records)
+	host.add_child(body)
+
+
 func _exit_tree() -> void:
+	if _boot_thread != null:
+		_boot_thread.wait_to_finish()
+		_boot_thread = null
+		_boot_job = null
 	if _release_task >= 0:
 		WorkerThreadPool.wait_for_task_completion(_release_task)
 		_release_task = -1

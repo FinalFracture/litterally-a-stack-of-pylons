@@ -42,7 +42,7 @@ func kit() -> RefCounted:
 	return _kit
 
 
-func generate(coord: Vector2i, world_seed: int) -> ChunkData:
+func generate(coord: Vector2i, world_seed: int, floor_box: Dictionary = {}) -> ChunkData:
 	var t0 := Time.get_ticks_usec()
 	var data := ChunkData.new()
 	data.coord = coord
@@ -50,7 +50,7 @@ func generate(coord: Vector2i, world_seed: int) -> ChunkData:
 	data.chunk_seed = WorldConfig.chunk_seed(world_seed, coord)
 	data.generator_name = generator_name
 	var rn = _RoadNet.new()
-	var out: Dictionary = rn.stream_generate(world_seed, coord, _kit)
+	var out: Dictionary = rn.stream_generate(world_seed, coord, _kit, floor_box)
 	data.road_rects = out["rects"]
 	data.road_segments = out["segments"]
 	data.drive_edges = out["drive_edges"]
@@ -78,6 +78,9 @@ func build_jobs(data: ChunkData, host: Node3D) -> Array[Callable]:
 
 func _ground_job(coord: Vector2i, host: Node3D) -> void:
 	# Grass under the whole chunk. Outside the world there is no chunk, so no ground: fall-off.
+	# Boot places this body before the worker finishes. A second call must not stack another.
+	if host.get_node_or_null("Ground") != null:
+		return
 	var c := WorldConfig.chunk_center(coord)
 	var body := StaticBody3D.new()
 	body.name = "Ground"

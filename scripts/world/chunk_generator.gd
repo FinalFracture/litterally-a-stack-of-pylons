@@ -47,7 +47,7 @@ func prepare() -> void:
 	pass
 
 
-func generate(coord: Vector2i, world_seed: int) -> ChunkData:
+func generate(coord: Vector2i, world_seed: int, _floor_box: Dictionary = {}) -> ChunkData:
 	var data := ChunkData.new()
 	data.coord = coord
 	data.world_seed = world_seed

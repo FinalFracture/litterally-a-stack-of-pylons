@@ -14,6 +14,8 @@ const RESPAWN_INSET := 0.35
 var _squash_y := 1.0
 var hold_column := false
 var ragdoll := false
+## City sets this until the spawn sidewalk exists. Physics must not drop the body through the world.
+var boot_held := false
 # Respawn clamp: the loaded chunk's real bounds (City meta "chunk_bounds"), not the disabled Ground box.
 var _bounds := Rect2(0.0, 0.0, 500.0, 500.0)
 var _bounds_read := false
@@ -30,7 +32,7 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if ragdoll:
+	if ragdoll or boot_held:
 		return
 	var wish := _wish_direction()
 	if wish.length_squared() > 0.0004:

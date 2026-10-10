@@ -660,8 +660,10 @@ func map_bounds() -> Rect2:
 
 func _tuning_block() -> void:
 	# M2: the world streams in 500 m chunks, a 3x3 window around the player.
-	# The start chunk is built right away (boot), its neighbours stream in the background.
-	var soul := get_tree().get_first_node_in_group("soul") as Node3D
+	# The start chunk generates on a worker. The player stays frozen until the ground
+	# and the road/sidewalk under their feet exist; the rest of the chunk is budgeted.
+	LaunchConfig.log_line("PYLONS_BOOT city_ready_at=%d" % Time.get_ticks_msec())
+	var soul := get_tree().get_first_node_in_group("soul") as CharacterBody3D
 	var world_seed: int = road_test_seed if road_test_seed != 0 else LaunchConfig.world_seed
 	WorldConfig.world_half_m = LaunchConfig.world_half_m
 	var chunk: Vector2i = WorldConfig.clamp_chunk(LaunchConfig.start_chunk)
@@ -681,16 +683,28 @@ func _tuning_block() -> void:
 	set_meta("signal_mats", kit.get("_signal_mats"))
 	set_meta("street_bulb_mat", (kit.get("_part_mats") as Dictionary).get("bulbs_industrial", null))
 	set_meta("world_half_m", WorldConfig.world_half_m)
-	var data: ChunkData = streamer.load_now(chunk)
 	set_current_chunk(chunk)
-	var spawn: Vector3 = data.spawn
+	if soul != null:
+		soul.boot_held = true
+		soul.set_physics_process(false)
+	streamer.spawn_floor_ready.connect(_release_spawn)
+	var focus: Variant = LaunchConfig.spawn_override if LaunchConfig.has_spawn_override else null
+	streamer.start_boot(chunk, focus)
+
+
+## The worker has the sidewalk under the spawn. Place the player and let physics run.
+func _release_spawn(spawn: Vector3) -> void:
 	if LaunchConfig.has_spawn_override:
 		spawn = LaunchConfig.spawn_override
 	set_meta("spawn_point", spawn)
 	_stall = Vector3(spawn.x, 0.65, spawn.z)
+	var soul := get_tree().get_first_node_in_group("soul") as CharacterBody3D
 	if soul != null:
 		soul.global_position = spawn
+		soul.velocity = Vector3.ZERO
 		streamer.target = soul
+		soul.boot_held = false
+		soul.set_physics_process(true)
 	LaunchConfig.announce(spawn)
 
 

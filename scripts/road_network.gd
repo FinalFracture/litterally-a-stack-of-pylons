@@ -2441,8 +2441,18 @@ func _xf_index(chunk: Vector2i, kind: String) -> int:
 
 
 func _drop_bare_paint() -> void:
+	_note_bare_seams()
+	_drop_paint_on_bare()
+
+
+## Bare seams block decor. The paint they hide is visual, so a streamed chunk can
+## drop those transforms after the spawn floor is published.
+func _note_bare_seams() -> void:
 	_bare = _bare_seams()
 	_bare_count = _bare.size()
+
+
+func _drop_paint_on_bare() -> void:
 	if _bare.is_empty():
 		return
 	var grouped: Dictionary = {}
@@ -6558,6 +6568,9 @@ const MM_UPLOAD := 192
 const COL_BOXES := 40
 ## Decor collision and lamp nodes exist only this close to the player. The rest of a chunk is visuals plus the merged floor.
 const NEAR_M := 75.0
+## Boot builds this much road and sidewalk around the spawn before the player can move.
+## The rest of the chunk's collision follows under the streamer's frame budget.
+const BOOT_FLOOR_PAD_M := 20.0
 ## Drop a near-player prop only after it is this far, so a small step does not spawn and free it.
 const NEAR_DROP_M := 95.0
 ## Small decor and medians are split into cells so the visibility range uses a small AABB.
@@ -6642,7 +6655,10 @@ func adopt_kit(kit: RefCounted) -> void:
 
 
 ## Builds one chunk's data. Thread-safe as long as `kit` is read-only.
-func stream_generate(world_seed: int, home: Vector2i, kit: RefCounted) -> Dictionary:
+## `floor_box` (boot only) is published once the spawn's road and sidewalk are known,
+## before the overlap audit and the drive graph. The main thread builds that floor
+## while this function finishes. Keys: boot, mutex, has_focus, focus, ready, spawn, cols.
+func stream_generate(world_seed: int, home: Vector2i, kit: RefCounted, floor_box: Dictionary = {}) -> Dictionary:
 	stream_mode = true
 	_stream_home = home
 	_stage_t = Time.get_ticks_usec()
@@ -6656,6 +6672,8 @@ func stream_generate(world_seed: int, home: Vector2i, kit: RefCounted) -> Dictio
 	# Shadow pass: the 8 neighbours' street skeleton. It is never spawned. It only
 	# tells this chunk where foreign roads, sidewalks and lane ends are, so lots stay
 	# off them and lane joins across the border match what the neighbour emits.
+	# Sequential on the caller. Boot's caller is its own Thread, so this stays off
+	# the main thread. Parallel neighbours were slower here (memory bandwidth).
 	var ring: Array[Vector2i] = []
 	for dz in range(-1, 2):
 		for dx in range(-1, 2):
@@ -6681,8 +6699,8 @@ func stream_generate(world_seed: int, home: Vector2i, kit: RefCounted) -> Dictio
 	_stage_lap("_build_chunk")
 	_audit_links(window)
 	_stage_lap("_audit_links")
-	_drop_bare_paint()
-	_stage_lap("_drop_bare_paint")
+	_note_bare_seams()
+	_stage_lap("bare_seams")
 	_audit_mouths()
 	_stage_lap("_audit_mouths")
 	_audit_arteries(home, window)
@@ -6697,10 +6715,18 @@ func stream_generate(world_seed: int, home: Vector2i, kit: RefCounted) -> Dictio
 	_stage_lap("_gap_sidewalks")
 	_plan_median_tiles()
 	_stage_lap("_plan_median_tiles")
-	_audit_overlaps(world_seed)
-	_stage_lap("_audit_overlaps")
+	# Cone sites do not read the overlap audit. Publishing the floor here lets the
+	# player land while the audit and the drive graph still run.
 	var sites: Array[Dictionary] = _stream_cone_sites()
 	_stage_lap("cone_sites")
+	if floor_box.has("boot"):
+		_publish_boot_floor(floor_box)
+	# Paint indexes were taken when each mark was stored, and sidewalk compaction
+	# only rewrites walk keys, so this drop is still exact after the floor publish.
+	_drop_paint_on_bare()
+	_stage_lap("bare_paint_drop")
+	_audit_overlaps(world_seed)
+	_stage_lap("_audit_overlaps")
 	_top_memo.clear()
 	for d in _decors:
 		var d_at: Vector3 = d["at"]
@@ -6924,14 +6950,16 @@ func stream_jobs(root: Node3D) -> Array[Callable]:
 		_pack_multimesh()
 	if not _visuals_packed:
 		_pack_stream_visuals()
+	# Floor first, then the meshes. A player who walks off the boot pad meets the
+	# rest of the road before the buildings draw in.
+	for col in _col_packed:
+		jobs.append(_job_trimesh.bind(root, col))
 	for part in _mm_parts:
 		jobs.append(_job_multimesh_buf.bind(root, str(part[0]), part[1], int(part[2])))
 	for extra in _extra_mm:
 		jobs.append(_job_part_buf.bind(root, str(extra[0]), extra[1], int(extra[2])))
 	for view in _merged_views:
 		jobs.append(_job_merged.bind(root, view))
-	for col in _col_packed:
-		jobs.append(_job_trimesh.bind(root, col))
 	return jobs
 
 
@@ -7289,11 +7317,51 @@ func _pack_merged_meshes() -> void:
 		_merged_views.append(["Walk_%s" % str(kind2), _pack_walk(faces), str(kind2)])
 
 
-## One concave shape per handful of boxes, instead of a CollisionShape3D per box.
-func _pack_collision() -> void:
+## Hand the main thread the road and sidewalk under `floor_box`'s stand point.
+## The same boxes are flagged so `_pack_collision` does not build them again.
+func _publish_boot_floor(floor_box: Dictionary) -> void:
+	var spawn := sidewalk_spawn(Vector2(_clear_at.x, _clear_at.y))
+	var stand := spawn
+	if bool(floor_box.get("has_focus", false)):
+		stand = floor_box["focus"]
+	_mark_boot_floor(Vector2(stand.x, stand.z))
+	var packed := _take_boot_collision()
+	var lock: Mutex = floor_box["mutex"]
+	lock.lock()
+	floor_box["spawn"] = spawn
+	floor_box["cols"] = packed
+	floor_box["ready"] = true
+	lock.unlock()
+
+
+func _mark_boot_floor(flat: Vector2) -> void:
+	for box in _boxes:
+		if _box_hits(box, flat, BOOT_FLOOR_PAD_M):
+			box["boot_floor"] = true
+	for box2 in _walk_boxes:
+		if _box_hits(box2, flat, BOOT_FLOOR_PAD_M):
+			box2["boot_floor"] = true
+
+
+func _box_hits(box: Dictionary, flat: Vector2, pad: float) -> bool:
+	var mid: Vector3 = box["mid"]
+	var ang := float(box["angle"])
+	var dir := _dir(ang)
+	var right := _right(ang)
+	var rel := Vector2(flat.x - mid.x, flat.y - mid.z)
+	var along := absf(rel.x * dir.x + rel.y * dir.z)
+	var side := absf(rel.x * right.x + rel.y * right.z)
+	return along <= float(box["length"]) * 0.5 + pad and side <= float(box["width"]) * 0.5 + pad
+
+
+## Same box transforms as `_pack_collision`. Only the flagged boot boxes, into a new list.
+func _take_boot_collision() -> Array:
+	var saved: Array = _col_packed
 	_col_packed = []
 	var road_b := {"name": "Pavement", "group": "pavement", "tris": PackedVector3Array(), "recs": []}
 	for box in _boxes:
+		if not box.get("boot_floor", false):
+			continue
 		var angle := float(box["angle"])
 		var mid: Vector3 = box["mid"]
 		var size := Vector3(float(box["length"]), 0.5, float(box["width"]))
@@ -7303,6 +7371,38 @@ func _pack_collision() -> void:
 	_flush_col(road_b)
 	var walk_b := {"name": "Sidewalk", "group": "sidewalk", "tris": PackedVector3Array(), "recs": []}
 	for box2 in _walk_boxes:
+		if not box2.get("boot_floor", false):
+			continue
+		var ang2 := float(box2["angle"])
+		var mid2: Vector3 = box2["mid"]
+		var size2 := Vector3(float(box2["length"]), WALK_TOP, float(box2["width"]))
+		var origin2 := Vector3(mid2.x, WALK_TOP * 0.5, mid2.z)
+		var xf2 := Transform3D(Basis(_dir(ang2), Vector3.UP, _right(ang2)), origin2)
+		_push_col(walk_b, xf2, size2, true)
+	_flush_col(walk_b)
+	var out := _col_packed
+	_col_packed = saved
+	return out
+
+
+## One concave shape per handful of boxes, instead of a CollisionShape3D per box.
+func _pack_collision() -> void:
+	_col_packed = []
+	var road_b := {"name": "Pavement", "group": "pavement", "tris": PackedVector3Array(), "recs": []}
+	for box in _boxes:
+		if box.get("boot_floor", false):
+			continue
+		var angle := float(box["angle"])
+		var mid: Vector3 = box["mid"]
+		var size := Vector3(float(box["length"]), 0.5, float(box["width"]))
+		var origin := Vector3(mid.x, -0.25, mid.z)
+		var xf := Transform3D(Basis(_dir(angle), Vector3.UP, _right(angle)), origin)
+		_push_col(road_b, xf, size, true)
+	_flush_col(road_b)
+	var walk_b := {"name": "Sidewalk", "group": "sidewalk", "tris": PackedVector3Array(), "recs": []}
+	for box2 in _walk_boxes:
+		if box2.get("boot_floor", false):
+			continue
 		var ang2 := float(box2["angle"])
 		var mid2: Vector3 = box2["mid"]
 		var size2 := Vector3(float(box2["length"]), WALK_TOP, float(box2["width"]))
