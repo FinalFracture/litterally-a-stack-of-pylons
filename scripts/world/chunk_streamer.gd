@@ -119,7 +119,10 @@ func load_now(coord: Vector2i) -> ChunkData:
 		_note_gen(data)
 	var e := _start_build(coord, data)
 	while int(e["job_i"]) < (e["jobs"] as Array).size():
-		(e["jobs"][e["job_i"]] as Callable).call()
+		# A step returns true when it stopped early and must run again.
+		var step: Variant = (e["jobs"][e["job_i"]] as Callable).call()
+		if step == true:
+			continue
 		e["job_i"] = int(e["job_i"]) + 1
 	_finish_build(coord, e)
 	return data
@@ -162,6 +165,26 @@ var job_usec_by_name: Dictionary = {}
 func _phase(name: String, usec: int) -> void:
 	if usec > int(phase_usec_max.get(name, 0)):
 		phase_usec_max[name] = usec
+
+
+func _callable_name(job: Callable) -> String:
+	var method := str(job.get_method())
+	var args := job.get_bound_arguments()
+	if method == "_budget_job" and not args.is_empty():
+		return str(args[0])
+	if method == "":
+		return "lambda"
+	return method
+
+
+func _note_job(coord: Vector2i, job_name: String, usec: int) -> void:
+	if usec > job_usec_max:
+		job_usec_max = usec
+		job_usec_max_name = job_name
+	if usec > int(job_usec_by_name.get(job_name, 0)):
+		job_usec_by_name[job_name] = usec
+	if LaunchConfig.logs:
+		LaunchConfig.log_line("PYLONS_JOB %s %s %d us" % [coord, job_name, usec])
 
 
 func _track_target() -> void:
@@ -301,16 +324,17 @@ func _run_jobs(t0: int) -> void:
 		while int(e["job_i"]) < jobs.size():
 			if Time.get_ticks_usec() - t0 >= frame_budget_usec:
 				return
-			var js := Time.get_ticks_usec()
 			var job: Callable = jobs[e["job_i"]]
-			job.call()
+			var jn := _callable_name(job)
+			var js := Time.get_ticks_usec()
+			var step: Variant = job.call()
 			var took := Time.get_ticks_usec() - js
-			var jn := str(job.get_method())
-			if took > job_usec_max:
-				job_usec_max = took
-				job_usec_max_name = jn
-			if took > int(job_usec_by_name.get(jn, 0)):
-				job_usec_by_name[jn] = took
+			_note_job(c, jn, took)
+			# true: this step still has work. Leave job_i so the next frame resumes it.
+			if step == true:
+				if Time.get_ticks_usec() - t0 >= frame_budget_usec:
+					return
+				continue
 			e["job_i"] = int(e["job_i"]) + 1
 		var tf := Time.get_ticks_usec()
 		if st == "build":

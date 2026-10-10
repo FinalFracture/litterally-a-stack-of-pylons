@@ -19,7 +19,7 @@ extends RefCounted
 const _WorldCone := preload("res://scripts/world_cone.gd")
 const _CONE := preload("res://scenes/player/standard_cone.tscn")
 const MOVED_M := 0.05
-const SITES_PER_JOB := 2
+const RESTORE_SLICE_USEC := 1500
 const MAX_STASHED_WRECKS := 24
 
 var _streamer: Node
@@ -136,8 +136,8 @@ func capture(chunk: Vector2i) -> Array[Callable]:
 	var jobs: Array[Callable] = []
 	var at := 0
 	while at < doomed.size():
-		jobs.append(_free_batch.bind(doomed.slice(at, at + SITES_PER_JOB)))
-		at += SITES_PER_JOB
+		jobs.append(_free_batch.bind(doomed.slice(at, at + 2)))
+		at += 2
 	return jobs
 
 
@@ -219,14 +219,84 @@ func _unchanged(id: String, rec: Dictionary) -> bool:
 
 
 ## Load: spawn this chunk's cone stacks (minus gone/moved-away ones), the stored delta, and wrecks.
+## One step adds a single cone piece (or commits one finished stack) and returns true while work remains,
+## so a 3-to-7 cone stack does not land in one frame.
 func restore_jobs(chunk: Vector2i, data: ChunkData) -> Array[Callable]:
-	var jobs: Array[Callable] = []
-	var at := 0
-	while at < data.cone_sites.size():
-		jobs.append(_restore_sites.bind(chunk, data.cone_sites, at, mini(at + SITES_PER_JOB, data.cone_sites.size())))
-		at += SITES_PER_JOB
-	jobs.append(_restore_rest.bind(chunk))
-	return jobs
+	var state := {"i": 0, "piece": 0, "body": null, "mode": "sweep"}
+	return [_restore_budget.bind(chunk, data.cone_sites, state)]
+
+
+func _restore_budget(chunk: Vector2i, sites: Array, state: Dictionary) -> bool:
+	var t0 := Time.get_ticks_usec()
+	while true:
+		var mode := str(state["mode"])
+		if mode == "done":
+			return false
+		if mode == "sweep":
+			_sweep()
+			state["mode"] = "site"
+		elif mode == "rest":
+			_restore_rest(chunk)
+			state["mode"] = "done"
+			return false
+		elif not _restore_one(chunk, sites, state):
+			state["mode"] = "rest"
+		if Time.get_ticks_usec() - t0 >= RESTORE_SLICE_USEC:
+			return str(state["mode"]) != "done"
+	return false
+
+
+func _restore_one(chunk: Vector2i, sites: Array, state: Dictionary) -> bool:
+	var i := int(state["i"])
+	if i >= sites.size():
+		return false
+	var id := site_id(chunk, i)
+	var spec: Dictionary = sites[i]
+	var body: RigidBody3D = state.get("body")
+	if body == null and int(state["piece"]) == 0:
+		if _gone.has(id) or _live.has(id) or (_where.has(id) and _where[id] != chunk):
+			state["i"] = i + 1
+			return true
+		var saved: Dictionary = _saved.get(chunk, {})
+		if saved.has(id):
+			var spawned := _spawn_record(_cone_root(), saved[id])
+			saved.erase(id)
+			_where.erase(id)
+			_finish_spawned(chunk, i, id, spawned)
+			state["i"] = i + 1
+			return true
+		body = _WorldCone.new() as RigidBody3D
+		body.position = spec["at"]
+		body.rotation.y = float(spec["yaw"])
+		state["body"] = body
+		return true
+	var n := int(spec["count"])
+	var p := int(state["piece"])
+	if p < n:
+		var piece := _CONE.instantiate() as Node3D
+		body.add_child(piece)
+		piece.position = Vector3(0.0, float(p) * GameConstants.STANDARD_EXTRA + GameConstants.STANDARD_H * 0.5, 0.0)
+		state["piece"] = p + 1
+		return true
+	_cone_root().add_child(body)
+	_finish_spawned(chunk, i, id, body)
+	state["body"] = null
+	state["piece"] = 0
+	state["i"] = i + 1
+	return true
+
+
+func _finish_spawned(chunk: Vector2i, index: int, id: String, body: RigidBody3D) -> void:
+	body.name = "ConeStack_%d_%d_%d" % [chunk.x, chunk.y, index]
+	body.set_meta("cone_id", id)
+	_live[id] = body
+	if _origin.has(id):
+		return
+	var count := 0
+	for child in body.get_children():
+		if child.has_method("piece_height"):
+			count += 1
+	_origin[id] = {"xf": body.global_transform, "count": count}
 
 
 func _cone_root() -> Node:

@@ -181,8 +181,11 @@ var _stream_home := Vector2i.ZERO
 var _foreign_obstacles: Array[Rect2] = []
 var _cover_grid: Dictionary = {}
 ## Streaming: lot-top heights at decor spots, worked out on the worker thread.
-var _box_batch := 0
 var _mm_parts: Array = []
+## Worker-packed visual buffers (lots, blocks, medians, decor). Main thread only uploads them.
+var _extra_mm: Array = []
+var _visuals_packed := false
+var _unit_cube: BoxMesh
 var _top_memo: Dictionary = {}
 var _obst_grid: Dictionary = {}
 var _obst_list: Array = []
@@ -357,6 +360,8 @@ func _reset_build(center: Vector3) -> void:
 	_cut_walks.clear()
 	_walks.clear()
 	_lots.clear()
+	_extra_mm = []
+	_visuals_packed = false
 	_walk_straight = 0
 	_walk_turns = 0
 	_walk_flares = 0
@@ -6522,7 +6527,13 @@ const KIT_FIELDS: PackedStringArray = [
 	"_lamp_locals", "_signal_arm_y", "_signal_glow_local", "_signal_mats", "_split_profile",
 	"_turn_specs", "_flare_specs",
 ]
-const STREAM_BATCH := 48
+## One build step stops after this much main-thread time so it stays under the streamer's 3 ms budget.
+const JOB_SLICE_USEC := 1200
+## Jolt rebuilds a static compound as shapes are added. Past a few dozen children one add
+## exceeded the frame budget, so each body takes a short run of shapes and the next starts a new body.
+const SHAPES_PER_BODY := 8
+## Visual MultiMesh uploads above this many instances are split so one assign stays small.
+const MM_UPLOAD := 192
 
 
 ## Main thread, once: load meshes and materials, and warm every mesh's face cache
@@ -6667,6 +6678,8 @@ func stream_generate(world_seed: int, home: Vector2i, kit: RefCounted) -> Dictio
 	_stage_lap("drive")
 	_pack_multimesh()
 	_stage_lap("pack_multimesh")
+	_pack_stream_visuals()
+	_stage_lap("pack_visuals")
 	var spawn: Vector3 = sidewalk_spawn(Vector2(center.x, center.z))
 	var rects: Array = []
 	for item2 in _rects_pending:
@@ -6869,48 +6882,411 @@ func _stream_hash(drive: Array, sites: Array[Dictionary]) -> String:
 
 
 ## Small main-thread steps that put this chunk's content under `root`.
-## Each step stays around a millisecond so the streamer can budget them.
+## Mesh buffers are packed on the worker. What is left yields every JOB_SLICE_USEC
+## so the streamer never spends a whole frame inside one step. A step returns true
+## when it still has items left.
 func stream_jobs(root: Node3D) -> Array[Callable]:
 	var jobs: Array[Callable] = []
 	if _mm_parts.is_empty():
 		_pack_multimesh()
+	if not _visuals_packed:
+		_pack_stream_visuals()
 	for part in _mm_parts:
 		jobs.append(_job_multimesh_buf.bind(root, str(part[0]), part[1], int(part[2])))
-	var b := 0
-	while b < _boxes.size():
-		jobs.append(_job_boxes.bind(root, _boxes.slice(b, b + STREAM_BATCH), false))
-		b += STREAM_BATCH
-	var w := 0
-	while w < _walk_boxes.size():
-		jobs.append(_job_boxes.bind(root, _walk_boxes.slice(w, w + STREAM_BATCH), true))
-		w += STREAM_BATCH
-	_slice_jobs(jobs, "_aprons", 24, _spawn_aprons, root)
-	_slice_jobs(jobs, "_cut_walks", 12, _spawn_cut_walks, root)
-	_slice_jobs(jobs, "_lots", STREAM_BATCH, _spawn_lots, root)
-	jobs.append(_spawn_blocks.bind(root))
-	jobs.append(_spawn_medians.bind(root))
-	jobs.append(_spawn_decor_visuals.bind(root))
-	jobs.append(_spawn_decor_hits.bind(root))
-	_slice_jobs(jobs, "_decors", 16, _spawn_lamp_lights, root)
+	for extra in _extra_mm:
+		jobs.append(_job_part_buf.bind(root, str(extra[0]), extra[1], int(extra[2])))
+	_add_budgeted(jobs, "_job_boxes", _boxes, _emit_road_box, root)
+	_add_budgeted(jobs, "_job_boxes_walk", _walk_boxes, _emit_walk_box, root)
+	_add_budgeted(jobs, "_spawn_aprons", _aprons, _emit_apron, root)
+	_add_budgeted(jobs, "_spawn_cut_walks", _cut_walks, _emit_cut_walk, root)
+	_add_budgeted(jobs, "_spawn_lots", _lots, _emit_lot_shape, root)
+	_add_budgeted(jobs, "_spawn_blocks", _blocks, _emit_block_shape, root)
+	_add_budgeted(jobs, "_spawn_medians", _medians, _emit_median_body, root)
+	_add_budgeted(jobs, "_spawn_decor_hits", _decors, _emit_decor_hit, root)
+	_add_budgeted(jobs, "_spawn_lamp_lights", _light_specs(), _emit_one_light, root)
 	return jobs
 
 
-func _slice_jobs(jobs: Array[Callable], field: String, size: int, fn: Callable, root: Node3D) -> void:
-	var all: Array = get(field)
+func _add_budgeted(jobs: Array, job_name: String, items: Array, fn: Callable, root: Node3D) -> void:
+	if items.is_empty():
+		return
+	jobs.append(_budget_job.bind(job_name, items, fn, root, {"i": 0}))
+
+
+func _budget_job(_job_name: String, items: Array, fn: Callable, root: Node3D, state: Dictionary) -> bool:
+	var i := int(state["i"])
+	var t0 := Time.get_ticks_usec()
+	while i < items.size():
+		fn.call(root, items[i], state)
+		i += 1
+		state["i"] = i
+		if Time.get_ticks_usec() - t0 >= JOB_SLICE_USEC:
+			break
+	return i < items.size()
+
+
+## Lots, blocks, median tiles and decor, packed on the worker next to the road MultiMeshes.
+## Apron and cut-walk meshes are packed here too: SurfaceTool on the main thread was the
+## multi-frame hitch while a neighbour chunk streamed in.
+func _pack_stream_visuals() -> void:
+	if _visuals_packed:
+		return
+	_visuals_packed = true
+	_extra_mm = []
+	_push_mm("lot", _lots, "lot")
+	var blocks_by := {}
+	var tints: Array = []
+	for spec in _blocks:
+		var tint := int(spec["tint"])
+		if not blocks_by.has(tint):
+			blocks_by[tint] = []
+			tints.append(tint)
+		(blocks_by[tint] as Array).append(spec)
+	for tint2 in tints:
+		_push_mm("block|%d" % int(tint2), blocks_by[tint2], "block")
+	var med_by := {}
+	var med_order: Array = []
+	for tile in _median_tiles:
+		var part := str(tile["kind"])
+		if not _mesh.has(part):
+			continue
+		if not med_by.has(part):
+			med_by[part] = []
+			med_order.append(part)
+		(med_by[part] as Array).append(tile)
+	for part2 in med_order:
+		_push_mm("median|%s" % str(part2), med_by[part2], "median")
+	var dec_by := {}
+	var dec_order: Array = []
+	for spec2 in _decors:
+		var xf := _decor_visual_xf(spec2)
+		for part3 in _decor_parts(str(spec2["kind"])):
+			if _part_mesh(part3) == null:
+				continue
+			if not dec_by.has(part3):
+				dec_by[part3] = []
+				dec_order.append(part3)
+			(dec_by[part3] as Array).append(xf)
+	for part4 in dec_order:
+		_push_mm("decor|%s" % str(part4), dec_by[part4], "xf")
+	for apron in _aprons:
+		if apron.has("verts"):
+			apron["mesh"] = _pack_flat(apron["verts"])
+			apron.erase("verts")
+	for walk in _cut_walks:
+		if walk.has("verts"):
+			walk["mesh"] = _pack_walk(walk["verts"])
+			walk.erase("verts")
+
+
+func _push_mm(kind: String, list: Array, mode: String) -> void:
 	var at := 0
-	while at < all.size():
-		jobs.append(_job_swapped.bind(field, all.slice(at, at + size), fn, root))
-		at += size
+	while at < list.size():
+		var last := mini(at + MM_UPLOAD, list.size())
+		var count := last - at
+		if count <= 0:
+			break
+		var buf := PackedFloat32Array()
+		buf.resize(count * 12)
+		var k := 0
+		for i in range(at, last):
+			k = _write_xf(buf, k, _visual_xf(mode, list[i]))
+		_extra_mm.append([kind, buf, count])
+		at = last
 
 
-func _job_swapped(field: String, part: Array, fn: Callable, root: Node3D) -> void:
-	var keep: Variant = get(field)
-	var typed: Variant = keep.duplicate()
-	typed.clear()
-	typed.append_array(part)
-	set(field, typed)
-	fn.call(root)
-	set(field, keep)
+func _visual_xf(mode: String, item: Variant) -> Transform3D:
+	if mode == "lot":
+		return _lot_visual_xf(item)
+	if mode == "block":
+		return _block_visual_xf(item)
+	if mode == "median":
+		return _median_visual_xf(item)
+	return item as Transform3D
+
+
+func _write_xf(buf: PackedFloat32Array, k: int, xf: Transform3D) -> int:
+	var bs := xf.basis
+	buf[k] = bs.x.x
+	buf[k + 1] = bs.y.x
+	buf[k + 2] = bs.z.x
+	buf[k + 3] = xf.origin.x
+	buf[k + 4] = bs.x.y
+	buf[k + 5] = bs.y.y
+	buf[k + 6] = bs.z.y
+	buf[k + 7] = xf.origin.y
+	buf[k + 8] = bs.x.z
+	buf[k + 9] = bs.y.z
+	buf[k + 10] = bs.z.z
+	buf[k + 11] = xf.origin.z
+	return k + 12
+
+
+func _lot_visual_xf(spec: Dictionary) -> Transform3D:
+	var rect: Rect2 = spec["rect"]
+	var top: float = float(spec["top"])
+	var size := Vector3(rect.size.x, LOT_THICK, rect.size.y)
+	var pos := Vector3(rect.position.x + rect.size.x * 0.5, top - LOT_THICK * 0.5, rect.position.y + rect.size.y * 0.5)
+	return Transform3D(Basis.from_scale(size), pos)
+
+
+func _block_visual_xf(spec: Dictionary) -> Transform3D:
+	return Transform3D(Basis.from_scale(spec["size"]), spec["pos"])
+
+
+func _median_visual_xf(tile: Dictionary) -> Transform3D:
+	var at: Vector3 = tile["at"]
+	var ang: float = float(tile["angle"])
+	return Transform3D(Basis(_dir(ang), Vector3.UP, _right(ang)), Vector3(at.x, 0.0, at.z))
+
+
+func _decor_visual_xf(spec: Dictionary) -> Transform3D:
+	var at: Vector3 = spec["at"]
+	var dir2: Vector3 = spec["dir"]
+	var kind2 := str(spec["kind"])
+	var lift2: float = float(spec["lift"])
+	var y2: float = _lot_top_at(at.x, at.z)
+	if spec.has("base_y"):
+		y2 = float(spec["base_y"]) + lift2
+	elif _box_decor(kind2):
+		y2 += _decor_y(kind2, lift2)
+	else:
+		y2 += lift2
+	return Transform3D(Basis(dir2, Vector3.UP, _right_of(dir2)), Vector3(at.x, y2, at.z))
+
+
+func _light_specs() -> Array:
+	var out: Array = []
+	for spec in _decors:
+		var kind := str(spec["kind"])
+		if kind == "lamp" or kind.begins_with("signal_head"):
+			out.append(spec)
+	return out
+
+
+func _shared_cube() -> BoxMesh:
+	if _unit_cube == null:
+		_unit_cube = BoxMesh.new()
+		_unit_cube.size = Vector3.ONE
+	return _unit_cube
+
+
+func _job_part_buf(root: Node3D, kind: String, buf: PackedFloat32Array, count: int) -> void:
+	var mesh: Mesh = null
+	var mat: Material = null
+	var view_name := kind
+	if kind == "lot":
+		mesh = _shared_cube()
+		mat = _ground_mat
+		view_name = "LotGrass"
+	elif kind.begins_with("block|"):
+		mesh = _shared_cube()
+		var tint := int(kind.trim_prefix("block|"))
+		mat = _wall_mats[tint % _wall_mats.size()]
+		view_name = "Blocks%d" % tint
+	elif kind.begins_with("median|"):
+		var part := kind.trim_prefix("median|")
+		mesh = _mesh.get(part) as Mesh
+		mat = _part_mat(part)
+		view_name = "Median_%s" % part
+	elif kind.begins_with("decor|"):
+		var part2 := kind.trim_prefix("decor|")
+		mesh = _part_mesh(part2)
+		mat = _part_mat(part2)
+		view_name = "Dress_%s" % part2
+	if mesh == null:
+		return
+	var many := MultiMesh.new()
+	many.transform_format = MultiMesh.TRANSFORM_3D
+	many.mesh = mesh
+	many.instance_count = count
+	many.buffer = buf
+	var view := MultiMeshInstance3D.new()
+	view.name = view_name
+	view.multimesh = many
+	if mat != null:
+		view.material_override = mat
+	view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(view)
+
+
+func _needs_body(state: Dictionary) -> bool:
+	var body: StaticBody3D = state.get("body")
+	return body == null or body.get_child_count() >= SHAPES_PER_BODY
+
+
+func _emit_road_box(root: Node3D, box: Dictionary, state: Dictionary) -> void:
+	var body: StaticBody3D = state.get("body")
+	if _needs_body(state):
+		body = StaticBody3D.new()
+		body.collision_layer = 1
+		body.collision_mask = 1
+		body.name = "Pavement"
+		body.position = Vector3(0.0, -0.25, 0.0)
+		body.add_to_group("pavement")
+		root.add_child(body)
+		state["body"] = body
+	var shape := CollisionShape3D.new()
+	var cube := BoxShape3D.new()
+	var angle: float = float(box["angle"])
+	var mid: Vector3 = box["mid"]
+	cube.size = Vector3(float(box["length"]), 0.5, float(box["width"]))
+	shape.shape = cube
+	shape.transform = Transform3D(Basis(_dir(angle), Vector3.UP, _right(angle)), Vector3(mid.x, 0.0, mid.z))
+	body.add_child(shape)
+
+
+func _emit_walk_box(root: Node3D, box: Dictionary, state: Dictionary) -> void:
+	var body: StaticBody3D = state.get("body")
+	if _needs_body(state):
+		body = StaticBody3D.new()
+		body.collision_layer = 1
+		body.collision_mask = 1
+		body.name = "Sidewalk"
+		body.add_to_group("sidewalk")
+		root.add_child(body)
+		state["body"] = body
+	var shape := CollisionShape3D.new()
+	var cube := BoxShape3D.new()
+	var angle: float = float(box["angle"])
+	var mid: Vector3 = box["mid"]
+	var walk_top: float = ROAD_Y + 6.0 * UNIT
+	cube.size = Vector3(float(box["length"]), walk_top, float(box["width"]))
+	shape.shape = cube
+	shape.transform = Transform3D(Basis(_dir(angle), Vector3.UP, _right(angle)), Vector3(mid.x, walk_top * 0.5, mid.z))
+	body.add_child(shape)
+
+
+func _emit_apron(root: Node3D, apron: Dictionary, _state: Dictionary) -> void:
+	var host: Node3D = _chunk_node(root, apron["chunk"])
+	var view := MeshInstance3D.new()
+	if apron.has("mesh"):
+		view.mesh = apron["mesh"]
+	elif apron.has("verts"):
+		view.mesh = _pack_flat(apron["verts"])
+	else:
+		var mesh := BoxMesh.new()
+		mesh.size = Vector3(float(apron["length"]), 0.03, float(apron["width"]))
+		view.mesh = mesh
+		var mid: Vector3 = apron["mid"]
+		var angle: float = float(apron["angle"])
+		view.transform = Transform3D(Basis(_dir(angle), Vector3.UP, _right(angle)), Vector3(mid.x, ROAD_Y, mid.z))
+	if bool(apron["dirt"]):
+		view.material_override = _gravel_mat
+	else:
+		view.material_override = _asphalt_mat
+	view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	host.add_child(view)
+
+
+func _emit_cut_walk(root: Node3D, spec: Dictionary, _state: Dictionary) -> void:
+	var host: Node3D = _chunk_node(root, spec["chunk"])
+	var view := MeshInstance3D.new()
+	if spec.has("mesh"):
+		view.mesh = spec["mesh"]
+	else:
+		view.mesh = _pack_walk(spec["verts"])
+	var at: Vector3 = spec["at"]
+	var angle: float = float(spec["angle"])
+	var right: Vector3 = _right(angle)
+	if bool(spec["mirrored"]):
+		right = -right
+	view.transform = Transform3D(Basis(_dir(angle), Vector3.UP, right), at)
+	view.material_override = _material_for(str(spec["kind"]))
+	view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	host.add_child(view)
+
+
+func _emit_lot_shape(root: Node3D, spec: Dictionary, state: Dictionary) -> void:
+	var body: StaticBody3D = state.get("body")
+	if _needs_body(state):
+		body = StaticBody3D.new()
+		body.name = "LotGrass"
+		body.collision_layer = 1
+		body.collision_mask = 1
+		_chunk_node(root, spec["chunk"]).add_child(body)
+		state["body"] = body
+	var rect: Rect2 = spec["rect"]
+	var top: float = float(spec["top"])
+	var shape := CollisionShape3D.new()
+	var cube := BoxShape3D.new()
+	cube.size = Vector3(rect.size.x, LOT_THICK, rect.size.y)
+	shape.shape = cube
+	shape.position = Vector3(rect.position.x + rect.size.x * 0.5, top - LOT_THICK * 0.5, rect.position.y + rect.size.y * 0.5)
+	body.add_child(shape)
+
+
+func _emit_block_shape(root: Node3D, spec: Dictionary, state: Dictionary) -> void:
+	var body: StaticBody3D = state.get("body")
+	if _needs_body(state):
+		body = StaticBody3D.new()
+		body.collision_layer = 1
+		body.collision_mask = 1
+		_chunk_node(root, spec["chunk"]).add_child(body)
+		state["body"] = body
+	var shape := CollisionShape3D.new()
+	var cube := BoxShape3D.new()
+	cube.size = spec["size"]
+	shape.shape = cube
+	shape.position = spec["pos"]
+	body.add_child(shape)
+
+
+func _emit_median_body(root: Node3D, spec: Dictionary, _state: Dictionary) -> void:
+	var host: Node3D = _chunk_node(root, spec["chunk"])
+	var mid: Vector3 = spec["mid"]
+	var height: float = float(spec["height"])
+	var length: float = float(spec["length"])
+	var width: float = float(spec["width"])
+	var angle: float = float(spec["angle"])
+	var basis := Basis(_dir(angle), Vector3.UP, _right(angle))
+	var pos := Vector3(mid.x, ROAD_Y + height * 0.5, mid.z)
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 1
+	body.transform = Transform3D(basis, pos)
+	var shape := CollisionShape3D.new()
+	var cube := BoxShape3D.new()
+	cube.size = Vector3(length, height, width)
+	shape.shape = cube
+	body.add_child(shape)
+	host.add_child(body)
+
+
+func _emit_decor_hit(root: Node3D, spec: Dictionary, state: Dictionary) -> void:
+	var kind2 := str(spec["kind"])
+	var hit: Vector3 = _decor_hit_size(kind2)
+	if hit == Vector3.ZERO:
+		return
+	var at2: Vector3 = spec["at"]
+	var body: StaticBody3D = state.get("body")
+	if _needs_body(state):
+		body = StaticBody3D.new()
+		body.name = "DressHit"
+		body.collision_layer = 1
+		body.collision_mask = 1
+		_chunk_node(root, _Layout.chunk_of(at2.x, at2.z)).add_child(body)
+		state["body"] = body
+	var dir2: Vector3 = spec["dir"]
+	var lift2: float = float(spec["lift"])
+	var ground_y: float = _lot_top_at(at2.x, at2.z)
+	var center_y: float = ground_y + hit.y * 0.5
+	if _box_decor(kind2):
+		center_y = ground_y + _decor_y(kind2, lift2)
+	var shape := CollisionShape3D.new()
+	var cube := BoxShape3D.new()
+	cube.size = hit
+	shape.shape = cube
+	shape.transform = Transform3D(Basis(dir2, Vector3.UP, _right_of(dir2)), Vector3(at2.x, center_y, at2.z))
+	body.add_child(shape)
+
+
+func _emit_one_light(root: Node3D, spec: Dictionary, _state: Dictionary) -> void:
+	var kind := str(spec["kind"])
+	if kind == "lamp":
+		_spawn_street_light(root, spec)
+	elif kind.begins_with("signal_head"):
+		_spawn_signal_light(root, spec)
 
 
 ## Worker side: pack every MultiMesh transform buffer (768 instances per part) so the
@@ -6981,32 +7357,4 @@ func _job_multimesh(root: Node3D, kind: String, list: Array) -> void:
 	root.add_child(view)
 
 
-func _job_boxes(root: Node3D, list: Array, walk: bool) -> void:
-	var body := StaticBody3D.new()
-	body.collision_layer = 1
-	body.collision_mask = 1
-	var walk_top: float = ROAD_Y + 6.0 * UNIT
-	# Streaming builds these in batches; give each batch a readable unique name that
-	# still starts with the M1 name (Sidewalk / Pavement).
-	_box_batch += 1
-	if walk:
-		body.name = "Sidewalk" if _box_batch == 1 else "Sidewalk%d" % _box_batch
-		body.add_to_group("sidewalk")
-	else:
-		body.name = "Pavement" if _box_batch == 1 else "Pavement%d" % _box_batch
-		body.position = Vector3(0.0, -0.25, 0.0)
-		body.add_to_group("pavement")
-	for box in list:
-		var shape := CollisionShape3D.new()
-		var cube := BoxShape3D.new()
-		var angle: float = float(box["angle"])
-		var mid: Vector3 = box["mid"]
-		if walk:
-			cube.size = Vector3(float(box["length"]), walk_top, float(box["width"]))
-			shape.transform = Transform3D(Basis(_dir(angle), Vector3.UP, _right(angle)), Vector3(mid.x, walk_top * 0.5, mid.z))
-		else:
-			cube.size = Vector3(float(box["length"]), 0.5, float(box["width"]))
-			shape.transform = Transform3D(Basis(_dir(angle), Vector3.UP, _right(angle)), Vector3(mid.x, 0.0, mid.z))
-		shape.shape = cube
-		body.add_child(shape)
-	root.add_child(body)
+

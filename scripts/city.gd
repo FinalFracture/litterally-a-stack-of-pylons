@@ -27,6 +27,8 @@ const RIVER_LO := -348.0
 const RIVER_HI := -252.0
 const SHELL_CAP := 320
 const _ASPHALT_CELL := 32.0
+## One road-registration step stops after this so it stays under the streamer's 3 ms budget.
+const REG_SLICE_USEC := 1500
 
 
 const DETAIL_ON := 100.0
@@ -707,19 +709,23 @@ func register_jobs(coord: Vector2i, data: ChunkData) -> Array[Callable]:
 	var jobs: Array[Callable] = []
 	var at := 0
 	while at < data.road_rects.size():
-		jobs.append(_register_rects.bind(coord, data.road_rects.slice(at, at + 160)))
-		at += 160
-	jobs.append(_register_rest.bind(coord, data))
+		jobs.append(_register_rects.bind(coord, data.road_rects.slice(at, at + 32)))
+		at += 32
+	# Copy this chunk's segments in slices, then append them. Rebuilding every loaded
+	# chunk here grew past the frame budget once several chunks were in.
+	var state := {"i": 0, "segs": [], "phase": "segs"}
+	jobs.append(_register_rest.bind(coord, data, state))
 	return jobs
 
 
 func unregister_jobs(coord: Vector2i) -> Array[Callable]:
-	var jobs: Array[Callable] = [_unregister_rest.bind(coord)]
+	var state := {"phase": "wipe", "i": 0, "keys": []}
+	var jobs: Array[Callable] = [_unregister_rest.bind(coord, state)]
 	var ids: PackedInt32Array = _asphalt_by_chunk.get(coord, PackedInt32Array())
 	var at := 0
 	while at < ids.size():
-		jobs.append(_unregister_rects.bind(ids.slice(at, at + 160)))
-		at += 160
+		jobs.append(_unregister_rects.bind(ids.slice(at, at + 32)))
+		at += 32
 	jobs.append(func() -> void: _asphalt_by_chunk.erase(coord))
 	return jobs
 
@@ -736,29 +742,79 @@ func _unregister_rects(ids: PackedInt32Array) -> void:
 		_drop_asphalt(index)
 
 
-func _register_rest(coord: Vector2i, data: ChunkData) -> void:
-	var segs: Array[Dictionary] = []
-	for seg in data.road_segments:
-		var a: Vector3 = seg["from"]
-		var b: Vector3 = seg["to"]
-		var kind: String = str(seg["kind"])
-		segs.append({"x0": a.x, "z0": a.z, "x1": b.x, "z1": b.z, "name": str(seg["name"]),
-			"main": kind == "" or kind == "arterial", "kind": kind})
+## Returns true while this chunk's segments still need another slice.
+func _register_rest(coord: Vector2i, data: ChunkData, state: Dictionary) -> bool:
+	var t0 := Time.get_ticks_usec()
+	var phase := str(state["phase"])
+	if phase == "segs":
+		var src: Array = data.road_segments
+		var segs: Array = state["segs"]
+		var i := int(state["i"])
+		while i < src.size():
+			var seg: Dictionary = src[i]
+			var a: Vector3 = seg["from"]
+			var b: Vector3 = seg["to"]
+			var kind := str(seg["kind"])
+			segs.append({"x0": a.x, "z0": a.z, "x1": b.x, "z1": b.z, "name": str(seg["name"]),
+				"main": kind == "" or kind == "arterial", "kind": kind})
+			i += 1
+			if Time.get_ticks_usec() - t0 >= REG_SLICE_USEC:
+				state["i"] = i
+				return true
+		state["phase"] = "commit"
+		if Time.get_ticks_usec() - t0 >= REG_SLICE_USEC:
+			return true
+		phase = "commit"
+	if phase != "commit":
+		return false
 	var blocks: Array[Rect2] = []
 	for r in data.blocks:
 		blocks.append(r)
 	var joins: Array[Vector2] = []
 	for j in data.junctions:
 		joins.append(j)
-	_seg_rows[coord] = [segs, blocks, joins]
+	var segs_done: Array = state["segs"]
+	_seg_rows[coord] = [segs_done, blocks, joins]
 	_chunk_data[coord] = data
-	_rebuild_unions()
+	_segments.append_array(segs_done)
+	_built.append_array(blocks)
+	var junctions: Array = []
+	if has_meta("road_junctions"):
+		junctions = get_meta("road_junctions")
+	junctions.append_array(joins)
+	set_meta("road_junctions", junctions)
+	return false
 
 
-func _unregister_rest(coord: Vector2i) -> void:
-	_chunk_data.erase(coord)
-	_seg_rows.erase(coord)
-	_rebuild_unions()
+## Drop one chunk, then copy the remaining rows back a chunk at a time.
+func _unregister_rest(coord: Vector2i, state: Dictionary) -> bool:
+	var t0 := Time.get_ticks_usec()
+	if str(state["phase"]) == "wipe":
+		_chunk_data.erase(coord)
+		_seg_rows.erase(coord)
+		_segments.clear()
+		_built.clear()
+		set_meta("road_junctions", [])
+		var keys: Array = _seg_rows.keys()
+		keys.sort()
+		state["keys"] = keys
+		state["i"] = 0
+		state["phase"] = "copy"
+	var keys2: Array = state["keys"]
+	var i := int(state["i"])
+	var junctions: Array = get_meta("road_junctions", [])
+	while i < keys2.size():
+		var rows: Array = _seg_rows[keys2[i]]
+		_segments.append_array(rows[0])
+		_built.append_array(rows[1])
+		junctions.append_array(rows[2])
+		i += 1
+		if Time.get_ticks_usec() - t0 >= REG_SLICE_USEC:
+			state["i"] = i
+			set_meta("road_junctions", junctions)
+			return true
+	set_meta("road_junctions", junctions)
+	return false
 
 
 func _rebuild_unions() -> void:
