@@ -3,8 +3,9 @@ extends ChunkGenerator
 
 ## Twin Falls heightfield. ChunkStreamer coords are Godot x/z (z = -north).
 ## Tile c_<cx>_<cz> uses cz as the north index: world chunk (cx, gz) reads cz = -gz - 1.
-## Collision is always the 129 sample tile. Canyon chunks (except five gentle south
-## flags) build the visual mesh from the 513 tile, full resolution only on cliffs.
+## Collision uses the same tile as the mesh source: 129 samples on plain ground,
+## the 513-sample (1 m) tiles_hi grid on canyon chunks. Five gentle south flags
+## (SKIP_HI) stay on the coarse grid. The visual mesh still simplifies flats.
 
 const DATA := "res://world/twin_falls/data"
 const HI_N := 513
@@ -13,6 +14,9 @@ const CELLS := 128
 const HI_SP := 500.0 / 512.0
 const LOW_SP := 500.0 / 128.0
 const TRIS_PER_PART := 4000
+## Ribbon half-width in twin_falls_world. The floor stand stays outside that strip.
+const RIVER_HALF_M := 20.0
+const STAND_CLEAR_M := 36.0
 const SKIP_HI := {
 	"6_0": true,
 	"3_2": true,
@@ -34,6 +38,8 @@ class ChunkPay:
 	extends RefCounted
 	var parts: Array = []
 	var heights := PackedFloat32Array()
+	var map_n := LOW_N
+	var spacing := LOW_SP
 	var center := Vector3.ZERO
 	var tris := 0
 	var content_hash := ""
@@ -122,10 +128,13 @@ func _ground_job(coord: Vector2i, host: Node3D) -> void:
 	var dc := _data_of(coord)
 	if dc.x < 0:
 		return
-	var heights := _heights(dc.x, dc.y, false)
-	if heights.is_empty():
+	var hi := _is_hi(dc.x, dc.y)
+	var n := HI_N if hi else LOW_N
+	var spacing := HI_SP if hi else LOW_SP
+	var heights := _heights(dc.x, dc.y, hi)
+	if heights.size() != n * n:
 		return
-	_add_body(host, heights, _center_of(coord))
+	_add_body(host, heights, _center_of(coord), n, spacing)
 
 
 func height_at(x: float, z: float) -> float:
@@ -143,27 +152,76 @@ func height_at(x: float, z: float) -> float:
 	return _bilinear(grid, LOW_N, col, row)
 
 
-## A stand on the canyon floor of the spawn chunk, beside the river.
+## A stand on the canyon floor of the spawn chunk, clear of the river ribbon.
+## The offset is perpendicular to the centreline. A pure Z nudge stays inside the
+## strip wherever the river is not running due east.
 func canyon_stand() -> Vector3:
-	var best := Vector3(3359.0, -4.0, -6700.0)
+	var best := Vector3(3359.0, -4.0, -6770.0)
 	var best_score := 1.0e12
-	for p in water_pts:
+	var found := false
+	var n := water_pts.size()
+	for i in n:
+		var p: Vector3 = water_pts[i]
 		if p.x < 3050.0 or p.x > 3480.0:
 			continue
 		if p.z > -6550.0 or p.z < -6980.0:
 			continue
+		var prev: Vector3 = water_pts[maxi(i - 1, 0)]
+		var next: Vector3 = water_pts[mini(i + 1, n - 1)]
+		var dir := Vector2(next.x - prev.x, next.z - prev.z)
+		if dir.length_squared() < 1.0:
+			dir = Vector2.RIGHT
+		dir = dir.normalized()
+		var perp := Vector2(-dir.y, dir.x)
 		for side_v in [1.0, -1.0]:
 			var side := float(side_v)
-			var stand := Vector3(p.x, 0.0, p.z + side * 22.0)
+			var stand := Vector3(p.x + perp.x * side * STAND_CLEAR_M, 0.0, p.z + perp.y * side * STAND_CLEAR_M)
+			if water_nearest(stand.x, stand.z).x < RIVER_HALF_M + 8.0:
+				continue
 			var h := height_at(stand.x, stand.z)
 			if h > p.y + 14.0 or h < p.y - 2.0:
 				continue
 			stand.y = h + 0.45
-			var score := absf(stand.x - spawn.x) + absf(h - p.y) * 4.0
+			# Prefer the south bank (larger Godot z, toward the rim spawn).
+			var south := 0.0 if stand.z > p.z else 80.0
+			var score := absf(stand.x - spawn.x) + absf(h - p.y) * 4.0 + south
 			if score < best_score:
 				best_score = score
 				best = stand
-	return best
+				found = true
+	if found:
+		return best
+	return _fallback_stand()
+
+
+func _fallback_stand() -> Vector3:
+	var anchor := Vector3(spawn.x, -5.2, -6808.0)
+	var best_d := 1.0e12
+	for p in water_pts:
+		var d := absf(p.x - spawn.x)
+		if d < best_d:
+			best_d = d
+			anchor = p
+	var stand := Vector3(anchor.x, 0.0, anchor.z + STAND_CLEAR_M)
+	stand.y = height_at(stand.x, stand.z) + 0.45
+	return stand
+
+
+## Horizontal distance (m) to the water.json centreline, and the water height there.
+func water_nearest(x: float, z: float) -> Vector2:
+	var best_d := 9999.0
+	var best_y := -6.0
+	var n := water_pts.size()
+	for i in range(n - 1):
+		var hit := _seg_dist(x, z, water_pts[i], water_pts[i + 1])
+		if hit.x < best_d:
+			best_d = hit.x
+			best_y = hit.y
+	return Vector2(best_d, best_y)
+
+
+func covers(coord: Vector2i) -> bool:
+	return _data_of(coord).x >= 0
 
 
 func _publish_floor(floor_box: Dictionary) -> void:
@@ -199,7 +257,10 @@ func _build(coord: Vector2i, dc: Vector2i, hi: bool) -> ChunkPay:
 		else:
 			_emit_low(b)
 	var pay := ChunkPay.new()
-	pay.heights = _heights(dc.x, dc.y, false)
+	# Canyon chunks collide on the 1 m tile. Plain chunks stay on the 3.9 m grid.
+	pay.heights = b.grid
+	pay.map_n = b.n
+	pay.spacing = b.spacing
 	pay.center = _center_of(coord)
 	pay.tris = b.indices.size() / 3
 	pay.parts = _split(b.verts, b.norms, b.cols, b.indices)
@@ -598,7 +659,9 @@ func _compact(verts: PackedVector3Array, norms: PackedVector3Array, cols: Packed
 func _job_body(host: Node3D, pay: ChunkPay) -> void:
 	if host.get_node_or_null("TerrainBody") != null:
 		return
-	_add_body(host, pay.heights, pay.center)
+	if pay.heights.size() != pay.map_n * pay.map_n:
+		return
+	_add_body(host, pay.heights, pay.center, pay.map_n, pay.spacing)
 
 
 func _job_part(host: Node3D, pay: ChunkPay, index: int) -> void:
@@ -620,18 +683,18 @@ func _job_part(host: Node3D, pay: ChunkPay, index: int) -> void:
 	host.add_child(inst)
 
 
-func _add_body(host: Node3D, heights: PackedFloat32Array, center: Vector3) -> void:
+func _add_body(host: Node3D, heights: PackedFloat32Array, center: Vector3, map_n: int, spacing: float) -> void:
 	var body := StaticBody3D.new()
 	body.name = "TerrainBody"
 	body.collision_layer = 1
 	body.collision_mask = 0
 	var shape := HeightMapShape3D.new()
-	shape.map_width = LOW_N
-	shape.map_depth = LOW_N
+	shape.map_width = map_n
+	shape.map_depth = map_n
 	shape.map_data = heights
 	var col := CollisionShape3D.new()
 	col.shape = shape
-	col.scale = Vector3(LOW_SP, 1.0, LOW_SP)
+	col.scale = Vector3(spacing, 1.0, spacing)
 	col.position = center
 	body.add_child(col)
 	host.add_child(body)

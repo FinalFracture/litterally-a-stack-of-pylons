@@ -1,14 +1,21 @@
 extends Node3D
 
 ## Twin Falls streaming world. Terrain comes from TwinFallsTerrainGenerator.
-## The player stays frozen until the spawn chunk has a heightfield body.
+## The player stays frozen until the chunk under them has a heightfield body.
+## Below y -300 they respawn at the spawn.json point.
 
 const _Gen := preload("res://scripts/world/twin_falls_terrain_generator.gd")
 const _Streamer := preload("res://scripts/world/chunk_streamer.gd")
 
+## Basalt talus rests near 35 degrees. Steeper than this, the cone is not on a floor and slides.
+const TALUS_FLOOR_DEG := 34.0
+const KILL_Y := -300.0
+
 var streamer: ChunkStreamer
 var generator: TwinFallsTerrainGenerator
 var _soul: CharacterBody3D
+var _stand := Vector3.ZERO
+var _held_chunk := Vector2i(999999, 999999)
 var _capture := false
 var _released := false
 var _phase := 0
@@ -27,6 +34,8 @@ var _warm_frames := 0
 
 func _ready() -> void:
 	WorldConfig.world_half_m = 8000.0
+	# Lower values run first. Freeze the body before SoulBody's own physics step.
+	process_physics_priority = -100
 	_capture = _wants_capture()
 	_started_ms = Time.get_ticks_msec()
 	generator = _Gen.new()
@@ -34,15 +43,16 @@ func _ready() -> void:
 	streamer.name = "ChunkStreamer"
 	add_child(streamer)
 	streamer.setup(null, 1, generator)
+	_stand = _boot_stand()
 	_warm_shader()
 	_soul = get_node("SoulBody") as CharacterBody3D
 	_soul.recover_falls = false
+	_soul.floor_max_angle = deg_to_rad(TALUS_FLOOR_DEG)
 	_soul.boot_held = true
 	_soul.set_physics_process(false)
 	_build_river()
 	streamer.spawn_floor_ready.connect(_release_spawn)
-	var chunk := WorldConfig.chunk_of(generator.spawn.x, generator.spawn.z)
-	streamer.start_boot(chunk, generator.spawn)
+	streamer.start_boot(_boot_chunk(_stand), _stand)
 	if _capture:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 		DisplayServer.window_set_size(Vector2i(1280, 720))
@@ -60,7 +70,7 @@ func _warm_shader() -> void:
 	quad.size = Vector2(0.4, 0.4)
 	warm.mesh = quad
 	warm.material_override = mat
-	warm.position = Vector3(generator.spawn.x, generator.spawn.y + 1.4, generator.spawn.z - 2.5)
+	warm.position = Vector3(_stand.x, _stand.y + 1.4, _stand.z - 2.5)
 	warm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(warm)
 	_warm = warm
@@ -79,15 +89,90 @@ func _release_spawn(_spawn: Vector3) -> void:
 	if _released or _soul == null:
 		return
 	_released = true
-	var stand := generator.spawn
-	var ground := generator.height_at(stand.x, stand.z)
-	_soul.global_position = Vector3(stand.x, ground + 0.2, stand.z)
+	_soul.global_position = _stand
 	_soul.velocity = Vector3.ZERO
 	streamer.target = _soul
 	_soul.boot_held = false
 	_soul.set_physics_process(true)
+	LaunchConfig.announce(_stand)
 	_aim = _soul.global_position + Vector3(0.0, -40.0, -520.0)
 	_look()
+
+
+## --spawn / PYLONS_SPAWN wins. --chunk / PYLONS_CHUNK alone stands at that chunk's centre.
+## A chunk id with a positive z is a data cell (cx, cz_north); a negative z is a Godot chunk.
+func _boot_stand() -> Vector3:
+	if LaunchConfig.has_spawn_override:
+		var s := LaunchConfig.spawn_override
+		var ground := generator.height_at(s.x, s.z)
+		var y := s.y if s.y >= ground + 0.05 else ground + 0.2
+		return Vector3(s.x, y, s.z)
+	if LaunchConfig.has_chunk_flag:
+		var center := WorldConfig.chunk_center(_flag_chunk(LaunchConfig.start_chunk))
+		return Vector3(center.x, generator.height_at(center.x, center.z) + 0.2, center.z)
+	var g := generator.spawn
+	return Vector3(g.x, generator.height_at(g.x, g.z) + 0.2, g.z)
+
+
+func _boot_chunk(stand: Vector3) -> Vector2i:
+	var at := WorldConfig.chunk_of(stand.x, stand.z)
+	if not LaunchConfig.has_chunk_flag:
+		return at
+	var flagged := _flag_chunk(LaunchConfig.start_chunk)
+	if LaunchConfig.has_spawn_override and not WorldConfig.chunk_rect(flagged).has_point(Vector2(stand.x, stand.z)):
+		return at
+	return flagged
+
+
+func _flag_chunk(flag: Vector2i) -> Vector2i:
+	var as_data := Vector2i(flag.x, -flag.y - 1)
+	if generator.covers(as_data) and not generator.covers(flag):
+		return as_data
+	return flag
+
+
+func _physics_process(_delta: float) -> void:
+	if _soul == null:
+		return
+	if _soul.global_position.y < KILL_Y:
+		_respawn_at_json()
+		return
+	if not _released:
+		return
+	if _floor_ready(_soul.global_position):
+		if _soul.boot_held:
+			_soul.boot_held = false
+			_held_chunk = Vector2i(999999, 999999)
+		return
+	var coord := WorldConfig.chunk_of(_soul.global_position.x, _soul.global_position.z)
+	# Off the DEM there is never a floor. Leave the body free so the kill plane can catch it.
+	if not generator.covers(coord):
+		return
+	_soul.velocity = Vector3.ZERO
+	_soul.boot_held = true
+	if coord != _held_chunk:
+		_held_chunk = coord
+		LaunchConfig.log_line("PYLONS_HOLD %s" % coord)
+
+
+func _floor_ready(at: Vector3) -> bool:
+	if streamer == null:
+		return false
+	var host := streamer.host_for(WorldConfig.chunk_of(at.x, at.z))
+	if host == null:
+		return false
+	return host.get_node_or_null("TerrainBody") != null
+
+
+func _respawn_at_json() -> void:
+	var s := generator.spawn
+	var y := generator.height_at(s.x, s.z) + 0.2
+	_soul.global_position = Vector3(s.x, y, s.z)
+	_soul.velocity = Vector3.ZERO
+	_soul.boot_held = not _floor_ready(_soul.global_position)
+	if streamer != null:
+		streamer.target = _soul
+	LaunchConfig.log_line("PYLONS_RESPAWN %.2f,%.2f,%.2f" % [s.x, y, s.z])
 
 
 func _process(_delta: float) -> void:
@@ -209,6 +294,7 @@ func _nearest_water(stand: Vector3) -> Vector3:
 	return best
 
 
+## Visual ribbon only. Water stays non-solid; the floor stand is moved off the strip instead.
 func _build_river() -> void:
 	var pts := generator.water_pts
 	var count := pts.size()
