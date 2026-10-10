@@ -1,0 +1,49 @@
+{
+  "source": "fire_hydrant_1k.gltf",
+  "kept_objects": [
+    "fire_hydrant_aged",
+    "fire_hydrant_cap_01_aged",
+    "fire_hydrant_cap_02_aged",
+    "fire_hydrant_cap_03_aged",
+    "fire_hydrant_chain_aged"
+  ],
+  "source_tris": 43158,
+  "size_m_xyz_blender": [
+    0.275,
+    0.318,
+    0.799
+  ],
+  "tris": 1500,
+  "textures": {
+    "fire_hydrant_aged_diff": [
+      512,
+      512
+    ],
+    "fire_hydrant_aged_metal-fire_hydrant_aged_rough": [
+      512,
+      512
+    ],
+    "fire_hydrant_aged_nor_gl": [
+      512,
+      512
+    ],
+    "fire_hydrant_diff": [
+      512,
+      512
+    ],
+    "fire_hydrant_metal-fire_hydrant_rough": [
+      512,
+      512
+    ],
+    "fire_hydrant_nor_gl": [
+      512,
+      512
+    ]
+  },
+  "materials": [
+    "fire_hydrant_aged"
+  ],
+  "mode": "static",
+  "mass_kg": 70.0,
+  "collision": "'-col' on the visible mesh -> Godot StaticBody3D + trimesh of the render mesh"
+}

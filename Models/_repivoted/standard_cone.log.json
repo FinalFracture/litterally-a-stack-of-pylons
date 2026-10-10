@@ -1,0 +1,43 @@
+{
+  "stl_dir": "/tmp/assets-check/pilot/src",
+  "blender": "5.2.2 LTS",
+  "axis_angle_cone_vs_base_deg": 0.4081228948270879,
+  "base_yaw_deg": 0.1,
+  "raw_height_units": 24.51007080078125,
+  "scale": 0.018653556887539748,
+  "stripe_clearance_mm": [
+    1.1580334976315498,
+    1.375727471895516,
+    0
+  ],
+  "bbox_m_blender_zup": {
+    "min": [
+      -0.14273,
+      -0.14277,
+      0.0
+    ],
+    "max": [
+      0.14273,
+      0.14277,
+      0.4572
+    ]
+  },
+  "tris": {
+    "Base": 282,
+    "Cone": 248,
+    "Stripe": 64
+  },
+  "tris_total": 594,
+  "base_footprint_m": [
+    0.28545868396759033,
+    0.2855369448661804,
+    0.027997413650155067
+  ],
+  "cone_shell_z_m": [
+    0.027997413650155067,
+    0.45719999074935913
+  ],
+  "cone_mouth_radius_m": 0.11978063866868724,
+  "cone_tip_radius_m": 0.03999192731310822,
+  "collider_points": 40
+}

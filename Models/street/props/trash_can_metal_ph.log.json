@@ -1,0 +1,47 @@
+{
+  "source": "metal_trash_can_1k.gltf",
+  "kept_objects": [
+    "metal_trash_can",
+    "metal_trash_can_handle_left",
+    "metal_trash_can_handle_right"
+  ],
+  "source_tris": 4880,
+  "size_m_xyz_blender": [
+    0.651,
+    0.552,
+    0.906
+  ],
+  "tris": 1200,
+  "textures": {
+    "metal_trash_can_diff": [
+      512,
+      512
+    ],
+    "metal_trash_can_metal-metal_trash_can_rough": [
+      512,
+      512
+    ],
+    "metal_trash_can_nor_gl": [
+      512,
+      512
+    ],
+    "metal_trash_can_rust_diff": [
+      512,
+      512
+    ],
+    "metal_trash_can_rust_metal-metal_trash_can_rust_rough": [
+      512,
+      512
+    ],
+    "metal_trash_can_rust_nor_gl": [
+      512,
+      512
+    ]
+  },
+  "materials": [
+    "metal_trash_can"
+  ],
+  "mode": "mobile",
+  "mass_kg": 25.0,
+  "collision": "none in glb (mobile); CylinderShape3D r=0.276 h=0.906 in trash_can_metal_ph_collider_PROPOSED.tscn"
+}

@@ -1,0 +1,22 @@
+{
+ "name": "rm_legend_school_worn",
+ "tris": 2,
+ "y_m": 0.027,
+ "extent_x_m": [
+  -1.5,
+  1.5
+ ],
+ "extent_z_m": [
+  -1.2,
+  1.2
+ ],
+ "material": "road_marking",
+ "collision": "none",
+ "pivot": "(0,0,0) ground datum; quad at y 0.027, centred in x/z",
+ "travel": "+Z",
+ "size_m": [
+  3.0,
+  2.4
+ ],
+ "note": "SCHOOL, elongated letters, reads for a driver travelling +Z"
+}

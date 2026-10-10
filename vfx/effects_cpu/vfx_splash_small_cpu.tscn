@@ -1,0 +1,124 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://vfx/vfx_effect.gd" id="1_8bj5m"]
+[ext_resource type="Texture2D" path="res://vfx/textures/droplet_64.png" id="2_r1bnq"]
+[ext_resource type="Texture2D" path="res://vfx/textures/mist_flipbook_2x2.png" id="3_ctob6"]
+[ext_resource type="AudioStream" path="res://vfx/sounds/sfx_water_splash_small_01.ogg" id="4_0x7is"]
+[ext_resource type="AudioStream" path="res://vfx/sounds/sfx_water_splash_medium_01.ogg" id="5_oxkrr"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_l532p"]
+transparency = 1
+cull_mode = 2
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_texture = ExtResource("2_r1bnq")
+billboard_mode = 3
+billboard_keep_scale = true
+particles_anim_h_frames = 1
+particles_anim_v_frames = 1
+particles_anim_loop = false
+
+[sub_resource type="QuadMesh" id="QuadMesh_blf3f"]
+material = SubResource("StandardMaterial3D_l532p")
+size = Vector2(0.07, 0.07)
+
+[sub_resource type="Curve" id="Curve_rsnyd"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.6), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="Gradient" id="Gradient_g8a25"]
+offsets = PackedFloat32Array(0, 0.7, 1)
+colors = PackedColorArray(1, 1, 1, 0.9, 1, 1, 1, 0.7, 1, 1, 1, 0)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_a68bd"]
+transparency = 1
+cull_mode = 2
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_texture = ExtResource("3_ctob6")
+billboard_mode = 3
+billboard_keep_scale = true
+particles_anim_h_frames = 2
+particles_anim_v_frames = 2
+particles_anim_loop = false
+proximity_fade_enabled = true
+proximity_fade_distance = 0.2
+
+[sub_resource type="QuadMesh" id="QuadMesh_ohxio"]
+material = SubResource("StandardMaterial3D_a68bd")
+size = Vector2(0.5, 0.5)
+
+[sub_resource type="Curve" id="Curve_5lvmb"]
+_data = [Vector2(0, 0.4), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="Gradient" id="Gradient_j7m8k"]
+offsets = PackedFloat32Array(0, 0.1, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.38, 1, 1, 1, 0)
+
+[sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_dygx8"]
+random_pitch = 1.08
+random_volume_offset_db = 2.0
+streams_count = 2
+stream_0/stream = ExtResource("4_0x7is")
+stream_1/stream = ExtResource("5_oxkrr")
+
+[node name="VfxSplashSmall_CPU" type="Node3D" unique_id=432122145]
+script = ExtResource("1_8bj5m")
+
+[node name="Droplets" type="CPUParticles3D" parent="." unique_id=1065514402]
+emitting = false
+amount = 16
+lifetime = 0.8
+one_shot = true
+explosiveness = 1.0
+randomness = 0.2
+fixed_fps = 30
+visibility_aabb = AABB(-1.5, -0.5, -1.5, 3, 2.5, 3)
+mesh = SubResource("QuadMesh_blf3f")
+emission_shape = 6
+emission_ring_axis = Vector3(0, 1, 0)
+emission_ring_height = 0.02
+emission_ring_radius = 0.08
+emission_ring_inner_radius = 0.04
+emission_ring_cone_angle = 90.0
+direction = Vector3(0, 1, 0)
+spread = 37.0
+initial_velocity_min = 1.6
+initial_velocity_max = 3.7
+scale_amount_min = 0.5
+scale_amount_max = 1.4
+scale_amount_curve = SubResource("Curve_rsnyd")
+color = Color(0.82, 0.88, 0.92, 1)
+color_ramp = SubResource("Gradient_g8a25")
+
+[node name="Mist" type="CPUParticles3D" parent="." unique_id=2103248267]
+emitting = false
+amount = 4
+lifetime = 0.9
+one_shot = true
+explosiveness = 1.0
+randomness = 0.2
+fixed_fps = 30
+visibility_aabb = AABB(-1.5, -0.5, -1.5, 3, 2.5, 3)
+mesh = SubResource("QuadMesh_ohxio")
+emission_shape = 1
+emission_sphere_radius = 0.08
+direction = Vector3(0, 1, 0)
+spread = 40.0
+gravity = Vector3(0, -1.5, 0)
+initial_velocity_min = 0.32
+initial_velocity_max = 0.8
+damping_min = 1.0
+damping_max = 2.0
+angle_max = 360.0
+scale_amount_curve = SubResource("Curve_5lvmb")
+color = Color(0.92, 0.95, 0.97, 1)
+color_ramp = SubResource("Gradient_j7m8k")
+anim_speed_min = 1.0
+anim_speed_max = 1.0
+
+[node name="Sfx" type="AudioStreamPlayer3D" parent="." unique_id=68728888]
+stream = SubResource("AudioStreamRandomizer_dygx8")
+unit_size = 4.0
+max_distance = 35.0

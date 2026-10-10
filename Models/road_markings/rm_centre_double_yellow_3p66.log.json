@@ -1,0 +1,19 @@
+{
+ "name": "rm_centre_double_yellow_3p66",
+ "tris": 4,
+ "y_m": 0.027,
+ "extent_x_m": [
+  -0.15,
+  0.15
+ ],
+ "extent_z_m": [
+  -1.83,
+  1.83
+ ],
+ "material": "road_marking",
+ "collision": "none",
+ "pivot": "(0,0,0) ground datum; quad at y 0.027, centred in x/z",
+ "travel": "+Z",
+ "lines": "2 x 0.10 with 0.10 gap",
+ "tile_m": 3.66
+}

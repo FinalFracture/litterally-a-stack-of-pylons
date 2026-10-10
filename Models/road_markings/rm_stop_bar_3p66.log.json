@@ -1,0 +1,20 @@
+{
+ "name": "rm_stop_bar_3p66",
+ "tris": 2,
+ "y_m": 0.027,
+ "extent_x_m": [
+  -1.83,
+  1.83
+ ],
+ "extent_z_m": [
+  -0.225,
+  0.225
+ ],
+ "material": "road_marking",
+ "collision": "none",
+ "pivot": "(0,0,0) ground datum; quad at y 0.027, centred in x/z",
+ "travel": "+Z",
+ "depth_m": 0.45,
+ "across_m": 3.66,
+ "place": "1.2 m before the crosswalk, across one lane"
+}

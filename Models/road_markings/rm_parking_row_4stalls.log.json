@@ -1,0 +1,23 @@
+{
+ "name": "rm_parking_row_4stalls",
+ "tris": 10,
+ "y_m": 0.027,
+ "extent_x_m": [
+  -5.53,
+  5.53
+ ],
+ "extent_z_m": [
+  -2.745,
+  2.745
+ ],
+ "material": "road_marking",
+ "collision": "none",
+ "pivot": "(0,0,0) ground datum; quad at y 0.027, centred in x/z",
+ "travel": "+Z",
+ "stalls": 4,
+ "stall_m": [
+  2.74,
+  5.49
+ ],
+ "row_width_m": 11.06
+}

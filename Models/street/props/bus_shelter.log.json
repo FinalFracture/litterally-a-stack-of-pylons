@@ -1,0 +1,36 @@
+{
+  "name": "bus_shelter",
+  "tris": 408,
+  "size_m_xyz_blender": [
+    4.0,
+    2.0,
+    2.9
+  ],
+  "pivot": "bottom centre of mesh bounds; front faces -Z (Godot)",
+  "materials": [
+    "ad_panel_lit",
+    "powder_coat_dark",
+    "glass_tint",
+    "bench_slat_alu",
+    "canopy_led"
+  ],
+  "collision": "'-col' on the visible mesh -> Godot StaticBody3D + trimesh of the render mesh",
+  "anchors_godot_m": {
+    "curb_face_line_centre": [
+      0.0,
+      0.0,
+      -1.6
+    ],
+    "canopy_front_edge_centre": [
+      0.0,
+      2.9,
+      -1.0
+    ]
+  },
+  "street_side": "front = -Z Godot; see anchors for the curb-face line",
+  "roof_top_m": 2.9,
+  "canopy_front_edge_from_curb_face_m": 0.6,
+  "length_m": 4.0,
+  "depth_m": 2.0,
+  "clear_height_under_roof_m": 2.78
+}

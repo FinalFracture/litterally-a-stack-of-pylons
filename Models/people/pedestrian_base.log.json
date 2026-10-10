@@ -1,0 +1,75 @@
+{
+  "source": "UAL1_Standard.glb",
+  "blender": "5.2.2 LTS",
+  "source_armature_parent": null,
+  "facing": "-z",
+  "source_joints": 65,
+  "source_tris": 13743,
+  "source_height_m": 1.8287,
+  "scale": 0.929613499348933,
+  "bones": [
+    "Hips",
+    "Spine",
+    "Chest",
+    "Neck",
+    "Head",
+    "LeftUpperArm",
+    "LeftLowerArm",
+    "LeftHand",
+    "RightUpperArm",
+    "RightLowerArm",
+    "RightHand",
+    "LeftUpperLeg",
+    "LeftLowerLeg",
+    "LeftFoot",
+    "RightUpperLeg",
+    "RightLowerLeg",
+    "RightFoot"
+  ],
+  "bone_parents": {
+    "Hips": null,
+    "Spine": "Hips",
+    "Chest": "Spine",
+    "Neck": "Chest",
+    "Head": "Neck",
+    "LeftUpperArm": "Chest",
+    "LeftLowerArm": "LeftUpperArm",
+    "LeftHand": "LeftLowerArm",
+    "RightUpperArm": "Chest",
+    "RightLowerArm": "RightUpperArm",
+    "RightHand": "RightLowerArm",
+    "LeftUpperLeg": "Hips",
+    "LeftLowerLeg": "LeftUpperLeg",
+    "LeftFoot": "LeftLowerLeg",
+    "RightUpperLeg": "Hips",
+    "RightLowerLeg": "RightUpperLeg",
+    "RightFoot": "RightLowerLeg"
+  },
+  "actions": {
+    "walk_loop": {
+      "from": "Walk_Loop",
+      "frames": [
+        0,
+        32
+      ],
+      "fps": 24,
+      "seconds": 1.3333333333333333
+    },
+    "idle_loop": {
+      "from": "Idle_Loop",
+      "frames": [
+        0,
+        60
+      ],
+      "fps": 24,
+      "seconds": 2.5
+    }
+  },
+  "tris": 6184,
+  "materials": [
+    "M_Main",
+    "M_Joints"
+  ],
+  "height_rest_m": 1.6999,
+  "feet_z_m": 0.0004
+}

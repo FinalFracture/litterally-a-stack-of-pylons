@@ -1,0 +1,73 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://vfx/vfx_effect.gd" id="1_rvlqn"]
+[ext_resource type="Texture2D" path="res://vfx/textures/puff_flipbook_4x4.png" id="2_d43vh"]
+[ext_resource type="AudioStream" path="res://vfx/sounds/sfx_vehicle_crash_01.ogg" id="3_0d6j8"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_0hieq"]
+transparency = 1
+cull_mode = 2
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_texture = ExtResource("2_d43vh")
+billboard_mode = 3
+billboard_keep_scale = true
+particles_anim_h_frames = 4
+particles_anim_v_frames = 4
+particles_anim_loop = false
+proximity_fade_enabled = true
+proximity_fade_distance = 0.5
+
+[sub_resource type="QuadMesh" id="QuadMesh_88mbr"]
+material = SubResource("StandardMaterial3D_0hieq")
+size = Vector2(2.4, 2.4)
+
+[sub_resource type="Curve" id="Curve_h3en7"]
+_data = [Vector2(0, 0.3), 0.0, 0.0, 0, 0, Vector2(0.3, 0.7), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="Gradient" id="Gradient_cqiic"]
+offsets = PackedFloat32Array(0, 0.08, 0.45, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.5, 1, 1, 1, 0.3, 1, 1, 1, 0)
+
+[node name="VfxDustCrash_CPU" type="Node3D" unique_id=717245939]
+script = ExtResource("1_rvlqn")
+
+[node name="Dust" type="CPUParticles3D" parent="." unique_id=1068382899]
+emitting = false
+amount = 28
+lifetime = 2.4
+one_shot = true
+explosiveness = 1.0
+randomness = 0.2
+fixed_fps = 30
+visibility_aabb = AABB(-6, -0.5, -6, 12, 6, 12)
+mesh = SubResource("QuadMesh_88mbr")
+emission_shape = 6
+emission_ring_axis = Vector3(0, 1, 0)
+emission_ring_height = 0.1
+emission_ring_radius = 1.2
+emission_ring_inner_radius = 0.4
+emission_ring_cone_angle = 90.0
+direction = Vector3(0, 1, 0)
+spread = 85.0
+gravity = Vector3(0, -0.2, 0)
+initial_velocity_min = 0.8
+initial_velocity_max = 3.95
+angular_velocity_min = -20.0
+angular_velocity_max = 20.0
+damping_min = 1.0
+damping_max = 1.8
+angle_max = 360.0
+scale_amount_min = 0.8
+scale_amount_max = 1.3
+scale_amount_curve = SubResource("Curve_h3en7")
+color = Color(0.62, 0.59, 0.53, 1)
+color_ramp = SubResource("Gradient_cqiic")
+anim_speed_min = 1.0
+anim_speed_max = 1.0
+
+[node name="Sfx" type="AudioStreamPlayer3D" parent="." unique_id=1105578160]
+stream = ExtResource("3_0d6j8")
+unit_size = 8.0
+max_distance = 120.0

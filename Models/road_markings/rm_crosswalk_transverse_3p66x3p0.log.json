@@ -1,0 +1,19 @@
+{
+ "name": "rm_crosswalk_transverse_3p66x3p0",
+ "tris": 4,
+ "y_m": 0.027,
+ "extent_x_m": [
+  -1.83,
+  1.83
+ ],
+ "extent_z_m": [
+  -1.5,
+  1.5
+ ],
+ "material": "road_marking",
+ "collision": "none",
+ "pivot": "(0,0,0) ground datum; quad at y 0.027, centred in x/z",
+ "travel": "+Z",
+ "lines": "2 x 0.30, outer edges 3.0 apart",
+ "tile_across_m": 3.66
+}

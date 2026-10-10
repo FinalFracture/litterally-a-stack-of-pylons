@@ -1,0 +1,17 @@
+{
+  "name": "bollard_steel_42in",
+  "tris": 220,
+  "size_m_xyz_blender": [
+    0.1676,
+    0.1676,
+    1.1045
+  ],
+  "pivot": "bottom centre of mesh bounds; front faces -Z (Godot)",
+  "materials": [
+    "safety_yellow_paint"
+  ],
+  "collision": "'-col' on the visible mesh -> Godot StaticBody3D + trimesh of the render mesh",
+  "anchors_godot_m": {},
+  "height_m": 1.067,
+  "diameter_m": 0.168
+}

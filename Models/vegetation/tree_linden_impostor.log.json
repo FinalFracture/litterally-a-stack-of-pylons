@@ -1,0 +1,8 @@
+{
+  "name": "tree_linden_impostor",
+  "tris": 4,
+  "quad_w_m": 8.84,
+  "quad_h_m": 12.662,
+  "uv_v0": 0.0451,
+  "texture": "tree_linden_impostor_512x768.png"
+}

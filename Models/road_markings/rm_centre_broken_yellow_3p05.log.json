@@ -1,0 +1,18 @@
+{
+ "name": "rm_centre_broken_yellow_3p05",
+ "tris": 2,
+ "y_m": 0.027,
+ "extent_x_m": [
+  -0.05,
+  0.05
+ ],
+ "extent_z_m": [
+  -1.525,
+  1.525
+ ],
+ "material": "road_marking",
+ "collision": "none",
+ "pivot": "(0,0,0) ground datum; quad at y 0.027, centred in x/z",
+ "travel": "+Z",
+ "repeat_m": 12.19
+}

@@ -1,0 +1,33 @@
+{
+  "source": "utility_box_01_1k.gltf",
+  "kept_objects": [
+    "utility_box_01_box"
+  ],
+  "source_tris": 4404,
+  "size_m_xyz_blender": [
+    0.52,
+    0.432,
+    1.12
+  ],
+  "tris": 1500,
+  "textures": {
+    "utility_box_01_diff": [
+      512,
+      512
+    ],
+    "utility_box_01_metal-utility_box_01_rough": [
+      512,
+      512
+    ],
+    "utility_box_01_nor_gl": [
+      512,
+      512
+    ]
+  },
+  "materials": [
+    "utility_box_01"
+  ],
+  "mode": "static",
+  "mass_kg": null,
+  "collision": "'-col' on the visible mesh -> Godot StaticBody3D + trimesh of the render mesh"
+}

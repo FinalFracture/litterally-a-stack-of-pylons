@@ -1,0 +1,47 @@
+{
+  "name": "bench_slat_1800",
+  "tris": 828,
+  "size_m_xyz_blender": [
+    1.8,
+    0.7131,
+    0.85
+  ],
+  "pivot": "bottom centre of mesh bounds; front faces -Z (Godot)",
+  "materials": [
+    "bench_wood_slat",
+    "powder_coat_dark"
+  ],
+  "collision": "none in glb (mobile); scene shapes in bench_slat_1800_collider_PROPOSED.tscn",
+  "anchors_godot_m": {},
+  "mass_kg": 45,
+  "proposed_scene_shapes": [
+    {
+      "name": "back",
+      "centre_godot": [
+        0.0,
+        0.7,
+        0.1084
+      ],
+      "size_godot": [
+        1.8,
+        0.5,
+        0.1
+      ]
+    },
+    {
+      "name": "seat",
+      "centre_godot": [
+        0.0,
+        0.235,
+        -0.1116
+      ],
+      "size_godot": [
+        1.8,
+        0.47,
+        0.45
+      ]
+    }
+  ],
+  "seat_height_m": 0.45,
+  "length_m": 1.8
+}
