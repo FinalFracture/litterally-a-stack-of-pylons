@@ -1,0 +1,17 @@
+{
+ "name": "tf_seep_stain_4x14",
+ "tris": {
+  "lod0": 14,
+  "lod1": 6,
+  "lod2": 2
+ },
+ "collision": "0 box(es) (-colonly)",
+ "embed_below_pivot_m": 1.5,
+ "size_m": [
+  4,
+  14
+ ],
+ "slope_deg": "60-90",
+ "height_band": "lower half of the face; pair with tf_seep_growth at the foot",
+ "use": "wet stain (dark, glossy) on a face; alpha-free strip, stand 0.15 m proud"
+}

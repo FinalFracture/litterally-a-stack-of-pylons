@@ -1,0 +1,17 @@
+{
+ "name": "tf_basalt_columns_l_15m",
+ "tris": {
+  "lod0": 322,
+  "lod1": 144,
+  "lod2": 48
+ },
+ "collision": "1 box(es) (-colonly)",
+ "embed_below_pivot_m": 1.5,
+ "size_m": [
+  12.0,
+  15.0
+ ],
+ "slope_deg": "75-90",
+ "height_band": "lower colonnade of a flow (10-20 m above the toe or above a ledge)",
+ "use": "steep basalt faces; front faces downslope (-Z)"
+}

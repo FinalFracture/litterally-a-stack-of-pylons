@@ -1,0 +1,15 @@
+{
+ "name": "tf_talus_patch_12m",
+ "tris": {
+  "lod0": 472,
+  "lod1": 212,
+  "lod2": 70
+ },
+ "collision": "1 box(es) (-colonly)",
+ "embed_below_pivot_m": 1.5,
+ "radius_m": 6.0,
+ "rocks": 34,
+ "slope_deg": "20-40",
+ "height_band": "talus aprons and benches",
+ "use": "clustered block patch; scatter over the talus MultiMesh to break uniformity"
+}

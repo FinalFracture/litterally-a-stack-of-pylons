@@ -1,0 +1,17 @@
+{
+ "name": "tf_basalt_columns_s_3m",
+ "tris": {
+  "lod0": 120,
+  "lod1": 54,
+  "lod2": 18
+ },
+ "collision": "1 box(es) (-colonly)",
+ "embed_below_pivot_m": 1.5,
+ "size_m": [
+  3.0,
+  3.0
+ ],
+ "slope_deg": "60-90",
+ "height_band": "any face band; also talus top",
+ "use": "steep basalt faces; front faces downslope (-Z)"
+}

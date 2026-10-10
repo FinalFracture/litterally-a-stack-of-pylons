@@ -1,0 +1,18 @@
+{
+ "name": "tf_basalt_overhang_6m",
+ "tris": {
+  "lod0": 94,
+  "lod1": 42,
+  "lod2": 14
+ },
+ "collision": "1 box(es) (-colonly)",
+ "embed_below_pivot_m": 1.5,
+ "size_m": [
+  6.0,
+  2.2,
+  1.0
+ ],
+ "slope_deg": "60-90 (face) - sits at a break of slope",
+ "height_band": "any face band",
+ "use": "overhang lip with column stubs"
+}

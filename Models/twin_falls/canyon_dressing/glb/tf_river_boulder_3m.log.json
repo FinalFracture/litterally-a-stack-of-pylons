@@ -1,0 +1,14 @@
+{
+ "name": "tf_river_boulder_3m",
+ "tris": {
+  "lod0": 20,
+  "lod1": 12,
+  "lod2": 6
+ },
+ "collision": "convex hull (-convcolonly)",
+ "embed_below_pivot_m": 1.5,
+ "size_m": 3.0,
+ "slope_deg": "0-25",
+ "height_band": "river edge, y -1 to +3 m of the waterline",
+ "use": "fallen boulder; wet band at the base (vertex B)"
+}

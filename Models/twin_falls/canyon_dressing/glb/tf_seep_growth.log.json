@@ -1,0 +1,17 @@
+{
+ "name": "tf_seep_growth",
+ "tris": {
+  "lod0": 200,
+  "lod1": 100,
+  "lod2": 50
+ },
+ "collision": "0 box(es) (-colonly)",
+ "embed_below_pivot_m": 1.5,
+ "size_m": [
+  7,
+  3
+ ],
+ "slope_deg": "0-35",
+ "height_band": "seep foot / benches; also river-edge springs",
+ "use": "green growth clump, no collision"
+}

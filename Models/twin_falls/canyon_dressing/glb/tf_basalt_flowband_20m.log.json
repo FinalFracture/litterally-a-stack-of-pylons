@@ -1,0 +1,17 @@
+{
+ "name": "tf_basalt_flowband_20m",
+ "tris": {
+  "lod0": 832,
+  "lod1": 374,
+  "lod2": 124
+ },
+ "collision": "1 box(es) (-colonly)",
+ "embed_below_pivot_m": 1.5,
+ "size_m": [
+  20.0,
+  4.0
+ ],
+ "slope_deg": "65-90",
+ "height_band": "mid/upper face (above colonnades); chain along X every 20 m (ends are straight cuts, overlap 0.5 m)",
+ "use": "entablature + rubbly flow top strip run along a face"
+}

@@ -1,0 +1,14 @@
+{
+ "name": "tf_talus_chunk_0",
+ "tris": {
+  "lod0": 16,
+  "lod1": 8,
+  "lod2": 4
+ },
+ "collision": "0 box(es) (-colonly)",
+ "embed_below_pivot_m": 1.5,
+ "unit_m": 1.0,
+ "slope_deg": "25-45 (talus)",
+ "height_band": "cliff toe to river",
+ "use": "MultiMesh, scale 0.3-2.5, random yaw; no collision below scale 1.5 (use the LOD2 hull if needed)"
+}

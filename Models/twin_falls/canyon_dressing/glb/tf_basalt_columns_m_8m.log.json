@@ -1,0 +1,17 @@
+{
+ "name": "tf_basalt_columns_m_8m",
+ "tris": {
+  "lod0": 102,
+  "lod1": 45,
+  "lod2": 15
+ },
+ "collision": "1 box(es) (-colonly)",
+ "embed_below_pivot_m": 1.5,
+ "size_m": [
+  6.0,
+  8.0
+ ],
+ "slope_deg": "70-90",
+ "height_band": "lower colonnade bands",
+ "use": "steep basalt faces; front faces downslope (-Z)"
+}

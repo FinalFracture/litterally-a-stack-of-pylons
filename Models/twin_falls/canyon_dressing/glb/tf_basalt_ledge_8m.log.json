@@ -1,0 +1,18 @@
+{
+ "name": "tf_basalt_ledge_8m",
+ "tris": {
+  "lod0": 64,
+  "lod1": 28,
+  "lod2": 9
+ },
+ "collision": "1 box(es) (-colonly)",
+ "embed_below_pivot_m": 1.5,
+ "size_m": [
+  8.0,
+  1.6,
+  0.9
+ ],
+ "slope_deg": "60-90 (face) - sits at a break of slope",
+ "height_band": "any face band",
+ "use": "bench / ledge, walkable top"
+}
