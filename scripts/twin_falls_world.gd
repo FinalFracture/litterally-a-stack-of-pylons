@@ -182,17 +182,14 @@ func respawn_player() -> void:
 	var s := generator.spawn
 	if LaunchConfig.has_spawn_override:
 		s = LaunchConfig.spawn_override
-	var ground := generator.height_at(s.x, s.z)
-	var y := ground + 0.2
-	if ground <= -70.0 and LaunchConfig.has_spawn_override:
-		y = s.y
-	_soul.global_position = Vector3(s.x, y, s.z)
+	var stand := generator.dry_ground(s.x, s.z, s.y)
+	_soul.global_position = stand
 	_soul.velocity = Vector3.ZERO
 	_soul.flow_velocity = Vector3.ZERO
 	_soul.boot_held = not _floor_ready(_soul.global_position)
 	if streamer != null:
 		streamer.target = _soul
-	LaunchConfig.log_line("PYLONS_RESPAWN %.2f,%.2f,%.2f" % [s.x, y, s.z])
+	LaunchConfig.log_line("PYLONS_RESPAWN %.2f,%.2f,%.2f" % [stand.x, stand.y, stand.z])
 
 
 func _process(_delta: float) -> void:
@@ -346,7 +343,8 @@ func _build_river() -> void:
 		var along := Vector2(-d0.y, d0.x)
 		var denom := clampf(side.dot(along), 0.35, 1.0)
 		var miter := half / denom
-		var y := p.y + 0.45
+		# water.json height is the surface. The bed is carved below it.
+		var y := p.y
 		verts.append(WorldConfig.to_local(Vector3(p.x - side.x * miter, y, p.z - side.y * miter)))
 		verts.append(WorldConfig.to_local(Vector3(p.x + side.x * miter, y, p.z + side.y * miter)))
 		norms.append(Vector3.UP)

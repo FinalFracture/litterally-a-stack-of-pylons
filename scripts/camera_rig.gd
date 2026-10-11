@@ -115,9 +115,28 @@ func _place() -> void:
 		cam_pos = _spring(look, desired)
 	if cam_pos.distance_squared_to(look) < 0.04:
 		cam_pos = look + offset.normalized() * 0.4
+	cam_pos = _above_drawn(cam_pos)
 	global_position = cam_pos
 	_camera.position = Vector3.ZERO
 	_camera.look_at(look, Vector3.UP)
+
+
+## Keep the lens above the drawn ground. Collision can sit under a simplified
+## triangle; the near plane would then look out through the floor into the sky.
+func _above_drawn(cam_pos: Vector3) -> Vector3:
+	var world := get_parent()
+	if world == null:
+		return cam_pos
+	var gen: Object = world.get("generator")
+	if gen == null or not gen.has_method("drawn_height_at"):
+		return cam_pos
+	var floor_y := float(gen.call("drawn_height_at", cam_pos.x, cam_pos.z))
+	if floor_y < -70.0:
+		return cam_pos
+	var min_y := floor_y + 0.3
+	if cam_pos.y < min_y:
+		cam_pos.y = min_y
+	return cam_pos
 
 
 func _hit_camera() -> bool:

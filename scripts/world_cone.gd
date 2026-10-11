@@ -99,6 +99,61 @@ func _river_force(state: PhysicsDirectBodyState3D) -> void:
 		state.apply_force(dir * mass * accel, at)
 	elif along > speed + 0.05:
 		state.linear_velocity = Vector3(hv.x, state.linear_velocity.y, hv.z) - dir * (along - speed)
+	_hold_river_lean(state)
+
+
+func _physics_process(_delta: float) -> void:
+	# The contact solver flattens a small torque. Hold the lean after the solve
+	# so the stack actually tilts while the current pushes.
+	if not river_flow_on or river_flow.length_squared() < 0.0001:
+		return
+	global_basis = _lean_basis(global_basis, river_flow)
+	angular_velocity = Vector3.ZERO
+
+
+func _hold_river_lean(state: PhysicsDirectBodyState3D) -> void:
+	var xf := state.transform
+	xf.basis = _lean_basis(xf.basis, river_flow)
+	state.transform = xf
+	state.angular_velocity = Vector3.ZERO
+
+
+func _lean_basis(from: Basis, flow: Vector3) -> Basis:
+	var dir := Vector3(flow.x, 0.0, flow.z)
+	if dir.length_squared() < 0.0001:
+		return from
+	dir = dir.normalized()
+	var back := Vector3(from.z.x, 0.0, from.z.z)
+	if back.length_squared() < 0.0001:
+		back = Vector3(0.0, 0.0, 1.0)
+	back = back.normalized()
+	var right := Vector3.UP.cross(back).normalized()
+	var yaw := Basis(right, Vector3.UP, back)
+	var axis := Vector3.UP.cross(dir)
+	if axis.length_squared() < 0.0001:
+		return yaw
+	return Basis(axis.normalized(), _River.lean_radians(_column_height())) * yaw
+
+
+func _column_height() -> float:
+	var bottom := 0.0
+	var top := 0.0
+	var found := false
+	for item in pieces():
+		var piece := item as Node3D
+		var h := float(piece.piece_height())
+		var lo := piece.position.y - h * 0.5
+		var hi := piece.position.y + h * 0.5
+		if not found:
+			bottom = lo
+			top = hi
+			found = true
+		else:
+			bottom = minf(bottom, lo)
+			top = maxf(top, hi)
+	if not found:
+		return GameConstants.STANDARD_H
+	return maxf(top - bottom, GameConstants.STANDARD_H)
 
 
 func pieces() -> Array:

@@ -10,6 +10,13 @@ extends Node
 const FLOW_SPEED := 1.35
 const FLOW_ACCEL := 2.5
 const LEAN_ARM := 0.16
+
+
+## Downstream lean while the current pushes, in radians. A short stack barely
+## tilts. A taller one leans more, and stops short of falling over.
+static func lean_radians(height_m: float) -> float:
+	var h := maxf(height_m, GameConstants.STANDARD_H)
+	return deg_to_rad(clampf(8.0 + (h - GameConstants.STANDARD_H) * 4.5, 8.0, 18.0))
 const SINK_SEC := 0.45
 const SINK_SPEED := 1.8
 const GRACE_MS := 1600
@@ -111,16 +118,19 @@ func _touch_body(body: RigidBody3D) -> void:
 	if not is_instance_valid(body) or _sinking(body):
 		return
 	var id := body.get_instance_id()
-	if not _origin.has(id):
-		_origin[id] = body.global_transform
 	if int(_grace.get(id, 0)) > Time.get_ticks_msec():
 		return
 	var span := _span_of(body)
 	_sample(body.global_position.x, body.global_position.z, _hint_of(body))
 	_store_hint(body)
-	if float(_scratch["d"]) > _half:
-		return
+	var in_ribbon := float(_scratch["d"]) <= _half
 	var surface := float(_scratch["y"])
+	# Only a dry pose is a home. An underwater first sight must not become the loop point.
+	var dry := (not in_ribbon) or span.x >= surface + 0.05
+	if dry and not _origin.has(id):
+		_origin[id] = body.global_transform
+	if not in_ribbon:
+		return
 	var bottom := span.x
 	var top := span.y
 	if top < surface - 0.02:
@@ -156,10 +166,15 @@ func _push_body(body: RigidBody3D) -> void:
 
 func _begin_sink(body: RigidBody3D) -> void:
 	var id := body.get_instance_id()
+	var origin := body.global_transform
+	if _origin.has(id):
+		origin = _origin[id]
+	if not _pose_dry(origin):
+		origin = _dry_pose(body)
 	_sinks.append({
 		"body": body,
 		"left": SINK_SEC,
-		"origin": _origin.get(id, body.global_transform),
+		"origin": origin,
 		"layer": body.collision_layer,
 		"mask": body.collision_mask,
 	})
@@ -168,6 +183,34 @@ func _begin_sink(body: RigidBody3D) -> void:
 	body.sleeping = false
 	if body.is_in_group("world_cone"):
 		body.set("river_flow_on", false)
+
+
+func _pose_dry(xf: Transform3D) -> bool:
+	if _gen == null:
+		return false
+	var p := xf.origin
+	var w := _gen.water_nearest(p.x, p.z)
+	if w.x <= _half + 0.5:
+		return false
+	return p.y >= w.y
+
+
+func _dry_pose(body: RigidBody3D) -> Transform3D:
+	var p := body.global_position
+	var stand := _gen.dry_ground(p.x, p.z, p.y)
+	var ground := stand.y - 0.2
+	var feet := -GameConstants.STANDARD_H * 0.5
+	var found := false
+	for child in body.get_children():
+		if not child.has_method("piece_height") or not (child is Node3D):
+			continue
+		var piece := child as Node3D
+		var y := piece.position.y - float(piece.piece_height()) * 0.5
+		feet = y if not found else minf(feet, y)
+		found = true
+	var xf := Transform3D.IDENTITY
+	xf.origin = Vector3(stand.x, ground - feet, stand.z)
+	return xf
 
 
 func _sinking(body: RigidBody3D) -> bool:

@@ -1,5 +1,6 @@
 extends CharacterBody3D
 
+const _River := preload("res://scripts/twin_falls_river.gd")
 const GROUND_ACCEL := 64.0
 const AIR_ACCEL := 2.5
 const DEFAULT_SPEED := 4.5
@@ -25,6 +26,7 @@ var max_speed: float = DEFAULT_SPEED
 var jump_height: float = 0.49
 ## Downstream drift set by the river while this stack is touching the water. Zero on land.
 var flow_velocity := Vector3.ZERO
+var _river_lean := 0.0
 
 
 func _ready() -> void:
@@ -69,6 +71,40 @@ func _physics_process(delta: float) -> void:
 		_squash_y = SQUASH_Y
 	_update_squash(delta)
 	_recover_if_fallen()
+	_apply_river_lean(delta)
+
+
+## The river sets flow_velocity. This is the stack lean: the column tilts downstream.
+func _apply_river_lean(delta: float) -> void:
+	var want := 0.0
+	if flow_velocity.length_squared() > 0.04:
+		want = 1.0
+	if want < 0.001 and _river_lean < 0.001:
+		return
+	_river_lean = move_toward(_river_lean, want, delta * 5.0)
+	var yaw := _flat_yaw(global_basis)
+	if _river_lean < 0.001 or flow_velocity.length_squared() < 0.0001:
+		global_basis = yaw
+		return
+	var dir := Vector3(flow_velocity.x, 0.0, flow_velocity.z).normalized()
+	var axis := Vector3.UP.cross(dir)
+	if axis.length_squared() < 0.0001:
+		global_basis = yaw
+		return
+	var h := GameConstants.STANDARD_H
+	var stack := get_node_or_null("StackController")
+	if stack != null and stack.has_method("get_stack_height"):
+		h = maxf(float(stack.call("get_stack_height")), h)
+	global_basis = Basis(axis.normalized(), _River.lean_radians(h) * _river_lean) * yaw
+
+
+func _flat_yaw(from: Basis) -> Basis:
+	var back := Vector3(from.z.x, 0.0, from.z.z)
+	if back.length_squared() < 0.0001:
+		back = Vector3(0.0, 0.0, 1.0)
+	back = back.normalized()
+	var right := Vector3.UP.cross(back).normalized()
+	return Basis(right, Vector3.UP, back)
 
 
 func _recover_if_fallen() -> void:

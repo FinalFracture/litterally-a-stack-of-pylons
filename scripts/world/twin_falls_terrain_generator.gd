@@ -5,7 +5,11 @@ extends ChunkGenerator
 ## Tile c_<cx>_<cz> uses cz as the north index: world chunk (cx, gz) reads cz = -gz - 1.
 ## Collision uses the same tile as the mesh source: 129 samples on plain ground,
 ## the 513-sample (1 m) tiles_hi grid on canyon chunks. Five gentle south flags
-## (SKIP_HI) stay on the coarse grid. The visual mesh still simplifies flats.
+## (SKIP_HI) stay on the coarse grid. The visual mesh simplifies flats, but a
+## floor block stays a 4 m quad. Subdividing flats to hold a 0.3 m error
+## lost more than 5% fps, so FLAT_ERR_M stays open and that pass is idle.
+## The heightmap is then resampled from those drawn triangles, so the ground
+## you stand on is the ground you see. The river bed is carved under the ribbon.
 
 const DATA := "res://world/twin_falls/data"
 const HI_N := 513
@@ -17,6 +21,11 @@ const TRIS_PER_PART := 4000
 ## Ribbon half-width in twin_falls_world. The floor stand stays outside that strip.
 const RIVER_HALF_M := 20.0
 const STAND_CLEAR_M := 36.0
+## Open on purpose. 0.3 m forced 2 m floor cells and lost more than 5% fps.
+const FLAT_ERR_M := 10000.0
+## Carved depth at the water.json centreline. Banks ease back to the DEM.
+const BED_DEPTH_M := 1.5
+const WATER_CELL := 64.0
 const SKIP_HI := {
 	"6_0": true,
 	"3_2": true,
@@ -32,6 +41,9 @@ var _mat: ShaderMaterial
 var _hi: Dictionary = {}
 var _lock := Mutex.new()
 var _cache: Dictionary = {}
+## Drawn heightmaps, keyed by Godot chunk "x_z". Collision and the camera read these.
+var _drawn: Dictionary = {}
+var _wbuckets: Dictionary = {}
 
 
 class ChunkPay:
@@ -115,8 +127,8 @@ func build_jobs(data: ChunkData, host: Node3D) -> Array[Callable]:
 	var pay := data.payload as ChunkPay
 	if pay == null:
 		return jobs
-	if host.get_node_or_null("TerrainBody") == null:
-		jobs.append(_job_body.bind(host, pay))
+	# Boot already placed a raw heightmap. This job replaces it with the drawn one.
+	jobs.append(_job_body.bind(host, pay))
 	for i in pay.parts.size():
 		jobs.append(_job_part.bind(host, pay, i))
 	return jobs
@@ -252,13 +264,18 @@ func _build(coord: Vector2i, dc: Vector2i, hi: bool) -> ChunkPay:
 	b.water_empty = bool(field["empty"])
 	b.talus = _talus_field(b)
 	if b.grid.size() == b.n * b.n:
+		# Detach from the height cache. Carve and the mesh must not rewrite the DEM.
+		b.grid = b.grid.duplicate()
+		_carve_bed(b)
 		if hi:
 			_emit_hi(b)
 		else:
 			_emit_low(b)
 	var pay := ChunkPay.new()
-	# Canyon chunks collide on the 1 m tile. Plain chunks stay on the 3.9 m grid.
-	pay.heights = b.grid
+	# Sample the simplified triangles so the heightmap matches the drawn surface.
+	var drawn := _collision_from_mesh(b)
+	_store_drawn(coord, drawn, b.n, b.spacing)
+	pay.heights = drawn
 	pay.map_n = b.n
 	pay.spacing = b.spacing
 	pay.center = _center_of(coord)
@@ -280,11 +297,12 @@ func _emit_hi(b: Build) -> void:
 	_emit_blocks(b, 4)
 
 
-## Flat 16 m blocks, 4 m everywhere else, 2 m on cliff cells. Edges copy the finer side.
+## Flat 16 m blocks, 4 m everywhere else, 2 m on cliffs and on floor cells that
+## would miss the samples by more than FLAT_ERR_M. Edges copy the finer side.
 func _emit_blocks(b: Build, step: int) -> void:
 	for r in range(0, CELLS, 4):
 		for c in range(0, CELLS, 4):
-			if _block_merged(b.dc, c, r):
+			if _merge_ok(b, c, r):
 				_emit_coarse(b, c, r, step)
 			else:
 				for dy in 4:
@@ -293,7 +311,7 @@ func _emit_blocks(b: Build, step: int) -> void:
 
 
 func _emit_cell(b: Build, c: int, r: int, step: int) -> void:
-	if step == 4 and _is_cell_steep(b.dc.x, b.dc.y, c, r):
+	if step == 4 and _level_at(b.dc.x, b.dc.y, c, r) >= 2:
 		var c0 := c * 4
 		var r0 := r * 4
 		for rr in 2:
@@ -302,10 +320,10 @@ func _emit_cell(b: Build, c: int, r: int, step: int) -> void:
 				var rs := r0 + rr * 2
 				_quad(b, cs, rs, cs + 2, rs + 2)
 		return
-	var north := _neighbor_steep(b.dc, c, r - 1)
-	var south := _neighbor_steep(b.dc, c, r + 1)
-	var west := _neighbor_steep(b.dc, c - 1, r)
-	var east := _neighbor_steep(b.dc, c + 1, r)
+	var north := _edge_fine(b, c, r - 1, step)
+	var south := _edge_fine(b, c, r + 1, step)
+	var west := _edge_fine(b, c - 1, r, step)
+	var east := _edge_fine(b, c + 1, r, step)
 	if north or south or west or east:
 		if step == 4:
 			_fan_hi(b, c, r, north, east, south, west)
@@ -319,10 +337,10 @@ func _emit_coarse(b: Build, c: int, r: int, step: int) -> void:
 	var c0 := c * step
 	var r0 := r * step
 	var span := 4 * step
-	var north := not _block_merged(b.dc, c, r - 4)
-	var south := not _block_merged(b.dc, c, r + 4)
-	var west := not _block_merged(b.dc, c - 4, r)
-	var east := not _block_merged(b.dc, c + 4, r)
+	var north := not _merge_ok(b, c, r - 4)
+	var south := not _merge_ok(b, c, r + 4)
+	var west := not _merge_ok(b, c - 4, r)
+	var east := not _merge_ok(b, c + 4, r)
 	if not north and not south and not west and not east:
 		_quad(b, c0, r0, c0 + span, r0 + span)
 		return
@@ -657,9 +675,11 @@ func _compact(verts: PackedVector3Array, norms: PackedVector3Array, cols: Packed
 
 
 func _job_body(host: Node3D, pay: ChunkPay) -> void:
-	if host.get_node_or_null("TerrainBody") != null:
-		return
 	if pay.heights.size() != pay.map_n * pay.map_n:
+		return
+	var existing := host.get_node_or_null("TerrainBody") as StaticBody3D
+	if existing != null:
+		_retarget_body(existing, pay.heights, pay.map_n)
 		return
 	_add_body(host, pay.heights, pay.center, pay.map_n, pay.spacing)
 
@@ -699,6 +719,343 @@ func _add_body(host: Node3D, heights: PackedFloat32Array, center: Vector3, map_n
 	col.position = center
 	body.add_child(col)
 	host.add_child(body)
+
+
+func _retarget_body(body: StaticBody3D, heights: PackedFloat32Array, map_n: int) -> void:
+	for child in body.get_children():
+		if not (child is CollisionShape3D):
+			continue
+		var col := child as CollisionShape3D
+		var shape := HeightMapShape3D.new()
+		shape.map_width = map_n
+		shape.map_depth = map_n
+		shape.map_data = heights
+		col.shape = shape
+		return
+
+
+## True when a 16 m block may collapse to two triangles. River blocks stay split
+## so the carved channel survives. Both chunks use this, including across the seam.
+func _merge_ok(b: Build, cell_c: int, cell_r: int) -> bool:
+	if not _block_merged(b.dc, cell_c, cell_r):
+		return false
+	var rect := _block_rect(b.dc, cell_c, cell_r)
+	if rect.z < rect.x:
+		return false
+	return not _rect_hits_river(rect)
+
+
+func _edge_fine(b: Build, cell_c: int, cell_r: int, step: int) -> bool:
+	if step == 4:
+		return _level_at(b.dc.x, b.dc.y, cell_c, cell_r) >= 2
+	return _neighbor_steep(b.dc, cell_c, cell_r)
+
+
+## World rect of a 4-cell block. x = min x, y = min z, z = max x, w = max z.
+## An invalid block (off the DEM) has z < x.
+func _block_rect(dc: Vector2i, cell_c: int, cell_r: int) -> Vector4:
+	var c := cell_c
+	var r := cell_r
+	var cx := dc.x
+	var cz := dc.y
+	if c < 0:
+		cx -= 1
+		c += CELLS
+	elif c >= CELLS:
+		cx += 1
+		c -= CELLS
+	if r < 0:
+		cz += 1
+		r += CELLS
+	elif r >= CELLS:
+		cz -= 1
+		r -= CELLS
+	if cx < 0 or cz < 0 or cx > 9 or cz > 15 or c < 0 or r < 0 or c >= CELLS or r >= CELLS:
+		return Vector4(0.0, 0.0, -1.0, -1.0)
+	var cell_m := 500.0 / float(CELLS)
+	var x0 := float(cx) * 500.0 + float(c) * cell_m
+	var z0 := -float(cz + 1) * 500.0 + float(r) * cell_m
+	return Vector4(x0, z0, x0 + 4.0 * cell_m, z0 + 4.0 * cell_m)
+
+
+func _rect_hits_river(rect: Vector4) -> bool:
+	if water_pts.size() < 2:
+		return false
+	var limit := RIVER_HALF_M + 2.0
+	for j in 3:
+		for i in 3:
+			var x := lerpf(rect.x, rect.z, float(i) * 0.5)
+			var z := lerpf(rect.y, rect.w, float(j) * 0.5)
+			if _water_at(x, z).x <= limit:
+				return true
+	return false
+
+
+func _carve_bed(b: Build) -> void:
+	if b.water_empty or water_pts.size() < 2:
+		return
+	if not _chunk_near_river(b.origin):
+		return
+	var pad := RIVER_HALF_M + 8.0
+	var min_x := b.origin.x - pad
+	var max_x := b.origin.x + 500.0 + pad
+	var min_z := b.origin.y - pad
+	var max_z := b.origin.y + 500.0 + pad
+	var band_min_x := 1.0e12
+	var band_max_x := -1.0e12
+	var band_min_z := 1.0e12
+	var band_max_z := -1.0e12
+	var near := false
+	for i in water_pts.size() - 1:
+		var a: Vector3 = water_pts[i]
+		var p: Vector3 = water_pts[i + 1]
+		if maxf(a.x, p.x) < min_x or minf(a.x, p.x) > max_x:
+			continue
+		if maxf(a.z, p.z) < min_z or minf(a.z, p.z) > max_z:
+			continue
+		near = true
+		band_min_x = minf(band_min_x, minf(a.x, p.x) - pad)
+		band_max_x = maxf(band_max_x, maxf(a.x, p.x) + pad)
+		band_min_z = minf(band_min_z, minf(a.z, p.z) - pad)
+		band_max_z = maxf(band_max_z, maxf(a.z, p.z) + pad)
+	if not near:
+		return
+	var n := b.n
+	var c0 := clampi(int(floor((band_min_x - b.origin.x) / b.spacing)) - 1, 0, n - 1)
+	var c1 := clampi(int(ceil((band_max_x - b.origin.x) / b.spacing)) + 1, 0, n - 1)
+	var r0 := clampi(int(floor((band_min_z - b.origin.y) / b.spacing)) - 1, 0, n - 1)
+	var r1 := clampi(int(ceil((band_max_z - b.origin.y) / b.spacing)) + 1, 0, n - 1)
+	for r in range(r0, r1 + 1):
+		var z := _z(b, r)
+		for c in range(c0, c1 + 1):
+			var x := _x(b, c)
+			var hit := _water_at(x, z)
+			if hit.x >= RIVER_HALF_M:
+				continue
+			var t := clampf(hit.x / RIVER_HALF_M, 0.0, 1.0)
+			var fall := t * t * (3.0 - 2.0 * t)
+			var i := r * n + c
+			var original := b.grid[i]
+			var target := lerpf(hit.y - BED_DEPTH_M, original, fall)
+			b.grid[i] = minf(original, target)
+
+
+func _chunk_near_river(origin: Vector2) -> bool:
+	var samples: Array[Vector2] = [
+		origin + Vector2(250.0, 250.0),
+		origin,
+		origin + Vector2(500.0, 0.0),
+		origin + Vector2(0.0, 500.0),
+		origin + Vector2(500.0, 500.0),
+	]
+	for p in samples:
+		if _water_at(p.x, p.y).x < 420.0:
+			return true
+	return false
+
+
+## Height at each grid point of the drawn triangles. Uncovered points keep the grid.
+func _collision_from_mesh(b: Build) -> PackedFloat32Array:
+	var n := b.n
+	var out := b.grid.duplicate()
+	if b.indices.is_empty() or n < 2:
+		return out
+	var seen := PackedByteArray()
+	seen.resize(n * n)
+	var origin := b.origin
+	var sp := b.spacing
+	var tris := b.indices.size() / 3
+	for t in tris:
+		var ia := b.indices[t * 3]
+		var ib := b.indices[t * 3 + 1]
+		var ic := b.indices[t * 3 + 2]
+		var pa := WorldConfig.to_world(b.verts[ia])
+		var pb := WorldConfig.to_world(b.verts[ib])
+		var pc := WorldConfig.to_world(b.verts[ic])
+		var min_x := minf(pa.x, minf(pb.x, pc.x))
+		var max_x := maxf(pa.x, maxf(pb.x, pc.x))
+		var min_z := minf(pa.z, minf(pb.z, pc.z))
+		var max_z := maxf(pa.z, maxf(pb.z, pc.z))
+		var gc0 := clampi(int(floor((min_x - origin.x) / sp)), 0, n - 1)
+		var gc1 := clampi(int(ceil((max_x - origin.x) / sp)), 0, n - 1)
+		var gr0 := clampi(int(floor((min_z - origin.y) / sp)), 0, n - 1)
+		var gr1 := clampi(int(ceil((max_z - origin.y) / sp)), 0, n - 1)
+		var denom := (pb.z - pc.z) * (pa.x - pc.x) + (pc.x - pb.x) * (pa.z - pc.z)
+		if absf(denom) < 0.00000001:
+			continue
+		var inv := 1.0 / denom
+		for r in range(gr0, gr1 + 1):
+			var z := origin.y + float(r) * sp
+			for c in range(gc0, gc1 + 1):
+				var x := origin.x + float(c) * sp
+				var wa := ((pb.z - pc.z) * (x - pc.x) + (pc.x - pb.x) * (z - pc.z)) * inv
+				var wb := ((pc.z - pa.z) * (x - pc.x) + (pa.x - pc.x) * (z - pc.z)) * inv
+				var wc := 1.0 - wa - wb
+				if wa < -0.0002 or wb < -0.0002 or wc < -0.0002:
+					continue
+				var y := wa * pa.y + wb * pb.y + wc * pc.y
+				var idx := r * n + c
+				if seen[idx] == 0 or y > out[idx]:
+					out[idx] = y
+					seen[idx] = 1
+	return out
+
+
+func _store_drawn(coord: Vector2i, heights: PackedFloat32Array, n: int, spacing: float) -> void:
+	if heights.is_empty() or n < 2:
+		return
+	var rec := {
+		"h": heights,
+		"n": n,
+		"sp": spacing,
+		"o": WorldConfig.chunk_origin(coord),
+	}
+	_lock.lock()
+	_drawn["%d_%d" % [coord.x, coord.y]] = rec
+	_lock.unlock()
+
+
+## Height of the drawn ground. Falls back to the coarse DEM before the chunk is built.
+func drawn_height_at(x: float, z: float) -> float:
+	var coord := WorldConfig.chunk_of(x, z)
+	var key := "%d_%d" % [coord.x, coord.y]
+	_lock.lock()
+	var has: bool = _drawn.has(key)
+	var rec: Dictionary = _drawn.get(key, {})
+	_lock.unlock()
+	if not has:
+		return height_at(x, z)
+	var o: Vector2 = rec["o"]
+	var sp: float = rec["sp"]
+	var n: int = int(rec["n"])
+	var grid: PackedFloat32Array = rec["h"]
+	var col := (x - o.x) / sp
+	var row := (z - o.y) / sp
+	if col < 0.0 or row < 0.0 or col > float(n - 1) or row > float(n - 1):
+		return height_at(x, z)
+	return _bilinear(grid, n, col, row)
+
+
+## Spawn and respawn stay off the ribbon and above the water surface.
+func dry_ground(x: float, z: float, fallback_y: float) -> Vector3:
+	if _on_dry_ground(x, z):
+		var h := height_at(x, z)
+		var y := h + 0.2 if h > -70.0 else fallback_y
+		return Vector3(x, y, z)
+	var anchor := _water_anchor(x, z)
+	var away := Vector2(x - anchor.x, z - anchor.z)
+	if away.length_squared() < 1.0:
+		away = Vector2(0.0, 1.0)
+	else:
+		away = away.normalized()
+	for extra in [3.0, 8.0, 16.0, 28.0, 48.0]:
+		var sx := anchor.x + away.x * (RIVER_HALF_M + float(extra))
+		var sz := anchor.z + away.y * (RIVER_HALF_M + float(extra))
+		if _on_dry_ground(sx, sz):
+			var bank := height_at(sx, sz)
+			return Vector3(sx, bank + 0.2, sz)
+	return canyon_stand()
+
+
+func _on_dry_ground(x: float, z: float) -> bool:
+	if water_pts.size() < 2:
+		return true
+	var w := _water_at(x, z)
+	if w.x <= RIVER_HALF_M + 0.75:
+		return false
+	var h := height_at(x, z)
+	if h < -70.0:
+		return true
+	return h >= w.y - 0.2
+
+
+func _water_anchor(x: float, z: float) -> Vector3:
+	var best_d := 9999.0
+	var best := Vector3(x, -6.0, z)
+	var n := water_pts.size()
+	for i in n - 1:
+		var a: Vector3 = water_pts[i]
+		var p: Vector3 = water_pts[i + 1]
+		var abx := p.x - a.x
+		var abz := p.z - a.z
+		var len2 := abx * abx + abz * abz
+		var t := 0.0
+		if len2 > 0.0001:
+			t = clampf(((x - a.x) * abx + (z - a.z) * abz) / len2, 0.0, 1.0)
+		var px := a.x + abx * t
+		var pz := a.z + abz * t
+		var d := sqrt((x - px) * (x - px) + (z - pz) * (z - pz))
+		if d < best_d:
+			best_d = d
+			best = Vector3(px, lerpf(a.y, p.y, t), pz)
+	return best
+
+
+func _index_water() -> void:
+	_wbuckets.clear()
+	var n := water_pts.size()
+	for i in n - 1:
+		var a: Vector3 = water_pts[i]
+		var p: Vector3 = water_pts[i + 1]
+		var min_x := int(floor(minf(a.x, p.x) / WATER_CELL)) - 1
+		var max_x := int(floor(maxf(a.x, p.x) / WATER_CELL)) + 1
+		var min_z := int(floor(minf(a.z, p.z) / WATER_CELL)) - 1
+		var max_z := int(floor(maxf(a.z, p.z) / WATER_CELL)) + 1
+		for gz in range(min_z, max_z + 1):
+			for gx in range(min_x, max_x + 1):
+				var key := Vector2i(gx, gz)
+				var packed: PackedInt32Array = _wbuckets.get(key, PackedInt32Array())
+				packed.append(i)
+				_wbuckets[key] = packed
+
+
+func _water_at(x: float, z: float) -> Vector2:
+	if water_pts.size() < 2:
+		return Vector2(9999.0, -6.0)
+	if _wbuckets.is_empty():
+		return water_nearest(x, z)
+	var best_d := 9999.0
+	var best_y := -6.0
+	var gx := int(floor(x / WATER_CELL))
+	var gz := int(floor(z / WATER_CELL))
+	var n := water_pts.size() - 1
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var packed: PackedInt32Array = _wbuckets.get(Vector2i(gx + dx, gz + dz), PackedInt32Array())
+			for i in packed:
+				if i < 0 or i >= n:
+					continue
+				var hit := _seg_dist(x, z, water_pts[i], water_pts[i + 1])
+				if hit.x < best_d:
+					best_d = hit.x
+					best_y = hit.y
+	return Vector2(best_d, best_y)
+
+
+## Vertical error of one quad against the samples. The split matches _quad (diagonal NW-SE).
+func _grid_quad_error(grid: PackedFloat32Array, n: int, c0: int, r0: int, c1: int, r1: int) -> float:
+	var dc := float(c1 - c0)
+	var dr := float(r1 - r0)
+	if dc < 1.0 or dr < 1.0:
+		return 0.0
+	var h00 := grid[r0 * n + c0]
+	var h10 := grid[r0 * n + c1]
+	var h01 := grid[r1 * n + c0]
+	var h11 := grid[r1 * n + c1]
+	var worst := 0.0
+	for r in range(r0, r1 + 1):
+		var tz := float(r - r0) / dr
+		var row := r * n
+		for c in range(c0, c1 + 1):
+			var tx := float(c - c0) / dc
+			var h: float = grid[row + c]
+			var plane: float
+			if tx >= tz:
+				plane = (1.0 - tx) * h00 + (tx - tz) * h10 + tz * h11
+			else:
+				plane = (1.0 - tz) * h00 + tx * h11 + (tz - tx) * h01
+			worst = maxf(worst, absf(h - plane))
+	return worst
 
 
 func _block_merged(dc: Vector2i, c: int, r: int) -> bool:
@@ -776,6 +1133,17 @@ func _levels_for(cx: int, cz: int) -> PackedByteArray:
 				continue
 			if _neighbor_steep(dc, c2, r2 - 1) or _neighbor_steep(dc, c2, r2 + 1) or _neighbor_steep(dc, c2 - 1, r2) or _neighbor_steep(dc, c2 + 1, r2):
 				levels[r2 * CELLS + c2] = 1
+	# Open floor whose 4 m quad would skip a dip or hump. Cliffs are already level 2.
+	# An open cap cannot trip, so skip the scan.
+	if _is_hi(cx, cz) and FLAT_ERR_M < 50.0:
+		var grid := _heights(cx, cz, true)
+		if grid.size() == HI_N * HI_N:
+			for r3 in CELLS:
+				for c3 in CELLS:
+					if levels[r3 * CELLS + c3] != 0:
+						continue
+					if _grid_quad_error(grid, HI_N, c3 * 4, r3 * 4, c3 * 4 + 4, r3 * 4 + 4) > FLAT_ERR_M:
+						levels[r3 * CELLS + c3] = 2
 	_lock.lock()
 	_cache[key] = levels
 	_lock.unlock()
@@ -1000,3 +1368,4 @@ func _load_meta() -> void:
 		for item2 in (water as Dictionary).get("vertices", []):
 			if item2 is Dictionary:
 				water_pts.append(Vector3(float(item2["x"]), float(item2["y"]), float(item2["godot_z"])))
+	_index_water()
