@@ -328,6 +328,9 @@ func _build(coord: Vector2i, dc: Vector2i, hi: bool, floor_box: Dictionary = {})
 	# Sample the simplified triangles so the heightmap matches the drawn surface.
 	var t_sample := Time.get_ticks_usec()
 	var drawn := _collision_from_mesh(b)
+	# The simplified quad can bridge the carriageway. Put that footprint back on the cut.
+	if _roads != null and drawn.size() == b.n * b.n and b.grid.size() == b.n * b.n:
+		_roads.clamp_footprint(drawn, b.grid, b.origin, b.n, b.spacing)
 	stage["sample"] = (Time.get_ticks_usec() - t_sample) / 1000
 	_store_drawn(coord, drawn, b.n, b.spacing)
 	pay.heights = drawn
