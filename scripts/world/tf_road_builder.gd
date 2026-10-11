@@ -876,6 +876,7 @@ func _job_mark(host: Node3D, mark: Dictionary) -> void:
 	_finish_mark(host, inst, at, yaw_deg, fp, bool(mark.get("seat", false)))
 	if str(mark["id"]) == "perrine_bridge":
 		_apply_named_slots(inst, BRIDGE_SLOTS)
+		_bridge_extras(inst)
 	if str(mark["id"]) == "centennial_park_ramp":
 		_place_dock(host, at)
 	if str(mark["id"]) == "coin_viewers":
@@ -1258,7 +1259,9 @@ func _terrain_at(host: Node, x: float, z: float) -> float:
 
 
 func _ensure_collision(root: Node3D) -> void:
-	if root.find_child("CollisionShape3D", true, false) != null:
+	# Imported -colonly nodes already have CollisionShape3D, but they do not
+	# cover every visual mesh (v4 bridge abutments, piers, arch, rails).
+	if root.get_node_or_null("LandmarkBody") != null:
 		return
 	var body := StaticBody3D.new()
 	body.name = "LandmarkBody"
@@ -1271,7 +1274,8 @@ func _ensure_collision(root: Node3D) -> void:
 func _collect_meshes(root: Node3D, node: Node, body: StaticBody3D) -> void:
 	if node is MeshInstance3D:
 		var mi := node as MeshInstance3D
-		if mi.mesh != null:
+		# Skip -colonly leftovers; the importer already made StaticBody3D nodes.
+		if mi.mesh != null and not str(mi.name).contains("col"):
 			var shape := mi.mesh.create_trimesh_shape()
 			if shape != null:
 				var col := CollisionShape3D.new()
@@ -1282,6 +1286,36 @@ func _collect_meshes(root: Node3D, node: Node, body: StaticBody3D) -> void:
 		if child == body:
 			continue
 		_collect_meshes(root, child, body)
+
+
+## v4 colonly rails stop at 1.07 m. A 1.1 m box on each deck edge keeps a
+## cone from sliding off the 148 m lane. Thin steel arch springs get a
+## solid box so a cone cannot walk through the piers.
+func _bridge_extras(root: Node3D) -> void:
+	var body := root.get_node_or_null("LandmarkBody") as StaticBody3D
+	if body == null:
+		body = StaticBody3D.new()
+		body.name = "LandmarkBody"
+		body.collision_layer = 1
+		body.collision_mask = 0
+		root.add_child(body)
+	for side in [-1.0, 1.0]:
+		var box := BoxShape3D.new()
+		box.size = Vector3(0.40, 1.12, 457.0)
+		var col := CollisionShape3D.new()
+		col.name = "Rail_%s" % ("W" if side < 0.0 else "E")
+		col.shape = box
+		col.position = Vector3(side * 9.65, 148.56, 0.0)
+		body.add_child(col)
+	for sz in [-151.8, 151.8]:
+		for sx in [-7.9, 7.9]:
+			var pier := BoxShape3D.new()
+			pier.size = Vector3(1.6, 8.0, 2.6)
+			var col := CollisionShape3D.new()
+			col.name = "Pier"
+			col.shape = pier
+			col.position = Vector3(sx, 63.6, sz)
+			body.add_child(col)
 
 
 func _mesh_xf(root: Node3D, node: Node3D) -> Transform3D:
