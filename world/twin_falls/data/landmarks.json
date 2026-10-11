@@ -302,18 +302,18 @@
    "id": "centennial_park_ramp",
    "name": "Centennial Waterfront Park boat ramp / respawn",
    "position": [
-    2450,
-    0.031,
-    -6600
+    2445.0,
+    -3.74,
+    -6757.0
    ],
-   "ground_y": 0.031,
+   "ground_y": -3.74,
    "yaw_deg": 0,
    "footprint_m": [
     8,
-    40
+    20
    ],
-   "source": "challenge-sites 3",
-   "model": "res://Models/twin_falls/tf_boat_ramp_8m.glb",
+   "source": "challenge-sites 3; v2 top edge on the south bank, -Z into the river",
+   "model": "res://Models/twin_falls/tf_boat_ramp_8m_v2.glb",
    "note": null
   },
   {

@@ -15,11 +15,19 @@ const BUCKET := 64.0
 const BLEND_M := 6.0
 const SHAVE_M := 0.02
 const LIFT_M := 0.03
-const DECK_LIFT_M := 0.06
+## v4 lanes sit on the polyline (142.76). A higher lift steps the approach off the deck.
+const DECK_LIFT_M := 0.0
 const SKIRT_GAP_M := 0.30
 const LINE_W := 0.12
 const RAIL_HALF := 1.9
-const RAIL_GAUGE := 0.75
+## Half of 1.435 m standard gauge. Overwritten from railways[].gauge_m when present.
+const RAIL_GAUGE := 0.7175
+const GRADE_TAIL_M := 54.0
+const RAMP_TOP := Vector3(2445.0, -3.74, -6757.0)
+const SIGN_SCENE := "res://Models/street_furniture/tf_street_name_sign.glb"
+const RAMP_SCENE := "res://Models/twin_falls/tf_boat_ramp_8m_v2.glb"
+const DOCK_SCENE := "res://Models/twin_falls/tf_launch_dock_3x15m.glb"
+const FONT_PATH := "res://Models/street_furniture/_fonts/Overpass-Bold.ttf"
 ## Minor roads ramp to the wider road over this distance so a junction has no step.
 const JOIN_M := 16.0
 const DROP_RAIL_M := 2.0
@@ -36,6 +44,10 @@ var _marks: Array = []
 var _name_of: Dictionary = {}
 var _by_id: Dictionary = {}
 var _mats: Dictionary = {}
+var _gauge_half := RAIL_GAUGE
+var _grade_end := -1.0
+var _plates: Array = []
+var _font: Font
 
 
 func prepare() -> void:
@@ -46,6 +58,9 @@ func prepare() -> void:
 	_marks.clear()
 	_name_of.clear()
 	_by_id.clear()
+	_plates.clear()
+	_grade_end = -1.0
+	_gauge_half = RAIL_GAUGE
 	var roads: Variant = JSON.parse_string(FileAccess.get_file_as_string(DATA + "/roads.json"))
 	if roads is Dictionary:
 		for item in roads.get("roads", []):
@@ -69,15 +84,32 @@ func prepare() -> void:
 			var pos: Array = item.get("position", [])
 			if pos.size() < 3:
 				continue
+			var at := Vector3(float(pos[0]), float(pos[1]), float(pos[2]))
 			var yaw := 0.0
 			if item.get("yaw_deg") != null:
 				yaw = float(item["yaw_deg"])
+			var gid := str(item.get("id", "mark"))
+			if gid == "centennial_park_ramp":
+				# v2 pivot is the top edge. Local -Z runs into the river.
+				# Node y is water + 1.5 so about 7.5 m of the slope is submerged.
+				path = RAMP_SCENE
+				at = RAMP_TOP
+				yaw = 0.0
+			var fp := Vector2(4.0, 4.0)
+			var raw_fp: Variant = item.get("footprint_m", [])
+			if raw_fp is Array and (raw_fp as Array).size() >= 2:
+				fp = Vector2(float((raw_fp as Array)[0]), float((raw_fp as Array)[1]))
+			# The bridge origin is the water, and the falls card is outside the grid.
+			var seat := gid != "perrine_bridge" and gid != "shoshone_falls_card" and gid != "centennial_park_ramp"
 			_marks.append({
-				"id": str(item.get("id", "mark")),
+				"id": gid,
 				"path": path,
-				"at": Vector3(float(pos[0]), float(pos[1]), float(pos[2])),
+				"at": at,
 				"yaw": yaw,
+				"fp": fp,
+				"seat": seat,
 			})
+	_collect_plates()
 	_build_mats()
 
 
@@ -117,8 +149,13 @@ func build_chunk(coord: Vector2i, grid: PackedFloat32Array, n: int, spacing: flo
 	var faces := PackedVector3Array()
 	for road in _roads:
 		_emit_road(road, rect, grid, n, spacing, coord, surfs, faces)
-	_emit_junctions(coord, surfs["asphalt"], faces)
-	var signs := _signs_for(coord, surfs["board"])
+	_emit_junctions(coord, surfs["asphalt"], faces, grid, n, spacing)
+	var signs := _signs_for(coord)
+	var plates: Array = []
+	for plate in _plates:
+		var pat: Vector3 = plate["at"]
+		if WorldConfig.chunk_of(pat.x, pat.z) == coord:
+			plates.append(plate)
 	var marks: Array = []
 	for mark in _marks:
 		var at: Vector3 = mark["at"]
@@ -130,9 +167,9 @@ func build_chunk(coord: Vector2i, grid: PackedFloat32Array, n: int, spacing: flo
 		if surf.idx.is_empty():
 			continue
 		surfaces.append({"mat": key, "v": surf.v, "n": surf.nrm, "uv": surf.uv, "i": surf.idx})
-	if surfaces.is_empty() and faces.is_empty() and signs.is_empty() and marks.is_empty():
+	if surfaces.is_empty() and faces.is_empty() and signs.is_empty() and marks.is_empty() and plates.is_empty():
 		return {}
-	return {"surfaces": surfaces, "faces": faces, "signs": signs, "marks": marks}
+	return {"surfaces": surfaces, "faces": faces, "signs": signs, "marks": marks, "plates": plates}
 
 
 func jobs(host: Node3D, pack: Dictionary) -> Array[Callable]:
@@ -151,6 +188,9 @@ func jobs(host: Node3D, pack: Dictionary) -> Array[Callable]:
 	var marks: Array = pack.get("marks", [])
 	for i in marks.size():
 		out.append(_job_mark.bind(host, marks[i]))
+	var plates: Array = pack.get("plates", [])
+	if not plates.is_empty():
+		out.append(_job_plates.bind(host, plates))
 	return out
 
 
@@ -164,6 +204,16 @@ func _add_road(item: Dictionary, rail: bool) -> void:
 			pts.append(Vector3(float(p[0]), float(p[1]), float(p[2])))
 	if pts.size() < 2:
 		return
+	if rail:
+		var gauge := float(item.get("gauge_m", 1.435))
+		if gauge > 0.4:
+			_gauge_half = gauge * 0.5
+	if str(item.get("id", "")) == "canyon_springs_grade":
+		var authored := 0.0
+		for i in range(1, pts.size()):
+			authored += Vector2(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z).length()
+		_grade_end = authored
+		pts = _extend_grade(pts)
 	var lanes := int(item.get("lanes", 1))
 	var width := float(item.get("lane_width_m", 3.35)) * float(maxi(lanes, 1))
 	if rail:
@@ -199,6 +249,7 @@ func _add_road(item: Dictionary, rail: bool) -> void:
 		"chain": chain,
 		"kind": kinds,
 		"rail": rail,
+		"advisory": _advisory_of(item, pts.size() - 1),
 	}
 	var ri := _roads.size()
 	_roads.append(rec)
@@ -216,6 +267,64 @@ func _add_road(item: Dictionary, rail: bool) -> void:
 		var ei := _edges.size()
 		_edges.append(edge)
 		_bucket_edge(ei, edge)
+
+
+## The grade stops on the canyon floor short of the river. Continue it north to the
+## south edge of the rendered ribbon and crest onto the boat-ramp head.
+func _extend_grade(pts: PackedVector3Array) -> PackedVector3Array:
+	var end := pts[pts.size() - 1]
+	var out := pts.duplicate()
+	var run: Array[Vector3] = [
+		Vector3(end.x, -8.0, end.z - 25.0),
+		Vector3(2448.0, -8.0, -6680.0),
+		Vector3(2446.0, -8.0, -6735.0),
+		Vector3(2445.0, -8.0, -6745.0),
+		RAMP_TOP,
+	]
+	for p in run:
+		out.append(p)
+	return out
+
+
+func _advisory_of(item: Dictionary, nseg: int) -> PackedInt32Array:
+	var adv := PackedInt32Array()
+	adv.resize(maxi(nseg, 0))
+	var raw: Variant = item.get("advisory_mph", [])
+	if not (raw is Array):
+		return adv
+	var rows: Array = raw
+	for i in mini(rows.size(), adv.size()):
+		if rows[i] != null:
+			adv[i] = int(rows[i])
+	return adv
+
+
+func _collect_plates() -> void:
+	for road in _roads:
+		if bool(road["rail"]):
+			continue
+		var adv: PackedInt32Array = road["advisory"]
+		var pts: PackedVector3Array = road["pts"]
+		var i := 0
+		while i < adv.size():
+			if adv[i] != 15:
+				i += 1
+				continue
+			var start := i
+			while i < adv.size() and adv[i] == 15:
+				i += 1
+			var p: Vector3 = pts[start]
+			var nxt: Vector3 = pts[mini(start + 1, pts.size() - 1)]
+			var dir := nxt - p
+			dir.y = 0.0
+			if dir.length_squared() < 0.01:
+				dir = Vector3(0.0, 0.0, -1.0)
+			else:
+				dir = dir.normalized()
+			var side := Vector3(-dir.z, 0.0, dir.x)
+			var at := p + side * (float(road["half"]) + 1.5)
+			at.y = p.y
+			_plates.append({"at": at, "yaw": atan2(-dir.z, dir.x)})
 
 
 func _bucket_edge(ei: int, edge: Dictionary) -> void:
@@ -389,10 +498,21 @@ func _emit_span(road_id: String, kind: String, rail: bool, lanes: int, half: flo
 		r1.y = _pin_end(r1, road_id, lift, r1.y)
 		var c0 := chain_a + (chain_b - chain_a) * t0
 		var c1 := chain_a + (chain_b - chain_a) * t1
+		l0.y = _seat_grade(road_id, c0, l0, l0.y, grid, origin, n, spacing)
+		l1.y = _seat_grade(road_id, c1, l1, l1.y, grid, origin, n, spacing)
+		r0.y = _seat_grade(road_id, c0, r0, r0.y, grid, origin, n, spacing)
+		r1.y = _seat_grade(road_id, c1, r1, r1.y, grid, origin, n, spacing)
+		# The v4 model is the deck. A second asphalt sheet hides the lanes and
+		# puts the ray on the sheet instead of the deck. Keep the walk surface.
+		if kind == "bridge" and not rail:
+			_solid_quad(faces, l0, r0, r1, l1)
+			return
 		if rail:
 			var ball: _Surf = surfs["ballast"]
 			_quad(ball, l0, r0, r1, l1, c0, c1, 0.0, half * 2.0, true, faces)
 			_rails(surfs["rail"], l0, r0, r1, l1, c0, c1)
+			if kind == "trestle":
+				_trestle(surfs["basalt"], l0, r0, r1, l1, grid, origin, n, spacing, faces)
 			return
 		var top: _Surf = surfs["asphalt"]
 		_quad(top, l0, r0, r1, l1, c0, c1, 0.0, half * 2.0, true, faces)
@@ -410,8 +530,9 @@ func _emit_span(road_id: String, kind: String, rail: bool, lanes: int, half: flo
 		if kind == "cut" or kind == "fill":
 			_skirts(surfs["basalt"], l0, r0, l1, r1, grid, origin, n, spacing, faces)
 		if GUARD_ROADS.has(road_id):
-			_guard_edge(surfs["guard"], l0, l1, r0, grid, origin, n, spacing, faces)
-			_guard_edge(surfs["guard"], r0, r1, l0, grid, origin, n, spacing, faces)
+			var rim := road_id == "rim_road_south"
+			_guard_edge(surfs["guard"], l0, l1, r0, grid, origin, n, spacing, faces, rim)
+			_guard_edge(surfs["guard"], r0, r1, l0, grid, origin, n, spacing, faces, rim)
 
 
 func _skirts(surf: _Surf, l0: Vector3, r0: Vector3, l1: Vector3, r1: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array) -> void:
@@ -444,7 +565,7 @@ func _rails(surf: _Surf, l0: Vector3, r0: Vector3, r1: Vector3, l1: Vector3, c0:
 	if across.length_squared() < 0.01:
 		return
 	var side := across.normalized()
-	for off_v in [RAIL_GAUGE, -RAIL_GAUGE]:
+	for off_v in [_gauge_half, -_gauge_half]:
 		var shift := side * float(off_v)
 		var lift := Vector3(0.0, 0.18, 0.0)
 		var hw := side * 0.06
@@ -489,7 +610,7 @@ func _line(surf: _Surf, l0: Vector3, r0: Vector3, l1: Vector3, r1: Vector3, half
 		t = t_end
 
 
-func _emit_junctions(coord: Vector2i, surf: _Surf, faces: PackedVector3Array) -> void:
+func _emit_junctions(coord: Vector2i, surf: _Surf, faces: PackedVector3Array, grid: PackedFloat32Array, n: int, spacing: float) -> void:
 	for item in _junctions:
 		var pos: Array = item.get("pos", [])
 		if pos.size() < 3:
@@ -503,7 +624,8 @@ func _emit_junctions(coord: Vector2i, surf: _Surf, faces: PackedVector3Array) ->
 				continue
 			var road: Dictionary = _roads[int(_by_id[str(id)])]
 			radius = maxf(radius, float(road["half"]) + 1.0)
-		var y := _major_y(item) + LIFT_M
+		var origin := WorldConfig.chunk_origin(coord)
+		var y := _surface_y(Vector3(at.x, _major_y(item), at.z), _major_id(item), _joint_lift(item), grid, origin, n, spacing)
 		var fan := PackedVector3Array()
 		var centre := WorldConfig.to_local(Vector3(at.x, y, at.z))
 		fan.append(centre)
@@ -515,7 +637,7 @@ func _emit_junctions(coord: Vector2i, surf: _Surf, faces: PackedVector3Array) ->
 			_tri(surf, fan[0], fan[s + 1], fan[s + 2], faces)
 
 
-func _signs_for(coord: Vector2i, board: _Surf) -> Array:
+func _signs_for(coord: Vector2i) -> Array:
 	var signs: Array = []
 	for item in _junctions:
 		var pos: Array = item.get("pos", [])
@@ -524,8 +646,8 @@ func _signs_for(coord: Vector2i, board: _Surf) -> Array:
 		var at := Vector3(float(pos[0]), float(pos[1]), float(pos[2]))
 		if WorldConfig.chunk_of(at.x, at.z) != coord:
 			continue
-		var text := _sign_text(item.get("roads", []))
-		if text == "":
+		var names := _sign_names(item.get("roads", []))
+		if names.is_empty():
 			continue
 		var dir := Vector3(0.0, 0.0, -1.0)
 		var half := 4.0
@@ -540,52 +662,43 @@ func _signs_for(coord: Vector2i, board: _Surf) -> Array:
 		if side.length_squared() < 0.01:
 			side = Vector3(1.0, 0.0, 0.0)
 		side = side.normalized()
-		var stand := at + side * (half + 1.4)
+		var stand := at + side * (half + 1.6)
 		stand.y = at.y
-		var back := side
-		var right := Vector3.UP.cross(back).normalized()
-		var basis := Basis(right, Vector3.UP, back)
-		var lines := text.split("\n")
-		var width := 1.3
-		for line in lines:
-			width = maxf(width, float(line.length()) * 0.13)
-		var height := float(lines.size()) * 0.36 + 0.22
-		var top := 2.15
-		_post(board, stand, basis)
-		var centre := stand + Vector3(0.0, top, 0.0)
-		var hx := basis.x * width * 0.5
-		var hy := Vector3(0.0, height * 0.5, 0.0)
-		var hz := basis.z * 0.03
-		var empty := PackedVector3Array()
-		_wall(board, centre - hx - hy + hz, centre + hx - hy + hz, centre + hx + hy + hz, centre - hx + hy + hz, false, empty)
-		# Label faces -Z (toward the road). Keep it on the near side of the board.
+		# Blade A runs along local +X, so it is parallel to the street it names.
 		signs.append({
-			"at": centre - basis.z * 0.04,
-			"basis": basis,
-			"text": text,
+			"at": stand,
+			"yaw": atan2(-dir.z, dir.x),
+			"a": names[0],
+			"b": names[1] if names.size() > 1 else "",
 		})
 	return signs
 
 
-func _post(surf: _Surf, stand: Vector3, basis: Basis) -> void:
-	var x := basis.x * 0.05
-	var z := basis.z * 0.05
-	var top := stand + Vector3(0.0, 2.0, 0.0)
-	var empty := PackedVector3Array()
-	_wall(surf, stand - x, stand + x, top + x, top - x, false, empty)
-	_wall(surf, stand - z, stand + z, top + z, top - z, false, empty)
-
-
-func _sign_text(ids: Array) -> String:
+func _sign_names(ids: Array) -> PackedStringArray:
 	var seen := {}
-	var lines := PackedStringArray()
+	var names := PackedStringArray()
 	for id in ids:
-		var name := str(_name_of.get(str(id), ""))
+		var name := _short_street(str(_name_of.get(str(id), "")))
 		if name == "" or seen.has(name):
 			continue
 		seen[name] = true
-		lines.append(name)
-	return "\n".join(lines)
+		names.append(name)
+		if names.size() == 2:
+			break
+	return names
+
+
+func _short_street(raw: String) -> String:
+	var s := raw
+	var cut := s.find("(")
+	if cut > 1:
+		s = s.substr(0, cut).strip_edges()
+	s = s.replace("Boulevard", "Blvd")
+	s = s.replace("Avenue", "Ave")
+	s = s.replace("Street", "St")
+	s = s.replace("Road", "Rd")
+	s = s.replace("Drive", "Dr")
+	return s
 
 
 func _road_dir(road: Dictionary, at: Vector3) -> Vector3:
@@ -646,23 +759,33 @@ func _job_body(host: Node3D, faces: PackedVector3Array) -> void:
 func _job_signs(host: Node3D, signs: Array) -> void:
 	if host.get_node_or_null("StreetSigns") != null:
 		return
+	var packed := load(SIGN_SCENE) as PackedScene
+	if packed == null:
+		push_error("Street sign failed to load: %s" % SIGN_SCENE)
+		return
 	var root := Node3D.new()
 	root.name = "StreetSigns"
 	host.add_child(root)
+	var font := _sign_font()
 	for item in signs:
-		var label := Label3D.new()
-		label.text = str(item["text"])
-		label.font_size = 56
-		label.pixel_size = 0.0055
-		label.modulate = Color(0.96, 0.94, 0.88)
-		label.outline_modulate = Color(0.08, 0.08, 0.08)
-		label.outline_size = 8
-		label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
-		label.position = WorldConfig.to_local(item["at"])
-		label.basis = item["basis"]
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		root.add_child(label)
+		var inst := packed.instantiate() as Node3D
+		if inst == null:
+			continue
+		var at: Vector3 = item["at"]
+		var ground := _terrain_at(host, at.x, at.z)
+		if ground > -70.0:
+			at.y = ground
+		inst.position = WorldConfig.to_local(at)
+		inst.rotation = Vector3(0.0, float(item["yaw"]), 0.0)
+		root.add_child(inst)
+		_blade_label(inst, "TextAnchor_A_front", str(item["a"]), font)
+		_blade_label(inst, "TextAnchor_A_back", str(item["a"]), font)
+		if str(item["b"]) != "":
+			_blade_label(inst, "TextAnchor_B_front", str(item["b"]), font)
+			_blade_label(inst, "TextAnchor_B_back", str(item["b"]), font)
+		_ensure_collision(inst)
+		if inst.find_child("CollisionShape3D", true, false) == null:
+			_post_box(inst)
 
 
 func _job_mark(host: Node3D, mark: Dictionary) -> void:
@@ -679,17 +802,338 @@ func _job_mark(host: Node3D, mark: Dictionary) -> void:
 	inst.name = node_name
 	var at: Vector3 = mark["at"]
 	var yaw_deg := float(mark["yaw"])
-	# The v3 deck's +Z end is the south approach. Positive yaw swings that end
-	# east, onto the US-93 centreline. The file stores the bearing as -1.7.
-	if str(mark["id"]) == "perrine_bridge":
-		yaw_deg = -yaw_deg
-		# v4 bridge_road is local y=148 with no node offset. Landmark y=-5.24
-		# puts the lanes at 142.76, flush with both approaches. A centreline ray
-		# hits the median (local 148.81, world 143.57); that is not the deck.
+	# v4 lanes are local y=148 and the origin is the water, so landmark y is the
+	# water height and the deck lands on 142.76. File yaw -1.7 aims local +Z at
+	# the south road end. A centreline ray hits the median, so flush checks use a lane.
+	if str(mark["id"]) == "centennial_park_ramp":
+		# v2 pivot is the top edge. Local -Z runs downhill into the river.
+		at = RAMP_TOP
+		yaw_deg = 0.0
+	var fp: Vector2 = mark.get("fp", Vector2(4.0, 4.0))
+	var foot := _foot_ys(host, at, yaw_deg, fp)
+	var mesh_bottom := 0.0
+	if bool(mark.get("seat", false)):
+		mesh_bottom = _mesh_min_y(inst)
+		if foot.x > -70.0:
+			# Mesh bottom on the high corner. The plinth fills down to the low corner.
+			at.y = foot.y - mesh_bottom
 	inst.position = WorldConfig.to_local(at)
 	inst.rotation = Vector3(0.0, deg_to_rad(yaw_deg), 0.0)
 	host.add_child(inst)
 	_ensure_collision(inst)
+	if bool(mark.get("seat", false)) and foot.x > -70.0 and foot.y - foot.x > 0.12:
+		_plinth(inst, fp, foot.y - foot.x, mesh_bottom)
+	if str(mark["id"]) == "centennial_park_ramp":
+		_place_dock(host, at)
+	if str(mark["id"]) == "coin_viewers":
+		_extra_viewers(inst, str(mark["path"]))
+
+
+func _major_id(item: Dictionary) -> String:
+	var best := -1.0
+	var found := ""
+	for id in item.get("roads", []):
+		if not _by_id.has(str(id)):
+			continue
+		var road: Dictionary = _roads[int(_by_id[str(id)])]
+		var half := float(road["half"])
+		if half < best:
+			continue
+		best = half
+		found = str(id)
+	return found
+
+
+## Last 54 m of the authored grade sits on the terrain. The extension to the
+## ramp does too, then rises onto the ramp head over the last 18 m.
+func _seat_grade(road_id: String, chain: float, p: Vector3, y: float, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> float:
+	if road_id != "canyon_springs_grade" or _grade_end < 0.0:
+		return y
+	var g := _ground(grid, origin, n, spacing, p.x, p.z)
+	if g < -70.0:
+		return y
+	if chain > _grade_end:
+		var d := Vector2(p.x - RAMP_TOP.x, p.z - RAMP_TOP.z).length()
+		# Corners sit about a half-width off the centreline, so the whole end
+		# cap (not just the centre vertex) has to meet the ramp head.
+		if d < 4.0:
+			return RAMP_TOP.y
+		if d < 18.0:
+			var t := clampf(1.0 - (d - 4.0) / 14.0, 0.0, 1.0)
+			return lerpf(g + LIFT_M, RAMP_TOP.y, t)
+		return g + LIFT_M
+	if chain >= _grade_end - GRADE_TAIL_M:
+		return g + LIFT_M
+	return y
+
+
+func _trestle(surf: _Surf, l0: Vector3, r0: Vector3, r1: Vector3, l1: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array) -> void:
+	var mid := (l0 + r0 + r1 + l1) * 0.25
+	var g := _ground(grid, origin, n, spacing, mid.x, mid.z)
+	if g < -70.0 or mid.y - g < 2.0:
+		return
+	var across := Vector3(r0.x - l0.x, 0.0, r0.z - l0.z)
+	if across.length_squared() < 0.01:
+		return
+	var side := across.normalized()
+	for off_v in [_gauge_half, -_gauge_half]:
+		var top := mid + side * float(off_v)
+		top.y = mid.y - 0.05
+		_column(surf, top, g, 0.16, 0.16, faces)
+
+
+func _column(surf: _Surf, top: Vector3, ground_y: float, hx: float, hz: float, faces: PackedVector3Array) -> void:
+	var corners: Array[Vector3] = [
+		Vector3(-hx, 0.0, -hz),
+		Vector3(hx, 0.0, -hz),
+		Vector3(hx, 0.0, hz),
+		Vector3(-hx, 0.0, hz),
+	]
+	for i in 4:
+		var j := (i + 1) % 4
+		var a := top + corners[i]
+		var b := top + corners[j]
+		var c := Vector3(b.x, ground_y, b.z)
+		var d := Vector3(a.x, ground_y, a.z)
+		_wall(surf, a, b, c, d, true, faces)
+
+
+func _sign_font() -> Font:
+	if _font != null:
+		return _font
+	if ResourceLoader.exists(FONT_PATH):
+		var loaded := load(FONT_PATH) as Font
+		if loaded != null:
+			_font = loaded
+			return _font
+	var sys := SystemFont.new()
+	sys.font_weight = 700
+	_font = sys
+	return _font
+
+
+func _fit_font(text: String) -> int:
+	var n := text.length()
+	if n <= 9:
+		return 214
+	return clampi(int(214.0 * 9.0 / float(n)), 171, 214)
+
+
+func _blade_label(root: Node3D, anchor_name: String, text: String, font: Font) -> void:
+	if text == "":
+		return
+	var anchor := root.find_child(anchor_name, true, false) as Node3D
+	if anchor == null:
+		push_error("Sign anchor missing: %s" % anchor_name)
+		return
+	var label := Label3D.new()
+	label.text = text
+	label.font = font
+	label.pixel_size = 0.001
+	label.font_size = _fit_font(text)
+	label.modulate = Color(245.0 / 255.0, 245.0 / 255.0, 240.0 / 255.0)
+	label.outline_size = 0
+	label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	label.double_sided = false
+	label.shaded = false
+	label.no_depth_test = false
+	label.width = 860.0
+	label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	# Anchor +Z points out of the face. An identity Label3D reads correctly.
+	anchor.add_child(label)
+
+
+func _post_box(root: Node3D) -> void:
+	var body := StaticBody3D.new()
+	body.name = "SignPost"
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(0.0604, 2.27, 0.0604)
+	var col := CollisionShape3D.new()
+	col.shape = shape
+	col.position = Vector3(0.0, 1.135, 0.0)
+	body.add_child(col)
+	root.add_child(body)
+
+
+func _job_plates(host: Node3D, plates: Array) -> void:
+	if host.get_node_or_null("Advisory") != null:
+		return
+	var root := Node3D.new()
+	root.name = "Advisory"
+	host.add_child(root)
+	var font := _sign_font()
+	for item in plates:
+		var at: Vector3 = item["at"]
+		var ground := _terrain_at(host, at.x, at.z)
+		if ground > -70.0:
+			at.y = ground
+		var node := Node3D.new()
+		node.position = WorldConfig.to_local(at)
+		node.rotation = Vector3(0.0, float(item["yaw"]), 0.0)
+		root.add_child(node)
+		_advisory_plate(node, font)
+		_post_box(node)
+
+
+func _advisory_plate(node: Node3D, font: Font) -> void:
+	var post := MeshInstance3D.new()
+	var pole := BoxMesh.new()
+	pole.size = Vector3(0.08, 2.15, 0.08)
+	post.mesh = pole
+	post.position = Vector3(0.0, 1.075, 0.0)
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.72, 0.74, 0.76)
+	steel.metallic = 0.6
+	steel.roughness = 0.4
+	post.material_override = steel
+	node.add_child(post)
+	var board := MeshInstance3D.new()
+	var slab := BoxMesh.new()
+	slab.size = Vector3(0.02, 0.55, 0.45)
+	board.mesh = slab
+	board.position = Vector3(0.0, 1.85, 0.0)
+	var yellow := StandardMaterial3D.new()
+	yellow.albedo_color = Color(0.95, 0.78, 0.1)
+	yellow.roughness = 0.45
+	board.material_override = yellow
+	node.add_child(board)
+	for flip in [0.0, PI]:
+		var label := Label3D.new()
+		label.text = "15"
+		label.font = font
+		label.pixel_size = 0.001
+		label.font_size = 214
+		label.modulate = Color(0.08, 0.08, 0.08)
+		label.outline_size = 0
+		label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+		label.shaded = false
+		label.position = Vector3(0.02 if flip == 0.0 else -0.02, 1.85, 0.0)
+		label.rotation = Vector3(0.0, flip, 0.0)
+		node.add_child(label)
+
+
+## Returns (min_y, max_y). min_y < -70 when the footprint is off the DEM.
+func _foot_ys(host: Node, at: Vector3, yaw_deg: float, fp: Vector2) -> Vector2:
+	var yaw := deg_to_rad(yaw_deg)
+	var c := cos(yaw)
+	var s := sin(yaw)
+	var lo := 1.0e9
+	var hi := -1.0e9
+	var hits := 0
+	for ix in [-1.0, 0.0, 1.0]:
+		for iz in [-1.0, 0.0, 1.0]:
+			var lx := float(ix) * fp.x * 0.5
+			var lz := float(iz) * fp.y * 0.5
+			var x := at.x + lx * c - lz * s
+			var z := at.z + lx * s + lz * c
+			var h := _terrain_at(host, x, z)
+			if h < -70.0:
+				continue
+			hits += 1
+			lo = minf(lo, h)
+			hi = maxf(hi, h)
+	if hits == 0:
+		return Vector2(-80.0, -80.0)
+	return Vector2(lo, hi)
+
+
+func _mesh_min_y(root: Node3D) -> float:
+	var lo := 0.0
+	var found := false
+	for node in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var aabb := mi.mesh.get_aabb()
+		var xf := _mesh_xf(root, mi)
+		for i in 8:
+			var corner := Vector3(
+				aabb.position.x if (i & 1) == 0 else aabb.end.x,
+				aabb.position.y if (i & 2) == 0 else aabb.end.y,
+				aabb.position.z if (i & 4) == 0 else aabb.end.z
+			)
+			var y := (xf * corner).y
+			if not found or y < lo:
+				lo = y
+				found = true
+	return lo if found else 0.0
+
+
+## `top_y` is the mesh bottom in the landmark's local frame. The box meets that
+## bottom and reaches `drop` metres further down, to the low corner of the slope.
+func _plinth(inst: Node3D, fp: Vector2, drop: float, top_y: float) -> void:
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(fp.x, drop, fp.y)
+	var mi := MeshInstance3D.new()
+	mi.name = "Plinth"
+	mi.mesh = mesh
+	mi.position = Vector3(0.0, top_y - drop * 0.5, 0.0)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.55, 0.53, 0.50)
+	mat.roughness = 0.9
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	inst.add_child(mi)
+	var body := inst.find_child("StaticBody3D", true, false) as StaticBody3D
+	if body == null:
+		body = StaticBody3D.new()
+		body.name = "PlinthBody"
+		body.collision_layer = 1
+		body.collision_mask = 0
+		inst.add_child(body)
+	var shape := BoxShape3D.new()
+	shape.size = mesh.size
+	var col := CollisionShape3D.new()
+	col.shape = shape
+	col.position = mi.position
+	body.add_child(col)
+
+
+func _place_dock(host: Node3D, ramp_at: Vector3) -> void:
+	if host.get_node_or_null("Lm_launch_dock") != null:
+		return
+	var packed := load(DOCK_SCENE) as PackedScene
+	if packed == null:
+		push_error("Dock failed to load")
+		return
+	var dock := packed.instantiate() as Node3D
+	if dock == null:
+		return
+	dock.name = "Lm_launch_dock"
+	# East of the ramp. Local +Z stays on the bank; the dock runs north into the water.
+	var at := Vector3(ramp_at.x + 6.2, -5.24 + 0.25, ramp_at.z - 7.5)
+	dock.position = WorldConfig.to_local(at)
+	host.add_child(dock)
+	_ensure_collision(dock)
+
+
+func _extra_viewers(root: Node3D, path: String) -> void:
+	var packed := load(path) as PackedScene
+	if packed == null:
+		return
+	for x in [-2.0, 2.0]:
+		var extra := packed.instantiate() as Node3D
+		if extra == null:
+			continue
+		extra.name = "Viewer"
+		extra.position = Vector3(x, 0.0, 0.0)
+		root.add_child(extra)
+
+
+func _terrain_at(host: Node, x: float, z: float) -> float:
+	var n: Node = host
+	while n != null:
+		var gen: Object = n.get("generator")
+		if gen != null and gen.has_method("drawn_height_at"):
+			return float(gen.call("drawn_height_at", x, z))
+		if gen != null and gen.has_method("height_at"):
+			return float(gen.call("height_at", x, z))
+		n = n.get_parent()
+	return -80.0
 
 
 func _ensure_collision(root: Node3D) -> void:
@@ -1123,6 +1567,14 @@ func _join_y(p: Vector3, road_id: String) -> float:
 	return y
 
 
+## Bridge joints stay on the lane height. A 3 cm lift would step the apron off the v4 deck.
+func _joint_lift(item: Dictionary) -> float:
+	for id in item.get("roads", []):
+		if str(id) == "us93_perrine_bridge":
+			return 0.0
+	return LIFT_M
+
+
 func _major_y(item: Dictionary) -> float:
 	var pos: Array = item.get("pos", [])
 	var fallback := float(pos[1]) if pos.size() >= 3 else 0.0
@@ -1223,16 +1675,25 @@ func _tri_y(x: float, z: float, a: Vector3, b: Vector3, c: Vector3) -> float:
 	return wa * a.y + wb * b.y + wc * c.y
 
 
-func _guard_edge(surf: _Surf, a: Vector3, b: Vector3, other: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array) -> void:
+func _guard_edge(surf: _Surf, a: Vector3, b: Vector3, other: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array, rim: bool) -> void:
 	var outward := Vector3(a.x - other.x, 0.0, a.z - other.z)
 	if outward.length_squared() < 0.01:
 		return
 	outward = outward.normalized()
 	var mid := (a + b) * 0.5
 	var g := _ground(grid, origin, n, spacing, mid.x + outward.x * 3.0, mid.z + outward.z * 3.0)
-	if g < -70.0 or mid.y - g < DROP_RAIL_M:
+	var need := 0.35 if rim else DROP_RAIL_M
+	if g < -70.0 or mid.y - g < need:
 		return
-	var out := outward * 0.16
+	if rim:
+		# Overlap the next piece and sit just inside the pavement edge.
+		var along := b - a
+		along.y = 0.0
+		if along.length() > 0.2:
+			along = along.normalized() * 0.4
+			a -= along
+			b += along
+	var out := outward * (-0.08 if rim else 0.16)
 	var hi := 0.68
 	var lo := 0.36
 	var top_a := a + out + Vector3(0.0, hi, 0.0)
@@ -1242,10 +1703,37 @@ func _guard_edge(surf: _Surf, a: Vector3, b: Vector3, other: Vector3, grid: Pack
 	var empty := PackedVector3Array()
 	_wall(surf, bot_a, bot_b, top_b, top_a, false, empty)
 	_solid_both(faces, bot_a, bot_b, top_b, top_a)
-	var foot_a := a + outward * 0.05
-	var foot_b := a + outward * 0.05 + Vector3(0.0, hi, 0.0)
+	var post := outward * (-0.08 if rim else 0.05)
+	var foot_a := a + post
+	var foot_b := a + post + Vector3(0.0, hi, 0.0)
 	_wall(surf, foot_a, foot_a + outward * 0.12, foot_b + outward * 0.12, foot_b, false, empty)
 	_solid_both(faces, foot_a, foot_a + outward * 0.12, foot_b + outward * 0.12, foot_b)
+
+
+## Walkable quad, no render surface. Used where a landmark mesh is the deck.
+func _solid_quad(faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
+	var la := WorldConfig.to_local(a)
+	var lb := WorldConfig.to_local(b)
+	var lc := WorldConfig.to_local(c)
+	var ld := WorldConfig.to_local(d)
+	var n1 := (lb - la).cross(lc - la)
+	var n2 := (lc - la).cross(ld - la)
+	if n1.y < 0.0:
+		faces.append(la)
+		faces.append(lc)
+		faces.append(lb)
+	else:
+		faces.append(la)
+		faces.append(lb)
+		faces.append(lc)
+	if n2.y < 0.0:
+		faces.append(la)
+		faces.append(ld)
+		faces.append(lc)
+	else:
+		faces.append(la)
+		faces.append(lc)
+		faces.append(ld)
 
 
 func _solid_both(faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
