@@ -90,15 +90,19 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 
 func _river_force(state: PhysicsDirectBodyState3D) -> void:
 	var dir := river_flow
+	if dir.length_squared() < 0.0001:
+		return
+	dir = dir.normalized()
 	var hv := Vector3(state.linear_velocity.x, 0.0, state.linear_velocity.z)
 	var along := hv.dot(dir)
 	var speed := _River.FLOW_SPEED
+	# Drop the cross-current part before the solver. A bank slide otherwise
+	# stacks frame to frame and outruns the 1.35 m/s flow.
 	if along < speed:
-		var accel := minf((speed - along) * 4.0, _River.FLOW_ACCEL)
-		var at := state.transform * (center_of_mass + Vector3(0.0, _River.LEAN_ARM, 0.0))
-		state.apply_force(dir * mass * accel, at)
-	elif along > speed + 0.05:
-		state.linear_velocity = Vector3(hv.x, state.linear_velocity.y, hv.z) - dir * (along - speed)
+		along = minf(along + _River.FLOW_ACCEL * state.step, speed)
+	else:
+		along = speed
+	state.linear_velocity = Vector3(dir.x * along, state.linear_velocity.y, dir.z * along)
 	_hold_river_lean(state)
 
 

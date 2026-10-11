@@ -62,6 +62,7 @@ var _boot_job: RefCounted
 var _boot_box: Dictionary = {}
 var _boot_coord := Vector2i.ZERO
 var _boot_floor_done := false
+var _boot_visual_done := false
 ## Milliseconds since process start, for the boot probe.
 var boot_started_ms := 0
 var boot_floor_at_ms := -1
@@ -165,6 +166,7 @@ func start_boot(coord: Vector2i, focus: Variant = null) -> void:
 	center = coord
 	_boot_coord = coord
 	_boot_floor_done = false
+	_boot_visual_done = false
 	boot_started_ms = Time.get_ticks_msec()
 	var host := Node3D.new()
 	host.name = "Chunk_%d_%d" % [coord.x, coord.y]
@@ -287,9 +289,9 @@ func _track_target() -> void:
 
 
 func _schedule() -> void:
-	# Neighbour generates share the generator object. Wait until the boot thread
-	# has finished with it. The pool stays free for that thread's shadow tasks.
-	if _boot_thread != null:
+	# Road boot waits on pool "shadow" tasks. Terrain generate does not, so its
+	# neighbours start while the spawn chunk is still sampling collision.
+	if _boot_thread != null and _boot_blocks_pool():
 		return
 	var want: Array[Vector2i] = WorldConfig.window(center)
 	var wanted: Dictionary = {}
@@ -619,6 +621,13 @@ func _phase_ms() -> Dictionary:
 	return out
 
 
+func _boot_blocks_pool() -> bool:
+	var gen := generator_for(_boot_coord)
+	if gen != null and gen.has_method("holds_worker_pool"):
+		return bool(gen.call("holds_worker_pool"))
+	return true
+
+
 func _poll_boot() -> void:
 	if _boot_thread == null:
 		return
@@ -626,10 +635,21 @@ func _poll_boot() -> void:
 	var lock: Mutex = box["mutex"]
 	lock.lock()
 	var floor_ready: bool = bool(box["ready"]) and not _boot_floor_done
+	var visual: bool = bool(box.get("visual", false)) and not _boot_visual_done
+	var preview: bool = bool(box.get("preview", false))
 	var done: bool = bool(box["done"])
 	var spawn: Vector3 = box["spawn"]
 	var cols: Array = box["cols"]
+	var parts: Array = box.get("parts", []) if visual else []
+	if visual:
+		_boot_visual_done = true
 	lock.unlock()
+	if visual and _entries.has(_boot_coord):
+		var host_v: Node3D = _entries[_boot_coord]["host"]
+		var gen_v := generator_for(_boot_coord)
+		if host_v != null and gen_v != null and gen_v.has_method("place_parts"):
+			gen_v.call("place_parts", host_v, parts, preview)
+			print("TF_VISUAL ms=%d parts=%d preview=%s" % [Time.get_ticks_msec() - boot_started_ms, parts.size(), str(preview)])
 	if floor_ready:
 		_boot_floor_done = true
 		var host: Node3D = _entries[_boot_coord]["host"]

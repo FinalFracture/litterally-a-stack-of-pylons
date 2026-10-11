@@ -23,8 +23,9 @@ const RIVER_HALF_M := 20.0
 const STAND_CLEAR_M := 36.0
 ## Open on purpose. 0.3 m forced 2 m floor cells and lost more than 5% fps.
 const FLAT_ERR_M := 10000.0
-## Carved depth at the water.json centreline. Banks ease back to the DEM.
+## Carved depth at the water.json centreline. Banks rise at BANK_DEG back to the DEM.
 const BED_DEPTH_M := 1.5
+const BANK_DEG := 17.0
 const WATER_CELL := 64.0
 const SKIP_HI := {
 	"6_0": true,
@@ -49,6 +50,11 @@ var _cache: Dictionary = {}
 ## Drawn heightmaps, keyed by Godot chunk "x_z". Collision and the camera read these.
 var _drawn: Dictionary = {}
 var _wbuckets: Dictionary = {}
+var _us_merge := 0
+var _us_cell := 0
+var _us_commit := 0
+var _n_commit := 0
+var _n_cell := 0
 
 
 class ChunkPay:
@@ -61,6 +67,7 @@ class ChunkPay:
 	var tris := 0
 	var content_hash := ""
 	var roads: Dictionary = {}
+	var stage_ms: Dictionary = {}
 
 
 class Build:
@@ -108,6 +115,11 @@ func prepare() -> void:
 	_mat.set_shader_parameter("wet_alb", load(tex + "tf_wetbank_albedo_2k.jpg"))
 
 
+## Terrain generate does not wait on the worker pool, so neighbours can build during boot.
+func holds_worker_pool() -> bool:
+	return false
+
+
 func generate(coord: Vector2i, world_seed: int, floor_box: Dictionary = {}) -> ChunkData:
 	var t0 := Time.get_ticks_usec()
 	var data := ChunkData.new()
@@ -122,10 +134,10 @@ func generate(coord: Vector2i, world_seed: int, floor_box: Dictionary = {}) -> C
 		data.gen_usec = Time.get_ticks_usec() - t0
 		return data
 	var hi := _is_hi(dc.x, dc.y)
-	var pay := _build(coord, dc, hi)
+	var pay := _build(coord, dc, hi, floor_box)
 	data.payload = pay
 	data.spawn = spawn
-	data.stats = {"hi": hi, "tris": pay.tris, "parts": pay.parts.size()}
+	data.stats = {"hi": hi, "tris": pay.tris, "parts": pay.parts.size(), "stage_ms": pay.stage_ms}
 	data.content_hash = pay.content_hash
 	data.gen_usec = Time.get_ticks_usec() - t0
 	return data
@@ -258,7 +270,21 @@ func _publish_floor(floor_box: Dictionary) -> void:
 	lock.unlock()
 
 
-func _build(coord: Vector2i, dc: Vector2i, hi: bool) -> ChunkPay:
+func _publish_visual(floor_box: Dictionary, parts: Array, preview: bool) -> void:
+	if floor_box.is_empty() or not floor_box.has("mutex") or parts.is_empty():
+		return
+	var lock: Mutex = floor_box["mutex"]
+	lock.lock()
+	if bool(floor_box.get("visual", false)):
+		lock.unlock()
+		return
+	floor_box["parts"] = parts
+	floor_box["preview"] = preview
+	floor_box["visual"] = true
+	lock.unlock()
+
+
+func _build(coord: Vector2i, dc: Vector2i, hi: bool, floor_box: Dictionary = {}) -> ChunkPay:
 	var b := Build.new()
 	b.n = HI_N if hi else LOW_N
 	b.spacing = HI_SP if hi else LOW_SP
@@ -274,28 +300,46 @@ func _build(coord: Vector2i, dc: Vector2i, hi: bool) -> ChunkPay:
 	b.water_y = field["y"]
 	b.water_empty = bool(field["empty"])
 	b.talus = _talus_field(b)
+	var stage := {}
+	var t_mesh := Time.get_ticks_usec()
 	if b.grid.size() == b.n * b.n:
 		# Detach from the height cache. Carve and the mesh must not rewrite the DEM.
 		b.grid = b.grid.duplicate()
 		_carve_bed(b)
+		stage["carve"] = (Time.get_ticks_usec() - t_mesh) / 1000
+		t_mesh = Time.get_ticks_usec()
 		if _roads != null:
 			_roads.apply_cuts(b.grid, b.origin, b.n, b.spacing)
+		stage["cuts"] = (Time.get_ticks_usec() - t_mesh) / 1000
+		t_mesh = Time.get_ticks_usec()
+		# Coarse carved ground, so the spawn view is not empty while the 2 m mesh builds.
+		_publish_visual(floor_box, _preview_parts(b), true)
+		stage["preview"] = (Time.get_ticks_usec() - t_mesh) / 1000
+		t_mesh = Time.get_ticks_usec()
 		if hi:
 			_emit_hi(b)
 		else:
 			_emit_low(b)
+	stage["mesh"] = (Time.get_ticks_usec() - t_mesh) / 1000
 	var pay := ChunkPay.new()
+	pay.parts = _split(b.verts, b.norms, b.cols, b.indices)
+	# Ignored when the preview already flipped the visual flag.
+	_publish_visual(floor_box, pay.parts, false)
 	# Sample the simplified triangles so the heightmap matches the drawn surface.
+	var t_sample := Time.get_ticks_usec()
 	var drawn := _collision_from_mesh(b)
+	stage["sample"] = (Time.get_ticks_usec() - t_sample) / 1000
 	_store_drawn(coord, drawn, b.n, b.spacing)
 	pay.heights = drawn
 	pay.map_n = b.n
 	pay.spacing = b.spacing
 	pay.center = _center_of(coord)
 	pay.tris = b.indices.size() / 3
-	pay.parts = _split(b.verts, b.norms, b.cols, b.indices)
-	if _roads != null and b.grid.size() == b.n * b.n:
-		pay.roads = _roads.build_chunk(coord, b.grid, b.n, b.spacing)
+	var t_roads := Time.get_ticks_usec()
+	if _roads != null and drawn.size() == b.n * b.n:
+		pay.roads = _roads.build_chunk(coord, drawn, b.n, b.spacing)
+	stage["roads"] = (Time.get_ticks_usec() - t_roads) / 1000
+	pay.stage_ms = stage
 	var g := pay.heights
 	var h0 := g[0] if not g.is_empty() else 0.0
 	var h1 := g[g.size() / 2] if not g.is_empty() else 0.0
@@ -304,12 +348,62 @@ func _build(coord: Vector2i, dc: Vector2i, hi: bool) -> ChunkPay:
 	return pay
 
 
+## About 8 m quads of the carved grid. Drawn at once so the canyon is visible
+## while the real mesh is still being simplified.
+func _preview_parts(b: Build) -> Array:
+	if b.grid.size() != b.n * b.n or b.n < 3:
+		return []
+	var stride := 8 if b.hi else 4
+	var n := b.n
+	var steps := int(floor(float(n - 1) / float(stride)))
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var cols := PackedColorArray()
+	var indices := PackedInt32Array()
+	for r in steps:
+		for c in steps:
+			var c0 := c * stride
+			var r0 := r * stride
+			var c1 := mini(c0 + stride, n - 1)
+			var r1 := mini(r0 + stride, n - 1)
+			var base := verts.size()
+			_preview_vert(b, verts, norms, cols, c0, r0)
+			_preview_vert(b, verts, norms, cols, c1, r0)
+			_preview_vert(b, verts, norms, cols, c1, r1)
+			_preview_vert(b, verts, norms, cols, c0, r1)
+			indices.append(base)
+			indices.append(base + 1)
+			indices.append(base + 2)
+			indices.append(base)
+			indices.append(base + 2)
+			indices.append(base + 3)
+	return _split(verts, norms, cols, indices)
+
+
+func _preview_vert(b: Build, verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray, c: int, r: int) -> void:
+	var h := _h(b, c, r)
+	var nrm := _normal_at(b, c, r)
+	var slope := rad_to_deg(acos(clampf(nrm.y, 0.0, 1.0)))
+	var x := _x(b, c)
+	var z := _z(b, r)
+	var wy := _water_sample(b, x, z)
+	verts.append(WorldConfig.to_local(Vector3(x, h, z)))
+	norms.append(nrm)
+	cols.append(_masks(slope, _talus_at(b, x, z), wy.x, h - wy.y))
+
+
 func _emit_low(b: Build) -> void:
 	_emit_blocks(b, 1)
 
 
 func _emit_hi(b: Build) -> void:
+	_us_merge = 0
+	_us_cell = 0
+	_us_commit = 0
+	_n_commit = 0
+	_n_cell = 0
 	_emit_blocks(b, 4)
+	print("EMIT merge_ms=%d cell_ms=%d commit_ms=%d commits=%d cells=%d" % [_us_merge / 1000, _us_cell / 1000, _us_commit / 1000, _n_commit, _n_cell])
 
 
 ## Flat 16 m blocks, 4 m everywhere else, 2 m on cliffs and on floor cells that
@@ -317,16 +411,24 @@ func _emit_hi(b: Build) -> void:
 func _emit_blocks(b: Build, step: int) -> void:
 	for r in range(0, CELLS, 4):
 		for c in range(0, CELLS, 4):
-			if _merge_ok(b, c, r):
+			var t0 := Time.get_ticks_usec()
+			var merged := _merge_ok(b, c, r)
+			_us_merge += Time.get_ticks_usec() - t0
+			if merged:
+				var t1 := Time.get_ticks_usec()
 				_emit_coarse(b, c, r, step)
+				_us_cell += Time.get_ticks_usec() - t1
 			else:
 				for dy in 4:
 					for dx in 4:
+						var t2 := Time.get_ticks_usec()
 						_emit_cell(b, c + dx, r + dy, step)
+						_us_cell += Time.get_ticks_usec() - t2
+						_n_cell += 1
 
 
 func _emit_cell(b: Build, c: int, r: int, step: int) -> void:
-	if step == 4 and _level_at(b.dc.x, b.dc.y, c, r) >= 2:
+	if step == 4 and (_level_at(b.dc.x, b.dc.y, c, r) >= 2 or _cell_on_bank(b, c, r)):
 		var c0 := c * 4
 		var r0 := r * 4
 		for rr in 2:
@@ -468,6 +570,7 @@ func _push_foreign(b: Build, cx: int, cz: int, hi_c: int, hi_r: int) -> int:
 
 
 func _commit(b: Build, x: float, z: float, h: float, nrm: Vector3) -> int:
+	var t0 := Time.get_ticks_usec()
 	var slope := rad_to_deg(acos(clampf(nrm.y, 0.0, 1.0)))
 	var cliff := _talus_at(b, x, z)
 	var wy := _water_sample(b, x, z)
@@ -476,6 +579,8 @@ func _commit(b: Build, x: float, z: float, h: float, nrm: Vector3) -> int:
 	b.verts.append(WorldConfig.to_local(Vector3(x, h, z)))
 	b.norms.append(nrm)
 	b.cols.append(masks)
+	_n_commit += 1
+	_us_commit += Time.get_ticks_usec() - t0
 	return id
 
 
@@ -695,12 +800,43 @@ func _job_body(host: Node3D, pay: ChunkPay) -> void:
 	var existing := host.get_node_or_null("TerrainBody") as StaticBody3D
 	if existing != null:
 		_retarget_body(existing, pay.heights, pay.map_n)
+		existing.set_meta("mesh_sampled", true)
 		return
 	_add_body(host, pay.heights, pay.center, pay.map_n, pay.spacing)
+	var body := host.get_node_or_null("TerrainBody")
+	if body != null:
+		body.set_meta("mesh_sampled", true)
+
+
+## Main thread. Draws the mesh published before collision sampling finishes.
+## A preview uses its own names so the finished parts can replace it.
+func place_parts(host: Node3D, parts: Array, preview: bool = false) -> void:
+	var prefix := "TerrainPreview_%d" if preview else "Terrain_%d"
+	for i in parts.size():
+		if host.get_node_or_null(prefix % i) != null:
+			continue
+		_place_part(host, parts[i], prefix % i)
 
 
 func _job_part(host: Node3D, pay: ChunkPay, index: int) -> void:
-	var part: Dictionary = pay.parts[index]
+	var node_name := "Terrain_%d" % index
+	if host.get_node_or_null(node_name) == null and index < pay.parts.size():
+		_place_part(host, pay.parts[index], node_name)
+	if index == pay.parts.size() - 1:
+		_drop_preview(host)
+
+
+func _drop_preview(host: Node3D) -> void:
+	var gone: Array[Node] = []
+	for child in host.get_children():
+		if str(child.name).begins_with("TerrainPreview_"):
+			gone.append(child)
+	for node in gone:
+		host.remove_child(node)
+		node.free()
+
+
+func _place_part(host: Node3D, part: Dictionary, node_name: String) -> void:
 	var arrays: Array = []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = part["v"]
@@ -710,7 +846,7 @@ func _job_part(host: Node3D, pay: ChunkPay, index: int) -> void:
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	var inst := MeshInstance3D.new()
-	inst.name = "Terrain_%d" % index
+	inst.name = node_name
 	inst.add_to_group("terrain_mesh")
 	inst.mesh = mesh
 	inst.material_override = _mat
@@ -846,48 +982,64 @@ func _carve_bed(b: Build) -> void:
 		return
 	if not _chunk_near_river(b.origin):
 		return
-	var pad := RIVER_HALF_M + 8.0
-	var min_x := b.origin.x - pad
-	var max_x := b.origin.x + 500.0 + pad
-	var min_z := b.origin.y - pad
-	var max_z := b.origin.y + 500.0 + pad
-	var band_min_x := 1.0e12
-	var band_max_x := -1.0e12
-	var band_min_z := 1.0e12
-	var band_max_z := -1.0e12
-	var near := false
+	var n := b.n
+	var sp := b.spacing
+	var reach := RIVER_HALF_M
+	var best_d := PackedFloat32Array()
+	var best_y := PackedFloat32Array()
+	best_d.resize(n * n)
+	best_y.resize(n * n)
+	best_d.fill(1.0e6)
+	var ox := b.origin.x
+	var oz := b.origin.y
+	var half := sp * 0.5
 	for i in water_pts.size() - 1:
 		var a: Vector3 = water_pts[i]
 		var p: Vector3 = water_pts[i + 1]
-		if maxf(a.x, p.x) < min_x or minf(a.x, p.x) > max_x:
+		if maxf(a.x, p.x) < ox - reach or minf(a.x, p.x) > ox + 500.0 + reach:
 			continue
-		if maxf(a.z, p.z) < min_z or minf(a.z, p.z) > max_z:
+		if maxf(a.z, p.z) < oz - reach or minf(a.z, p.z) > oz + 500.0 + reach:
 			continue
-		near = true
-		band_min_x = minf(band_min_x, minf(a.x, p.x) - pad)
-		band_max_x = maxf(band_max_x, maxf(a.x, p.x) + pad)
-		band_min_z = minf(band_min_z, minf(a.z, p.z) - pad)
-		band_max_z = maxf(band_max_z, maxf(a.z, p.z) + pad)
-	if not near:
-		return
-	var n := b.n
-	var c0 := clampi(int(floor((band_min_x - b.origin.x) / b.spacing)) - 1, 0, n - 1)
-	var c1 := clampi(int(ceil((band_max_x - b.origin.x) / b.spacing)) + 1, 0, n - 1)
-	var r0 := clampi(int(floor((band_min_z - b.origin.y) / b.spacing)) - 1, 0, n - 1)
-	var r1 := clampi(int(ceil((band_max_z - b.origin.y) / b.spacing)) + 1, 0, n - 1)
-	for r in range(r0, r1 + 1):
-		var z := _z(b, r)
-		for c in range(c0, c1 + 1):
-			var x := _x(b, c)
-			var hit := _water_at(x, z)
-			if hit.x >= RIVER_HALF_M:
-				continue
-			var t := clampf(hit.x / RIVER_HALF_M, 0.0, 1.0)
-			var fall := t * t * (3.0 - 2.0 * t)
-			var i := r * n + c
-			var original := b.grid[i]
-			var target := lerpf(hit.y - BED_DEPTH_M, original, fall)
-			b.grid[i] = minf(original, target)
+		var abx := p.x - a.x
+		var abz := p.z - a.z
+		var len := sqrt(abx * abx + abz * abz)
+		if len < 0.05:
+			continue
+		var inv := 1.0 / len
+		var nx := -abz * inv
+		var nz := abx * inv
+		var steps := int(ceil(len / half))
+		var lateral := int(ceil(reach / half))
+		for s in steps + 1:
+			var t := float(s) / float(steps)
+			var cx := lerpf(a.x, p.x, t)
+			var cz := lerpf(a.z, p.z, t)
+			for k in range(-lateral, lateral + 1):
+				var x := cx + nx * float(k) * half
+				var z := cz + nz * float(k) * half
+				var col := int(round((x - ox) / sp))
+				var row := int(round((z - oz) / sp))
+				if col < 0 or row < 0 or col >= n or row >= n:
+					continue
+				var hit := _seg_dist(x, z, a, p)
+				if hit.x >= reach:
+					continue
+				var idx := row * n + col
+				if hit.x < best_d[idx]:
+					best_d[idx] = hit.x
+					best_y[idx] = hit.y
+	var rise := tan(deg_to_rad(BANK_DEG))
+	for i in n * n:
+		var dist := best_d[i]
+		if dist >= reach:
+			continue
+		var original := b.grid[i]
+		var wy := best_y[i]
+		# Rock walls stay. The floor bank is a ~17 deg ramp, flat for the inner 1.2 m.
+		if original > wy + 4.0:
+			continue
+		var bank_y := (wy - BED_DEPTH_M) + maxf(dist - 1.2, 0.0) * rise
+		b.grid[i] = minf(original, bank_y)
 
 
 func _chunk_near_river(origin: Vector2) -> bool:
@@ -905,17 +1057,64 @@ func _chunk_near_river(origin: Vector2) -> bool:
 
 
 ## Height at each grid point of the drawn triangles. Uncovered points keep the grid.
+## Slices run on their own threads. Each slice starts from the grid and only raises
+## cells, so the merge is a per-cell max.
 func _collision_from_mesh(b: Build) -> PackedFloat32Array:
 	var n := b.n
-	var out := b.grid.duplicate()
 	if b.indices.is_empty() or n < 2:
-		return out
+		return b.grid.duplicate()
+	var tris := b.indices.size() / 3
+	var slices := 1
+	if tris >= 8000:
+		slices = mini(4, maxi(OS.get_processor_count(), 1))
+	if slices <= 1:
+		return _raster_range(b, 0, tris)
+	var step := int(ceil(float(tris) / float(slices)))
+	var threads: Array[Thread] = []
+	var boxes: Array[Dictionary] = []
+	for s in slices:
+		var a := s * step
+		var c := mini(a + step, tris)
+		if a >= c:
+			break
+		var box := {"out": PackedFloat32Array()}
+		var th := Thread.new()
+		var err := th.start(_raster_job.bind(b, a, c, box))
+		if err != OK:
+			box["out"] = _raster_range(b, a, c)
+		else:
+			threads.append(th)
+		boxes.append(box)
+	for th in threads:
+		th.wait_to_finish()
+	var out := b.grid.duplicate()
+	for box in boxes:
+		var part: PackedFloat32Array = box["out"]
+		if part.size() != out.size():
+			continue
+		var i := 0
+		var count := out.size()
+		while i < count:
+			var y := part[i]
+			if y > out[i]:
+				out[i] = y
+			i += 1
+	return out
+
+
+func _raster_job(b: Build, t0: int, t1: int, box: Dictionary) -> void:
+	box["out"] = _raster_range(b, t0, t1)
+
+
+func _raster_range(b: Build, t0: int, t1: int) -> PackedFloat32Array:
+	var n := b.n
+	var out := b.grid.duplicate()
 	var seen := PackedByteArray()
 	seen.resize(n * n)
 	var origin := b.origin
 	var sp := b.spacing
-	var tris := b.indices.size() / 3
-	for t in tris:
+	var t := t0
+	while t < t1:
 		var ia := b.indices[t * 3]
 		var ib := b.indices[t * 3 + 1]
 		var ic := b.indices[t * 3 + 2]
@@ -930,25 +1129,59 @@ func _collision_from_mesh(b: Build) -> PackedFloat32Array:
 		var gc1 := clampi(int(ceil((max_x - origin.x) / sp)), 0, n - 1)
 		var gr0 := clampi(int(floor((min_z - origin.y) / sp)), 0, n - 1)
 		var gr1 := clampi(int(ceil((max_z - origin.y) / sp)), 0, n - 1)
-		var denom := (pb.z - pc.z) * (pa.x - pc.x) + (pc.x - pb.x) * (pa.z - pc.z)
-		if absf(denom) < 0.00000001:
-			continue
-		var inv := 1.0 / denom
-		for r in range(gr0, gr1 + 1):
-			var z := origin.y + float(r) * sp
-			for c in range(gc0, gc1 + 1):
-				var x := origin.x + float(c) * sp
-				var wa := ((pb.z - pc.z) * (x - pc.x) + (pc.x - pb.x) * (z - pc.z)) * inv
-				var wb := ((pc.z - pa.z) * (x - pc.x) + (pa.x - pc.x) * (z - pc.z)) * inv
-				var wc := 1.0 - wa - wb
-				if wa < -0.0002 or wb < -0.0002 or wc < -0.0002:
-					continue
-				var y := wa * pa.y + wb * pb.y + wc * pc.y
-				var idx := r * n + c
-				if seen[idx] == 0 or y > out[idx]:
-					out[idx] = y
-					seen[idx] = 1
+		# A one-cell triangle only covers its corner samples, which already match the grid.
+		if gc1 - gc0 > 1 or gr1 - gr0 > 1:
+			var ax := pa.x
+			var az := pa.z
+			var bx := pb.x
+			var bz := pb.z
+			var cx := pc.x
+			var cz := pc.z
+			var denom := (bz - cz) * (ax - cx) + (cx - bx) * (az - cz)
+			if absf(denom) >= 0.00000001:
+				var inv := 1.0 / denom
+				var x0 := origin.x + float(gc0) * sp
+				var z0 := origin.y + float(gr0) * sp
+				var dwa := (bz - cz) * inv * sp
+				var dwb := (cz - az) * inv * sp
+				var dwa_row := (cx - bx) * inv * sp
+				var dwb_row := (ax - cx) * inv * sp
+				var wa_row := ((bz - cz) * (x0 - cx) + (cx - bx) * (z0 - cz)) * inv
+				var wb_row := ((cz - az) * (x0 - cx) + (ax - cx) * (z0 - cz)) * inv
+				var ya := pa.y
+				var yb := pb.y
+				var yc := pc.y
+				var r := gr0
+				while r <= gr1:
+					var wa := wa_row
+					var wb := wb_row
+					var row := r * n
+					var c := gc0
+					while c <= gc1:
+						var wc := 1.0 - wa - wb
+						if wa >= -0.0002 and wb >= -0.0002 and wc >= -0.0002:
+							var y := wa * ya + wb * yb + wc * yc
+							var idx := row + c
+							if seen[idx] == 0 or y > out[idx]:
+								out[idx] = y
+								seen[idx] = 1
+						wa += dwa
+						wb += dwb
+						c += 1
+					wa_row += dwa_row
+					wb_row += dwb_row
+					r += 1
+		t += 1
 	return out
+
+
+func _cell_on_bank(b: Build, c: int, r: int) -> bool:
+	if b.water_empty:
+		return false
+	var step := 4 if b.hi else 1
+	# The 16 m field overestimates distance, so the fine band is wider than the carve.
+	var d := _water_sample(b, _x(b, c * step + step / 2), _z(b, r * step + step / 2)).x
+	return d < RIVER_HALF_M + 16.0
 
 
 func _store_drawn(coord: Vector2i, heights: PackedFloat32Array, n: int, spacing: float) -> void:

@@ -34,6 +34,8 @@ var _aim := Vector3.ZERO
 var _warm: MeshInstance3D
 var _warm_frames := 0
 var _roads_logged := false
+var _idle_logged := false
+var _shot_notes := ""
 
 
 func _ready() -> void:
@@ -47,6 +49,7 @@ func _ready() -> void:
 	streamer.name = "ChunkStreamer"
 	add_child(streamer)
 	streamer.setup(null, 1, generator)
+	streamer.max_tasks = 4
 	_river = _River.new()
 	_river.name = "RiverFlow"
 	_river.setup(generator)
@@ -56,11 +59,14 @@ func _ready() -> void:
 	_soul = get_node("SoulBody") as CharacterBody3D
 	_soul.recover_falls = false
 	_soul.floor_max_angle = deg_to_rad(TALUS_FLOOR_DEG)
+	_soul.global_position = _stand
+	_soul.velocity = Vector3.ZERO
 	_soul.boot_held = true
 	_soul.set_physics_process(false)
 	_build_river()
 	streamer.spawn_floor_ready.connect(_release_spawn)
 	streamer.start_boot(_boot_chunk(_stand), _stand)
+	streamer.target = _soul
 	if _capture:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 		DisplayServer.window_set_size(Vector2i(1280, 720))
@@ -94,14 +100,27 @@ func _wants_capture() -> bool:
 
 
 func _release_spawn(_spawn: Vector3) -> void:
+	# The boot signal is the raw heightfield. The stack stays put until
+	# _try_release sees the mesh-sampled body and stands on that surface.
+	pass
+
+
+func _try_release() -> void:
 	if _released or _soul == null:
 		return
+	if not _floor_ready(_stand):
+		return
+	var y := generator.drawn_height_at(_stand.x, _stand.z)
+	if y > -70.0:
+		_stand.y = y + 0.45
 	_released = true
 	_soul.global_position = _stand
 	_soul.velocity = Vector3.ZERO
+	_soul.flow_velocity = Vector3.ZERO
 	streamer.target = _soul
 	_soul.boot_held = false
 	_soul.set_physics_process(true)
+	print("TF_RELEASE ms=%d y=%.2f" % [Time.get_ticks_msec() - _started_ms, _stand.y])
 	LaunchConfig.announce(_stand)
 	var yaw := generator.spawn_yaw
 	var dir := Vector3(-sin(yaw), 0.0, -cos(yaw))
@@ -154,9 +173,14 @@ func _physics_process(_delta: float) -> void:
 		_soul.velocity = Vector3.ZERO
 		return
 	if not _released:
+		_try_release()
 		return
 	if _floor_ready(_soul.global_position):
 		if _soul.boot_held:
+			var stand_y := generator.drawn_height_at(_soul.global_position.x, _soul.global_position.z)
+			if stand_y > -70.0:
+				_soul.global_position.y = stand_y + 0.45
+			_soul.velocity = Vector3.ZERO
 			_soul.boot_held = false
 			_held_chunk = Vector2i(999999, 999999)
 		return
@@ -177,7 +201,10 @@ func _floor_ready(at: Vector3) -> bool:
 	var host := streamer.host_for(WorldConfig.chunk_of(at.x, at.z))
 	if host == null:
 		return false
-	return host.get_node_or_null("TerrainBody") != null
+	var body := host.get_node_or_null("TerrainBody")
+	if body == null:
+		return false
+	return bool(body.get_meta("mesh_sampled", false))
 
 
 ## Kill plane and a fully submerged stack share this point.
@@ -186,10 +213,13 @@ func respawn_player() -> void:
 	if LaunchConfig.has_spawn_override:
 		s = LaunchConfig.spawn_override
 	var stand := generator.dry_ground(s.x, s.z, s.y)
+	var drawn := generator.drawn_height_at(stand.x, stand.z)
+	if drawn > -70.0:
+		stand.y = drawn + 0.45
 	_soul.global_position = stand
 	_soul.velocity = Vector3.ZERO
 	_soul.flow_velocity = Vector3.ZERO
-	_soul.boot_held = not _floor_ready(_soul.global_position)
+	_soul.boot_held = not _floor_ready(stand)
 	if streamer != null:
 		streamer.target = _soul
 	LaunchConfig.log_line("PYLONS_RESPAWN %.2f,%.2f,%.2f" % [stand.x, stand.y, stand.z])
@@ -212,6 +242,9 @@ func _process(_delta: float) -> void:
 					marks += 1
 			var signs := host.get_node_or_null("StreetSigns") != null
 			print("TF_ROADS chunk=%s marks=%d signs=%s" % [host.name, marks, str(signs)])
+	if not _idle_logged and _released and streamer != null and not streamer.busy():
+		_idle_logged = true
+		print("TF_IDLE ms=%d" % (Time.get_ticks_msec() - _started_ms))
 	if not _capture or _shooting:
 		return
 	if Time.get_ticks_msec() - _started_ms > 240000:
@@ -235,14 +268,11 @@ func _process(_delta: float) -> void:
 		_sample()
 		_hold += 1
 		if _hold >= 90:
+			_note_shot("spawn")
 			_shooting = true
-			_shot("res://_diag/tf_rim.png", 2)
+			_shot("res://_diag/tf06_spawn.png", 2)
 	elif _phase == 2:
-		var stand := generator.canyon_stand()
-		_soul.velocity = Vector3.ZERO
-		_soul.global_position = stand
-		_aim = _nearest_water(stand)
-		_look()
+		_teleport(Vector3(3363.62, 144.0, -6805.5), Vector3(0.0, -6.0, -90.0))
 		_phase = 3
 		_hold = 0
 	elif _phase == 3:
@@ -254,15 +284,38 @@ func _process(_delta: float) -> void:
 			return
 		_phase = 4
 		_hold = 0
+		_reset_fps()
 	elif _phase == 4:
 		_sample()
 		_hold += 1
 		if _hold >= 90:
+			_note_shot("bridge")
 			_shooting = true
-			_shot("res://_diag/tf_canyon.png", 5)
+			_shot("res://_diag/tf06_bridge.png", 5)
 	elif _phase == 5:
-		_write_stats("ok")
+		_teleport(Vector3(2210.0, 184.0, -1830.0), Vector3(40.0, -2.0, 0.0))
 		_phase = 6
+		_hold = 0
+	elif _phase == 6:
+		if not _view_ready():
+			_hold = 0
+			return
+		_hold += 1
+		if _hold < 30:
+			return
+		_phase = 7
+		_hold = 0
+		_reset_fps()
+	elif _phase == 7:
+		_sample()
+		_hold += 1
+		if _hold >= 90:
+			_note_shot("downtown")
+			_shooting = true
+			_shot("res://_diag/tf06_downtown.png", 8)
+	elif _phase == 8:
+		_write_stats("ok")
+		_phase = 9
 		get_tree().quit()
 
 
@@ -287,6 +340,28 @@ func _look() -> void:
 	var cam := get_node_or_null("CameraRig")
 	if cam != null and cam.has_method("look_toward"):
 		cam.look_toward(_aim)
+
+
+func _teleport(stand: Vector3, aim_off: Vector3) -> void:
+	var y := generator.drawn_height_at(stand.x, stand.z)
+	if y < -70.0:
+		y = generator.height_at(stand.x, stand.z)
+	if y > -70.0:
+		stand.y = y + 0.6
+	_soul.velocity = Vector3.ZERO
+	_soul.global_position = stand
+	_aim = stand + aim_off
+	_look()
+
+
+func _note_shot(tag: String) -> void:
+	var fps := 0.0
+	if _fps_n > 0:
+		fps = _fps_sum / float(_fps_n)
+	var p := _soul.global_position
+	var line := "%s fps_avg=%.1f fps_min=%.1f draws=%d nodes=%d at=%.1f,%.1f,%.1f" % [tag, fps, _fps_min, _draws, _nodes, p.x, p.y, p.z]
+	_shot_notes += line + "\n"
+	print("TF_SHOT %s" % line)
 
 
 func _reset_fps() -> void:
@@ -407,7 +482,7 @@ func _write_stats(reason: String) -> void:
 			var data := streamer.data_for(coord)
 			if data != null:
 				chunks += "%s=%s " % [coord, data.stats]
-	var text := "reason=%s\ngpu=%s\nfps_avg=%.1f\nfps_min=%.1f\ndraws=%d\nnodes=%d\nplayer_y=%.2f\nheight_at=%.2f\nstreamer=%s\nchunks=%s\n" % [reason, gpu, fps, _fps_min if _fps_n > 0 else 0.0, _draws, _nodes, y, expect, str(info), chunks]
+	var text := "reason=%s\ngpu=%s\nfps_avg=%.1f\nfps_min=%.1f\ndraws=%d\nnodes=%d\nplayer_y=%.2f\nheight_at=%.2f\nstreamer=%s\nchunks=%s\nshots:\n%s" % [reason, gpu, fps, _fps_min if _fps_n > 0 else 0.0, _draws, _nodes, y, expect, str(info), chunks, _shot_notes]
 	var path := ProjectSettings.globalize_path("res://_diag/tf_stats.txt")
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:

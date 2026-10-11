@@ -33,6 +33,8 @@ var _grace: Dictionary = {}
 var _sinks: Array[Dictionary] = []
 var _flowing: Array[RigidBody3D] = []
 var _player_sink := 0.0
+var _player_under := -1
+var _under_since: Dictionary = {}
 var _player_layer := 1
 var _player_mask := 5
 var _scratch := {"d": 9999.0, "y": -6.0, "x": 1.0, "z": 0.0, "seg": -1}
@@ -95,8 +97,12 @@ func _touch_player(soul: CharacterBody3D, _delta: float) -> void:
 		return
 	var surface := float(_scratch["y"])
 	if top < surface - 0.02:
-		_begin_player_sink(soul)
+		if _player_under < 0:
+			_player_under = Time.get_ticks_msec()
+		elif Time.get_ticks_msec() - _player_under >= int(SINK_SEC * 1000.0):
+			_begin_player_sink(soul)
 		return
+	_player_under = -1
 	if bottom < surface + 0.05 and top > surface - 0.02:
 		soul.flow_velocity = Vector3(float(_scratch["x"]), 0.0, float(_scratch["z"])) * FLOW_SPEED
 	else:
@@ -104,6 +110,7 @@ func _touch_player(soul: CharacterBody3D, _delta: float) -> void:
 
 
 func _begin_player_sink(soul: CharacterBody3D) -> void:
+	_player_under = -1
 	_player_sink = SINK_SEC
 	_player_layer = soul.collision_layer
 	_player_mask = soul.collision_mask
@@ -134,8 +141,14 @@ func _touch_body(body: RigidBody3D) -> void:
 	var bottom := span.x
 	var top := span.y
 	if top < surface - 0.02:
-		_begin_sink(body)
+		var since := int(_under_since.get(id, -1))
+		if since < 0:
+			_under_since[id] = Time.get_ticks_msec()
+		elif Time.get_ticks_msec() - since >= int(SINK_SEC * 1000.0):
+			_under_since.erase(id)
+			_begin_sink(body)
 		return
+	_under_since.erase(id)
 	if bottom < surface + 0.05 and top > surface - 0.02:
 		_push_body(body)
 
@@ -154,14 +167,12 @@ func _push_body(body: RigidBody3D) -> void:
 	var hv := Vector3(body.linear_velocity.x, 0.0, body.linear_velocity.z)
 	var along := hv.dot(dir)
 	if along < FLOW_SPEED:
-		var accel := minf((FLOW_SPEED - along) * 4.0, FLOW_ACCEL)
-		var at := body.global_position + Vector3.UP * (0.2 + LEAN_ARM)
-		body.apply_force(dir * body.mass * accel, at)
-		if body.sleeping:
-			body.sleeping = false
-	elif along > FLOW_SPEED + 0.05:
-		var hv2 := hv - dir * (along - FLOW_SPEED)
-		body.linear_velocity = Vector3(hv2.x, body.linear_velocity.y, hv2.z)
+		along = minf(along + FLOW_ACCEL * 0.016, FLOW_SPEED)
+	else:
+		along = FLOW_SPEED
+	body.linear_velocity = Vector3(dir.x * along, body.linear_velocity.y, dir.z * along)
+	if body.sleeping:
+		body.sleeping = false
 
 
 func _begin_sink(body: RigidBody3D) -> void:

@@ -20,6 +20,13 @@ const SKIRT_GAP_M := 0.30
 const LINE_W := 0.12
 const RAIL_HALF := 1.9
 const RAIL_GAUGE := 0.75
+## Minor roads ramp to the wider road over this distance so a junction has no step.
+const JOIN_M := 16.0
+const DROP_RAIL_M := 2.0
+const GUARD_ROADS := {
+	"canyon_springs_grade": true,
+	"rim_road_south": true,
+}
 
 var _roads: Array = []
 var _edges: Array = []
@@ -92,6 +99,7 @@ func apply_cuts(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: floa
 					continue
 				seen[ei] = true
 				_cut_edge(grid, origin, n, spacing, _edges[ei])
+	_cut_joins(grid, origin, n, spacing)
 
 
 func build_chunk(coord: Vector2i, grid: PackedFloat32Array, n: int, spacing: float) -> Dictionary:
@@ -103,6 +111,7 @@ func build_chunk(coord: Vector2i, grid: PackedFloat32Array, n: int, spacing: flo
 		"basalt": _Surf.new(),
 		"ballast": _Surf.new(),
 		"rail": _Surf.new(),
+		"guard": _Surf.new(),
 		"board": _Surf.new(),
 	}
 	var faces := PackedVector3Array()
@@ -348,34 +357,61 @@ func _emit_road(road: Dictionary, rect: Rect2, grid: PackedFloat32Array, n: int,
 			continue
 		var t0 := span[0]
 		var t1 := span[1]
-		var l0 := left[i].lerp(left[i + 1], t0)
-		var l1 := left[i].lerp(left[i + 1], t1)
-		var r0 := right[i].lerp(right[i + 1], t0)
-		var r1 := right[i].lerp(right[i + 1], t1)
+		var road_id := str(road["id"])
 		var kind := kinds[i]
 		var lift := DECK_LIFT_M if (kind == "deck" or kind == "bridge") else LIFT_M
-		var c0 := chain[i] + (chain[i + 1] - chain[i]) * t0
-		var c1 := chain[i] + (chain[i + 1] - chain[i]) * t1
+		var seg_len := Vector2(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z).length() * (t1 - t0)
+		var pieces := maxi(int(ceil(seg_len / 4.0)), 1)
+		for p in pieces:
+			var a := t0 + (t1 - t0) * float(p) / float(pieces)
+			var b := t0 + (t1 - t0) * float(p + 1) / float(pieces)
+			_emit_span(road_id, kind, rail, lanes, half, lift, left[i], left[i + 1], right[i], right[i + 1], chain[i], chain[i + 1], a, b, grid, origin, n, spacing, surfs, faces)
+
+
+func _emit_span(road_id: String, kind: String, rail: bool, lanes: int, half: float, lift: float, left_a: Vector3, left_b: Vector3, right_a: Vector3, right_b: Vector3, chain_a: float, chain_b: float, t0: float, t1: float, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, surfs: Dictionary, faces: PackedVector3Array) -> void:
+		var l0 := left_a.lerp(left_b, t0)
+		var l1 := left_a.lerp(left_b, t1)
+		var r0 := right_a.lerp(right_b, t0)
+		var r1 := right_a.lerp(right_b, t1)
+		l0.y = _surface_y(l0, road_id, lift, grid, origin, n, spacing)
+		l1.y = _surface_y(l1, road_id, lift, grid, origin, n, spacing)
+		r0.y = _surface_y(r0, road_id, lift, grid, origin, n, spacing)
+		r1.y = _surface_y(r1, road_id, lift, grid, origin, n, spacing)
+		var clear := _peak_lift(l0, r0, l1, r1, grid, origin, n, spacing)
+		if clear > 0.0:
+			l0.y += clear
+			l1.y += clear
+			r0.y += clear
+			r1.y += clear
+		l0.y = _pin_end(l0, road_id, lift, l0.y)
+		l1.y = _pin_end(l1, road_id, lift, l1.y)
+		r0.y = _pin_end(r0, road_id, lift, r0.y)
+		r1.y = _pin_end(r1, road_id, lift, r1.y)
+		var c0 := chain_a + (chain_b - chain_a) * t0
+		var c1 := chain_a + (chain_b - chain_a) * t1
 		if rail:
 			var ball: _Surf = surfs["ballast"]
 			_quad(ball, l0, r0, r1, l1, c0, c1, 0.0, half * 2.0, true, faces)
 			_rails(surfs["rail"], l0, r0, r1, l1, c0, c1)
-			continue
+			return
 		var top: _Surf = surfs["asphalt"]
-		_quad(top, _up(l0, lift), _up(r0, lift), _up(r1, lift), _up(l1, lift), c0, c1, 0.0, half * 2.0, true, faces)
+		_quad(top, l0, r0, r1, l1, c0, c1, 0.0, half * 2.0, true, faces)
 		if lanes >= 2:
-			_line(surfs["yellow"], l0, r0, l1, r1, half, 0.0, LINE_W, lift + 0.01, c0, c1, false)
-		_line(surfs["white"], l0, r0, l1, r1, half, -(half - 0.22), LINE_W, lift + 0.01, c0, c1, false)
-		_line(surfs["white"], l0, r0, l1, r1, half, half - 0.22, LINE_W, lift + 0.01, c0, c1, false)
+			_line(surfs["yellow"], l0, r0, l1, r1, half, 0.0, LINE_W, 0.01, c0, c1, false)
+		_line(surfs["white"], l0, r0, l1, r1, half, -(half - 0.22), LINE_W, 0.01, c0, c1, false)
+		_line(surfs["white"], l0, r0, l1, r1, half, half - 0.22, LINE_W, 0.01, c0, c1, false)
 		if lanes > 2:
 			var lane_w := half * 2.0 / float(lanes)
 			var k := 1
 			while float(k) * lane_w < half - 0.45:
-				_line(surfs["white"], l0, r0, l1, r1, half, float(k) * lane_w, LINE_W, lift + 0.01, c0, c1, true)
-				_line(surfs["white"], l0, r0, l1, r1, half, -float(k) * lane_w, LINE_W, lift + 0.01, c0, c1, true)
+				_line(surfs["white"], l0, r0, l1, r1, half, float(k) * lane_w, LINE_W, 0.01, c0, c1, true)
+				_line(surfs["white"], l0, r0, l1, r1, half, -float(k) * lane_w, LINE_W, 0.01, c0, c1, true)
 				k += 1
 		if kind == "cut" or kind == "fill":
 			_skirts(surfs["basalt"], l0, r0, l1, r1, grid, origin, n, spacing, faces)
+		if GUARD_ROADS.has(road_id):
+			_guard_edge(surfs["guard"], l0, l1, r0, grid, origin, n, spacing, faces)
+			_guard_edge(surfs["guard"], r0, r1, l0, grid, origin, n, spacing, faces)
 
 
 func _skirts(surf: _Surf, l0: Vector3, r0: Vector3, l1: Vector3, r1: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array) -> void:
@@ -467,7 +503,7 @@ func _emit_junctions(coord: Vector2i, surf: _Surf, faces: PackedVector3Array) ->
 				continue
 			var road: Dictionary = _roads[int(_by_id[str(id)])]
 			radius = maxf(radius, float(road["half"]) + 1.0)
-		var y := at.y + SHAVE_M
+		var y := _major_y(item) + LIFT_M
 		var fan := PackedVector3Array()
 		var centre := WorldConfig.to_local(Vector3(at.x, y, at.z))
 		fan.append(centre)
@@ -642,12 +678,15 @@ func _job_mark(host: Node3D, mark: Dictionary) -> void:
 		return
 	inst.name = node_name
 	var at: Vector3 = mark["at"]
-	inst.position = WorldConfig.to_local(at)
 	var yaw_deg := float(mark["yaw"])
 	# The v3 deck's +Z end is the south approach. Positive yaw swings that end
 	# east, onto the US-93 centreline. The file stores the bearing as -1.7.
 	if str(mark["id"]) == "perrine_bridge":
 		yaw_deg = -yaw_deg
+		# v4 bridge_road is local y=148 with no node offset. Landmark y=-5.24
+		# puts the lanes at 142.76, flush with both approaches. A centreline ray
+		# hits the median (local 148.81, world 143.57); that is not the deck.
+	inst.position = WorldConfig.to_local(at)
 	inst.rotation = Vector3(0.0, deg_to_rad(yaw_deg), 0.0)
 	host.add_child(inst)
 	_ensure_collision(inst)
@@ -703,6 +742,12 @@ func _build_mats() -> void:
 	rail.metallic = 0.65
 	rail.roughness = 0.45
 	_mats["rail"] = rail
+	var guard := StandardMaterial3D.new()
+	guard.albedo_color = Color(0.55, 0.57, 0.58)
+	guard.metallic = 0.72
+	guard.roughness = 0.38
+	guard.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_mats["guard"] = guard
 	var board := StandardMaterial3D.new()
 	board.albedo_color = Color(0.16, 0.20, 0.16)
 	board.roughness = 0.7
@@ -821,17 +866,28 @@ func _clip_plane(p: float, q: float, span: Vector2) -> Vector2:
 
 
 func _quad(surf: _Surf, a: Vector3, b: Vector3, c: Vector3, d: Vector3, v0: float, v1: float, u0: float, u1: float, solid: bool, faces: PackedVector3Array) -> void:
-	var n := (b - a).cross(d - a)
-	var flip := n.y < 0.0
-	if n.length_squared() < 0.000001:
-		return
-	n = n.normalized()
-	if flip:
-		n = -n
+	# Each triangle is flipped on its own. A pinched quad can have one triangle
+	# pointing down even when the other points up, and a downward face is invisible
+	# from above and missed by a one-sided ray.
 	var la := WorldConfig.to_local(a)
 	var lb := WorldConfig.to_local(b)
 	var lc := WorldConfig.to_local(c)
 	var ld := WorldConfig.to_local(d)
+	var n1 := (lb - la).cross(lc - la)
+	var n2 := (lc - la).cross(ld - la)
+	if n1.length_squared() < 0.0000000001 and n2.length_squared() < 0.0000000001:
+		return
+	var flip1 := n1.y < 0.0
+	var flip2 := n2.y < 0.0
+	if flip1:
+		n1 = -n1
+	if flip2:
+		n2 = -n2
+	var n := n1 + n2
+	if n.length_squared() < 0.0000000001:
+		n = Vector3.UP
+	else:
+		n = n.normalized()
 	var base := surf.v.size()
 	surf.v.append(la)
 	surf.v.append(lb)
@@ -847,10 +903,7 @@ func _quad(surf: _Surf, a: Vector3, b: Vector3, c: Vector3, d: Vector3, v0: floa
 	surf.uv.append(Vector2(tile_u1, tile_v0))
 	surf.uv.append(Vector2(tile_u1, tile_v1))
 	surf.uv.append(Vector2(tile_u0, tile_v1))
-	if flip:
-		surf.idx.append(base)
-		surf.idx.append(base + 3)
-		surf.idx.append(base + 2)
+	if flip1:
 		surf.idx.append(base)
 		surf.idx.append(base + 2)
 		surf.idx.append(base + 1)
@@ -858,14 +911,16 @@ func _quad(surf: _Surf, a: Vector3, b: Vector3, c: Vector3, d: Vector3, v0: floa
 		surf.idx.append(base)
 		surf.idx.append(base + 1)
 		surf.idx.append(base + 2)
+	if flip2:
+		surf.idx.append(base)
+		surf.idx.append(base + 3)
+		surf.idx.append(base + 2)
+	else:
 		surf.idx.append(base)
 		surf.idx.append(base + 2)
 		surf.idx.append(base + 3)
 	if solid:
-		if flip:
-			faces.append(la)
-			faces.append(ld)
-			faces.append(lc)
+		if flip1:
 			faces.append(la)
 			faces.append(lc)
 			faces.append(lb)
@@ -873,6 +928,11 @@ func _quad(surf: _Surf, a: Vector3, b: Vector3, c: Vector3, d: Vector3, v0: floa
 			faces.append(la)
 			faces.append(lb)
 			faces.append(lc)
+		if flip2:
+			faces.append(la)
+			faces.append(ld)
+			faces.append(lc)
+		else:
 			faces.append(la)
 			faces.append(lc)
 			faces.append(ld)
@@ -938,6 +998,273 @@ func _tri(surf: _Surf, a: Vector3, b: Vector3, c: Vector3, faces: PackedVector3A
 	faces.append(a)
 	faces.append(b)
 	faces.append(c)
+
+
+## Keep the last 2 m of a joined road on the blend so a terrain hump cannot reopen the step.
+func _pin_end(p: Vector3, road_id: String, lift: float, current: float) -> float:
+	if _join_dist(p, road_id) > 2.0:
+		return current
+	return _join_y(p, road_id) + lift
+
+
+func _join_dist(p: Vector3, road_id: String) -> float:
+	var best := JOIN_M + 1.0
+	for item in _junctions:
+		var ids: Array = item.get("roads", [])
+		if not ids.has(road_id):
+			continue
+		var pos: Array = item.get("pos", [])
+		if pos.size() < 3:
+			continue
+		var dx := p.x - float(pos[0])
+		var dz := p.z - float(pos[2])
+		best = minf(best, sqrt(dx * dx + dz * dz))
+	return best
+
+
+func _cut_joins(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> void:
+	if n < 2 or grid.size() != n * n:
+		return
+	var margin := JOIN_M + 24.0
+	for item in _junctions:
+		var pos: Array = item.get("pos", [])
+		if pos.size() < 3:
+			continue
+		var jx := float(pos[0])
+		var jz := float(pos[2])
+		if jx < origin.x - margin or jx > origin.x + 500.0 + margin:
+			continue
+		if jz < origin.y - margin or jz > origin.y + 500.0 + margin:
+			continue
+		var major := _major_half(item)
+		var major_y := _major_y(item)
+		for id in item.get("roads", []):
+			if not _by_id.has(str(id)):
+				continue
+			var road: Dictionary = _roads[int(_by_id[str(id)])]
+			if float(road["half"]) + 0.05 >= major:
+				continue
+			_cut_join_road(road, jx, jz, major_y, grid, origin, n, spacing)
+
+
+func _major_half(item: Dictionary) -> float:
+	var best := 0.0
+	for id in item.get("roads", []):
+		if not _by_id.has(str(id)):
+			continue
+		var road: Dictionary = _roads[int(_by_id[str(id)])]
+		best = maxf(best, float(road["half"]))
+	return best
+
+
+func _cut_join_road(road: Dictionary, jx: float, jz: float, major_y: float, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> void:
+	var pts: PackedVector3Array = road["pts"]
+	var half := float(road["half"])
+	var reach := half + 3.0
+	for i in pts.size() - 1:
+		var len := Vector2(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z).length()
+		if len < 0.5:
+			continue
+		var steps := maxi(int(ceil(len / spacing)), 1)
+		for s in steps + 1:
+			var t := float(s) / float(steps)
+			var p := pts[i].lerp(pts[i + 1], t)
+			var dist := Vector2(p.x - jx, p.z - jz).length()
+			if dist >= JOIN_M:
+				continue
+			var u := 1.0 - dist / JOIN_M
+			u = u * u * (3.0 - 2.0 * u)
+			var road_y := lerpf(p.y, major_y, u)
+			var rad := int(ceil(reach / spacing)) + 1
+			var gc := int(floor((p.x - origin.x) / spacing))
+			var gr := int(floor((p.z - origin.y) / spacing))
+			for dr in range(-rad, rad + 1):
+				var r := gr + dr
+				if r < 0 or r >= n:
+					continue
+				for dc in range(-rad, rad + 1):
+					var c := gc + dc
+					if c < 0 or c >= n:
+						continue
+					var x := origin.x + float(c) * spacing
+					var z := origin.y + float(r) * spacing
+					var hit := _seg(x, z, pts[i].x, pts[i].z, pts[i + 1].x, pts[i + 1].z)
+					if hit.x > reach:
+						continue
+					var shoulder := 0.0
+					if hit.x > half:
+						shoulder = smoothstep(half, reach, hit.x)
+					var target := road_y - SHAVE_M
+					var idx := r * n + c
+					grid[idx] = minf(grid[idx], lerpf(target, grid[idx], shoulder))
+
+
+func _join_y(p: Vector3, road_id: String) -> float:
+	var y := p.y
+	var best := 0.0
+	for item in _junctions:
+		var ids: Array = item.get("roads", [])
+		if not ids.has(road_id):
+			continue
+		var pos: Array = item.get("pos", [])
+		if pos.size() < 3:
+			continue
+		var dx := p.x - float(pos[0])
+		var dz := p.z - float(pos[2])
+		var dist := sqrt(dx * dx + dz * dz)
+		if dist >= JOIN_M:
+			continue
+		var t := 1.0 - dist / JOIN_M
+		t = t * t * (3.0 - 2.0 * t)
+		if t <= best:
+			continue
+		best = t
+		y = lerpf(p.y, _major_y(item), t)
+	return y
+
+
+func _major_y(item: Dictionary) -> float:
+	var pos: Array = item.get("pos", [])
+	var fallback := float(pos[1]) if pos.size() >= 3 else 0.0
+	if pos.size() < 3:
+		return fallback
+	var best_half := -1.0
+	var y := fallback
+	var x := float(pos[0])
+	var z := float(pos[2])
+	for id in item.get("roads", []):
+		if not _by_id.has(str(id)):
+			continue
+		var road: Dictionary = _roads[int(_by_id[str(id)])]
+		var half := float(road["half"])
+		if half < best_half:
+			continue
+		best_half = half
+		y = _polyline_y(road["pts"], x, z, fallback)
+	return y
+
+
+func _polyline_y(pts: PackedVector3Array, x: float, z: float, fallback: float) -> float:
+	var best := 1.0e12
+	var y := fallback
+	for i in pts.size() - 1:
+		var hit := _seg(x, z, pts[i].x, pts[i].z, pts[i + 1].x, pts[i + 1].z)
+		if hit.x < best:
+			best = hit.x
+			y = lerpf(pts[i].y, pts[i + 1].y, hit.y)
+	return y
+
+
+## Joined road height, raised to the drawn ground where the terrain would poke through.
+func _surface_y(p: Vector3, road_id: String, lift: float, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> float:
+	var y := _join_y(p, road_id) + lift
+	var g := _ground(grid, origin, n, spacing, p.x, p.z)
+	if g > -70.0 and y < g + 0.04:
+		y = g + 0.04
+	return y
+
+
+## How far this quad's interior sits under the drawn ground. Zero when it already clears.
+func _peak_lift(l0: Vector3, r0: Vector3, l1: Vector3, r1: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> float:
+	if n < 2 or grid.size() != n * n or spacing <= 0.0:
+		return 0.0
+	var min_x := minf(l0.x, minf(l1.x, minf(r0.x, r1.x)))
+	var max_x := maxf(l0.x, maxf(l1.x, maxf(r0.x, r1.x)))
+	var min_z := minf(l0.z, minf(l1.z, minf(r0.z, r1.z)))
+	var max_z := maxf(l0.z, maxf(l1.z, maxf(r0.z, r1.z)))
+	var c0 := clampi(int(floor((min_x - origin.x) / spacing)), 0, n - 1)
+	var c1 := clampi(int(ceil((max_x - origin.x) / spacing)), 0, n - 1)
+	var r0i := clampi(int(floor((min_z - origin.y) / spacing)), 0, n - 1)
+	var r1i := clampi(int(ceil((max_z - origin.y) / spacing)), 0, n - 1)
+	if c1 - c0 > 24:
+		c1 = c0 + 24
+	if r1i - r0i > 24:
+		r1i = r0i + 24
+	var extra := 0.0
+	for r in range(r0i, r1i + 1):
+		var z := origin.y + float(r) * spacing
+		var row := r * n
+		for c in range(c0, c1 + 1):
+			var x := origin.x + float(c) * spacing
+			if not _in_quad(x, z, l0, r0, r1, l1):
+				continue
+			var road_y := _bary_y(x, z, l0, r0, r1, l1)
+			extra = maxf(extra, grid[row + c] + 0.04 - road_y)
+	return extra
+
+
+func _in_quad(x: float, z: float, l0: Vector3, r0: Vector3, r1: Vector3, l1: Vector3) -> bool:
+	return _in_tri2(x, z, l0, r0, r1) or _in_tri2(x, z, l0, r1, l1)
+
+
+func _in_tri2(x: float, z: float, a: Vector3, b: Vector3, c: Vector3) -> bool:
+	var den := (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z)
+	if absf(den) < 0.00000001:
+		return false
+	var wa := ((b.z - c.z) * (x - c.x) + (c.x - b.x) * (z - c.z)) / den
+	var wb := ((c.z - a.z) * (x - c.x) + (a.x - c.x) * (z - c.z)) / den
+	var wc := 1.0 - wa - wb
+	return wa >= -0.05 and wb >= -0.05 and wc >= -0.05
+
+
+func _bary_y(x: float, z: float, l0: Vector3, r0: Vector3, r1: Vector3, l1: Vector3) -> float:
+	if _in_tri2(x, z, l0, r0, r1):
+		return _tri_y(x, z, l0, r0, r1)
+	return _tri_y(x, z, l0, r1, l1)
+
+
+func _tri_y(x: float, z: float, a: Vector3, b: Vector3, c: Vector3) -> float:
+	var den := (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z)
+	if absf(den) < 0.00000001:
+		return a.y
+	var wa := ((b.z - c.z) * (x - c.x) + (c.x - b.x) * (z - c.z)) / den
+	var wb := ((c.z - a.z) * (x - c.x) + (a.x - c.x) * (z - c.z)) / den
+	var wc := 1.0 - wa - wb
+	return wa * a.y + wb * b.y + wc * c.y
+
+
+func _guard_edge(surf: _Surf, a: Vector3, b: Vector3, other: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array) -> void:
+	var outward := Vector3(a.x - other.x, 0.0, a.z - other.z)
+	if outward.length_squared() < 0.01:
+		return
+	outward = outward.normalized()
+	var mid := (a + b) * 0.5
+	var g := _ground(grid, origin, n, spacing, mid.x + outward.x * 3.0, mid.z + outward.z * 3.0)
+	if g < -70.0 or mid.y - g < DROP_RAIL_M:
+		return
+	var out := outward * 0.16
+	var hi := 0.68
+	var lo := 0.36
+	var top_a := a + out + Vector3(0.0, hi, 0.0)
+	var top_b := b + out + Vector3(0.0, hi, 0.0)
+	var bot_a := a + out + Vector3(0.0, lo, 0.0)
+	var bot_b := b + out + Vector3(0.0, lo, 0.0)
+	var empty := PackedVector3Array()
+	_wall(surf, bot_a, bot_b, top_b, top_a, false, empty)
+	_solid_both(faces, bot_a, bot_b, top_b, top_a)
+	var foot_a := a + outward * 0.05
+	var foot_b := a + outward * 0.05 + Vector3(0.0, hi, 0.0)
+	_wall(surf, foot_a, foot_a + outward * 0.12, foot_b + outward * 0.12, foot_b, false, empty)
+	_solid_both(faces, foot_a, foot_a + outward * 0.12, foot_b + outward * 0.12, foot_b)
+
+
+func _solid_both(faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
+	var la := WorldConfig.to_local(a)
+	var lb := WorldConfig.to_local(b)
+	var lc := WorldConfig.to_local(c)
+	var ld := WorldConfig.to_local(d)
+	faces.append(la)
+	faces.append(lb)
+	faces.append(lc)
+	faces.append(la)
+	faces.append(lc)
+	faces.append(ld)
+	faces.append(la)
+	faces.append(lc)
+	faces.append(lb)
+	faces.append(la)
+	faces.append(ld)
+	faces.append(lc)
 
 
 func _ground(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, x: float, z: float) -> float:
