@@ -4,6 +4,8 @@ const BOOM_BASE := 2.4
 const BOOM_PER_M := 0.55
 const LOOK_BIAS := 0.08
 const SPRING_MARGIN := 0.3
+## Closest the lens may sit. Still on the boom; never through the player.
+const MIN_ARM := 0.45
 ## Layer 1 is terrain and the world. Layer 3 is city curbs. Both block the camera.
 const COLLIDE_MASK := 1 | 4
 const MOUSE_SENS := 0.003
@@ -148,56 +150,43 @@ func _hit_camera() -> bool:
 	return tree.get_first_node_in_group("hit_tumble") != null
 
 
+## Shorten the boom along look→desired only. The ray starts at the player centre.
+## The result never crosses `look`, so a wall cannot flip the camera 180°.
 func _spring(look: Vector3, desired: Vector3) -> Vector3:
 	var world := get_world_3d()
 	if world == null:
 		return desired
 	var to_cam := desired - look
-	if to_cam.length_squared() < 0.0001:
+	var full := to_cam.length()
+	if full < 0.0001:
 		return desired
-	var dir := to_cam.normalized()
+	var dir := to_cam / full
 	var radius := _spring_radius()
 	var space := world.direct_space_state
 	var exclude := _spring_exclude()
-	# Start the ray in front of the stack, level with the look point, so it is not
-	# born inside the heightfield. A ray that starts inside that solid does not hit.
-	var flat := Vector3(dir.x, 0.0, dir.z)
-	if flat.length_squared() < 0.0001:
-		flat = Vector3.FORWARD
-	flat = flat.normalized()
-	var origin := look - flat * 0.8
-	var query := PhysicsRayQueryParameters3D.create(origin, desired)
+	var query := PhysicsRayQueryParameters3D.create(look, desired)
 	query.collide_with_areas = false
 	query.collision_mask = COLLIDE_MASK
 	query.exclude = exclude
+	query.hit_from_inside = true
+	var limit := full
 	var hit: Dictionary = space.intersect_ray(query)
 	if not hit.is_empty():
-		var pulled: Vector3 = hit.position - dir * SPRING_MARGIN
-		var normal: Vector3 = hit.normal
-		if normal.y < 0.75:
-			var nudged := pulled + normal * radius
-			if not _sphere_blocked(space, nudged, radius, exclude):
-				pulled = nudged
-		if pulled.distance_squared_to(look) > to_cam.length_squared():
-			return desired
-		return pulled
-	if not _sphere_blocked(space, desired, radius, exclude):
-		return desired
-	if _sphere_blocked(space, look, radius, exclude):
-		origin = _walk_clear(space, look, -flat, radius, exclude)
-	var max_d := origin.distance_to(desired)
-	if max_d < 0.05:
-		return origin
-	var lo := 0.0
-	var hi := max_d
-	var into := (desired - origin).normalized()
-	for _i in 6:
-		var mid := (lo + hi) * 0.5
-		if _sphere_blocked(space, origin + into * mid, radius, exclude):
-			hi = mid
+		limit = clampf(look.distance_to(hit.position) - SPRING_MARGIN, MIN_ARM, full)
+	if _sphere_blocked(space, look + dir * limit, radius, exclude):
+		var lo := MIN_ARM
+		var hi := limit
+		if not _sphere_blocked(space, look + dir * lo, radius, exclude):
+			for _i in 6:
+				var mid := (lo + hi) * 0.5
+				if _sphere_blocked(space, look + dir * mid, radius, exclude):
+					hi = mid
+				else:
+					lo = mid
+			limit = lo
 		else:
-			lo = mid
-	return _clear_steep_face(space, origin + into * lo, into, radius, exclude)
+			limit = MIN_ARM
+	return look + dir * limit
 
 
 func _spring_radius() -> float:
