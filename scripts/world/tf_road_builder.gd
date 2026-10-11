@@ -15,6 +15,8 @@ const BUCKET := 64.0
 const BLEND_M := 6.0
 const SHAVE_M := 0.02
 const LIFT_M := 0.03
+## Ribbon sits this far above the drawn heightfield. Deck and bridge keep their grade.
+const ROAD_CLEAR_M := 0.05
 ## v4 lanes sit on the polyline (142.76). A higher lift steps the approach off the deck.
 const DECK_LIFT_M := 0.0
 const SKIRT_GAP_M := 0.30
@@ -489,44 +491,50 @@ func _emit_road(road: Dictionary, rect: Rect2, grid: PackedFloat32Array, n: int,
 
 
 func _emit_span(road_id: String, kind: String, rail: bool, lanes: int, half: float, lift: float, left_a: Vector3, left_b: Vector3, right_a: Vector3, right_b: Vector3, chain_a: float, chain_b: float, t0: float, t1: float, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, surfs: Dictionary, faces: PackedVector3Array) -> void:
+		if kind != "deck" and kind != "bridge" and _span_misses(left_a, left_b, right_a, right_b, t0, t1, grid, origin, n, spacing):
+			var mid := (t0 + t1) * 0.5
+			_emit_span(road_id, kind, rail, lanes, half, lift, left_a, left_b, right_a, right_b, chain_a, chain_b, t0, mid, grid, origin, n, spacing, surfs, faces)
+			_emit_span(road_id, kind, rail, lanes, half, lift, left_a, left_b, right_a, right_b, chain_a, chain_b, mid, t1, grid, origin, n, spacing, surfs, faces)
+			return
 		var l0 := left_a.lerp(left_b, t0)
 		var l1 := left_a.lerp(left_b, t1)
 		var r0 := right_a.lerp(right_b, t0)
 		var r1 := right_a.lerp(right_b, t1)
-		l0.y = _surface_y(l0, road_id, lift, grid, origin, n, spacing)
-		l1.y = _surface_y(l1, road_id, lift, grid, origin, n, spacing)
-		r0.y = _surface_y(r0, road_id, lift, grid, origin, n, spacing)
-		r1.y = _surface_y(r1, road_id, lift, grid, origin, n, spacing)
-		var clear := _peak_lift(l0, r0, l1, r1, grid, origin, n, spacing)
-		if clear > 0.0:
-			l0.y += clear
-			l1.y += clear
-			r0.y += clear
-			r1.y += clear
-		l0.y = _pin_end(l0, road_id, lift, l0.y)
-		l1.y = _pin_end(l1, road_id, lift, l1.y)
-		r0.y = _pin_end(r0, road_id, lift, r0.y)
-		r1.y = _pin_end(r1, road_id, lift, r1.y)
+		l0.y = _surface_y(l0, road_id, kind, lift, grid, origin, n, spacing)
+		l1.y = _surface_y(l1, road_id, kind, lift, grid, origin, n, spacing)
+		r0.y = _surface_y(r0, road_id, kind, lift, grid, origin, n, spacing)
+		r1.y = _surface_y(r1, road_id, kind, lift, grid, origin, n, spacing)
 		var c0 := chain_a + (chain_b - chain_a) * t0
 		var c1 := chain_a + (chain_b - chain_a) * t1
 		l0.y = _seat_grade(road_id, c0, l0, l0.y, grid, origin, n, spacing)
 		l1.y = _seat_grade(road_id, c1, l1, l1.y, grid, origin, n, spacing)
 		r0.y = _seat_grade(road_id, c0, r0, r0.y, grid, origin, n, spacing)
 		r1.y = _seat_grade(road_id, c1, r1, r1.y, grid, origin, n, spacing)
+		# Centreline vertices, so a wide cross-slope cannot pull the lanes
+		# through the ground between the two edges.
+		var m0 := l0.lerp(r0, 0.5)
+		var m1 := l1.lerp(r1, 0.5)
+		m0.y = _surface_y(m0, road_id, kind, lift, grid, origin, n, spacing)
+		m1.y = _surface_y(m1, road_id, kind, lift, grid, origin, n, spacing)
+		m0.y = _seat_grade(road_id, c0, m0, m0.y, grid, origin, n, spacing)
+		m1.y = _seat_grade(road_id, c1, m1, m1.y, grid, origin, n, spacing)
 		# The v4 model is the deck. A second asphalt sheet hides the lanes and
 		# puts the ray on the sheet instead of the deck. Keep the walk surface.
 		if kind == "bridge" and not rail:
-			_solid_quad(faces, l0, r0, r1, l1)
+			_solid_quad(faces, l0, m0, m1, l1)
+			_solid_quad(faces, m0, r0, r1, m1)
 			return
 		if rail:
 			var ball: _Surf = surfs["ballast"]
-			_quad(ball, l0, r0, r1, l1, c0, c1, 0.0, half * 2.0, true, faces)
+			_quad(ball, l0, m0, m1, l1, c0, c1, 0.0, half, true, faces)
+			_quad(ball, m0, r0, r1, m1, c0, c1, half, half * 2.0, true, faces)
 			_rails(surfs["rail"], l0, r0, r1, l1, c0, c1)
 			if kind == "trestle":
 				_trestle(surfs["basalt"], l0, r0, r1, l1, grid, origin, n, spacing, faces)
 			return
 		var top: _Surf = surfs["asphalt"]
-		_quad(top, l0, r0, r1, l1, c0, c1, 0.0, half * 2.0, true, faces)
+		_quad(top, l0, m0, m1, l1, c0, c1, 0.0, half, true, faces)
+		_quad(top, m0, r0, r1, m1, c0, c1, half, half * 2.0, true, faces)
 		if lanes >= 2:
 			_line(surfs["yellow"], l0, r0, l1, r1, half, 0.0, LINE_W, 0.01, c0, c1, false)
 		_line(surfs["white"], l0, r0, l1, r1, half, -(half - 0.22), LINE_W, 0.01, c0, c1, false)
@@ -553,7 +561,7 @@ func _skirts(surf: _Surf, l0: Vector3, r0: Vector3, l1: Vector3, r1: Vector3, gr
 	_skirt_side(surf, r0, r1, l0, grid, origin, n, spacing, faces)
 
 
-func _skirt_side(surf: _Surf, a: Vector3, b: Vector3, other: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array) -> void:
+func _skirt_side(surf: _Surf, a: Vector3, b: Vector3, other: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, _faces: PackedVector3Array) -> void:
 	var outward := Vector3(a.x - other.x, 0.0, a.z - other.z)
 	if outward.length_squared() < 0.01:
 		return
@@ -564,11 +572,14 @@ func _skirt_side(surf: _Surf, a: Vector3, b: Vector3, other: Vector3, grid: Pack
 		return
 	# A few centimetres clear of the heightfield so the basalt reads as a face.
 	# Sit just above the blended heightfield so the face does not z-fight the cut.
+	# No collision: on a shallow shoulder the face is a slab above the ribbon,
+	# and a downward ray lands on it instead of the road.
 	var top_a := a + Vector3(0.0, 0.08, 0.0) + outward * 0.06
 	var top_b := b + Vector3(0.0, 0.08, 0.0) + outward * 0.06
 	var bot_a := Vector3(a.x, toe_a + 0.08, a.z) + outward * BLEND_M
 	var bot_b := Vector3(b.x, toe_b + 0.08, b.z) + outward * BLEND_M
-	_wall(surf, top_a, top_b, bot_b, bot_a, true, faces)
+	var empty := PackedVector3Array()
+	_wall(surf, top_a, top_b, bot_b, bot_a, false, empty)
 
 
 func _rails(surf: _Surf, l0: Vector3, r0: Vector3, r1: Vector3, l1: Vector3, c0: float, c1: float) -> void:
@@ -636,16 +647,31 @@ func _emit_junctions(coord: Vector2i, surf: _Surf, faces: PackedVector3Array, gr
 			var road: Dictionary = _roads[int(_by_id[str(id)])]
 			radius = maxf(radius, float(road["half"]) + 1.0)
 		var origin := WorldConfig.chunk_origin(coord)
-		var y := _surface_y(Vector3(at.x, _major_y(item), at.z), _major_id(item), _joint_lift(item), grid, origin, n, spacing)
-		var fan := PackedVector3Array()
-		var centre := WorldConfig.to_local(Vector3(at.x, y, at.z))
-		fan.append(centre)
-		var sides := 10
-		for s in sides + 1:
-			var ang := float(s) / float(sides) * TAU
-			fan.append(WorldConfig.to_local(Vector3(at.x + cos(ang) * radius, y, at.z + sin(ang) * radius)))
-		for s in sides:
-			_tri(surf, fan[0], fan[s + 1], fan[s + 2], faces)
+		var road_id := _major_id(item)
+		var kind := _kind_near(road_id, at.x, at.z)
+		var lift := _joint_lift(item)
+		var centre_y := _surface_y(Vector3(at.x, _major_y(item), at.z), road_id, kind, lift, grid, origin, n, spacing)
+		var rings := maxi(int(ceil(radius / 2.0)), 1)
+		var sides := maxi(int(ceil(TAU * radius / 2.0)), 12)
+		var prev := PackedVector3Array()
+		prev.append(WorldConfig.to_local(Vector3(at.x, centre_y, at.z)))
+		for ring in rings:
+			var rad := radius * float(ring + 1) / float(rings)
+			var ring_pts := PackedVector3Array()
+			for s in sides:
+				var ang := float(s) / float(sides) * TAU
+				var px := at.x + cos(ang) * rad
+				var pz := at.z + sin(ang) * rad
+				var y := _surface_y(Vector3(px, centre_y, pz), road_id, kind, lift, grid, origin, n, spacing)
+				ring_pts.append(WorldConfig.to_local(Vector3(px, y, pz)))
+			for s in sides:
+				var nxt := (s + 1) % sides
+				if prev.size() == 1:
+					_tri(surf, prev[0], ring_pts[s], ring_pts[nxt], faces)
+				else:
+					_tri(surf, prev[s], ring_pts[s], ring_pts[nxt], faces)
+					_tri(surf, prev[s], ring_pts[nxt], prev[nxt], faces)
+			prev = ring_pts
 
 
 func _signs_for(coord: Vector2i) -> Array:
@@ -761,6 +787,7 @@ func _job_body(host: Node3D, faces: PackedVector3Array) -> void:
 	body.collision_mask = 0
 	var shape := ConcavePolygonShape3D.new()
 	shape.data = faces
+	shape.backface_collision = true
 	var col := CollisionShape3D.new()
 	col.shape = shape
 	body.add_child(col)
@@ -921,26 +948,17 @@ func _major_id(item: Dictionary) -> String:
 	return found
 
 
-## Last 54 m of the authored grade sits on the terrain. The extension to the
-## ramp does too, then rises onto the ramp head over the last 18 m.
+## The authored grade's tail and the run down to the ramp sit on the drawn ground.
 func _seat_grade(road_id: String, chain: float, p: Vector3, y: float, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> float:
 	if road_id != "canyon_springs_grade" or _grade_end < 0.0:
 		return y
 	var g := _ground(grid, origin, n, spacing, p.x, p.z)
 	if g < -70.0:
 		return y
-	if chain > _grade_end:
-		var d := Vector2(p.x - RAMP_TOP.x, p.z - RAMP_TOP.z).length()
-		# Corners sit about a half-width off the centreline, so the whole end
-		# cap (not just the centre vertex) has to meet the ramp head.
-		if d < 4.0:
-			return RAMP_TOP.y
-		if d < 18.0:
-			var t := clampf(1.0 - (d - 4.0) / 14.0, 0.0, 1.0)
-			return lerpf(g + LIFT_M, RAMP_TOP.y, t)
-		return g + LIFT_M
-	if chain >= _grade_end - GRADE_TAIL_M:
-		return g + LIFT_M
+	# The ramp head is a landmark. The ribbon stays on the drawn ground so the
+	# approach cannot float above the heightfield the way a fill used to.
+	if chain > _grade_end or chain >= _grade_end - GRADE_TAIL_M:
+		return g + ROAD_CLEAR_M
 	return y
 
 
@@ -1424,24 +1442,30 @@ func _quad(surf: _Surf, a: Vector3, b: Vector3, c: Vector3, d: Vector3, v0: floa
 	var n2 := (lc - la).cross(ld - la)
 	if n1.length_squared() < 0.0000000001 and n2.length_squared() < 0.0000000001:
 		return
-	var flip1 := n1.y < 0.0
-	var flip2 := n2.y < 0.0
+	# Godot shows clockwise-from-above as the front face (geometric y <= 0).
+	# The previous flip forced the opposite winding, so the lit side was the
+	# underside and the ribbon read as a black slab.
+	var flip1 := n1.y > 0.0
+	var flip2 := n2.y > 0.0
 	if flip1:
 		n1 = -n1
 	if flip2:
 		n2 = -n2
 	var n := n1 + n2
 	if n.length_squared() < 0.0000000001:
-		n = Vector3.UP
+		n = Vector3.DOWN
 	else:
 		n = n.normalized()
+	var shade := -n
+	if shade.y < 0.0:
+		shade = -shade
 	var base := surf.v.size()
 	surf.v.append(la)
 	surf.v.append(lb)
 	surf.v.append(lc)
 	surf.v.append(ld)
 	for _i in 4:
-		surf.nrm.append(n)
+		surf.nrm.append(shade)
 	var tile_v0 := v0 / 4.0
 	var tile_v1 := v1 / 4.0
 	var tile_u0 := u0 / 4.0
@@ -1524,12 +1548,14 @@ func _tri(surf: _Surf, a: Vector3, b: Vector3, c: Vector3, faces: PackedVector3A
 	var n := (b - a).cross(c - a)
 	if n.length_squared() < 0.000001:
 		return
-	if n.y < 0.0:
+	if n.y > 0.0:
 		var tmp := b
 		b = c
 		c = tmp
 		n = -n
-	n = n.normalized()
+	n = -n.normalized()
+	if n.y < 0.0:
+		n = -n
 	var base := surf.v.size()
 	surf.v.append(a)
 	surf.v.append(b)
@@ -1710,13 +1736,68 @@ func _polyline_y(pts: PackedVector3Array, x: float, z: float, fallback: float) -
 	return y
 
 
-## Joined road height, raised to the drawn ground where the terrain would poke through.
-func _surface_y(p: Vector3, road_id: String, lift: float, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> float:
-	var y := _join_y(p, road_id) + lift
+## Deck and bridge keep the authored grade. Everywhere else the vertex sits on
+## the drawn ground. A grade more than 0.3 m off that ground is earthwork, and
+## outside a deck it must not leave a ribbon you can walk under.
+func _surface_y(p: Vector3, road_id: String, kind: String, lift: float, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> float:
+	var design := _join_y(p, road_id) + lift
 	var g := _ground(grid, origin, n, spacing, p.x, p.z)
-	if g > -70.0 and y < g + 0.04:
-		y = g + 0.04
-	return y
+	if kind == "deck" or kind == "bridge":
+		if g > -70.0 and design < g + ROAD_CLEAR_M:
+			return g + ROAD_CLEAR_M
+		return design
+	if g < -70.0:
+		return design
+	if absf(design - g) > 0.3:
+		return g + ROAD_CLEAR_M
+	return g + ROAD_CLEAR_M
+
+
+func _kind_near(road_id: String, x: float, z: float) -> String:
+	if not _by_id.has(road_id):
+		return "grade"
+	var road: Dictionary = _roads[int(_by_id[road_id])]
+	var pts: PackedVector3Array = road["pts"]
+	var kinds: PackedStringArray = road["kind"]
+	var best := 1.0e12
+	var kind := "grade"
+	for i in pts.size() - 1:
+		var hit := _seg(x, z, pts[i].x, pts[i].z, pts[i + 1].x, pts[i + 1].z)
+		if hit.x < best:
+			best = hit.x
+			kind = kinds[i]
+	return kind
+
+
+## True when a straight chord misses the heightfield by enough to walk under.
+func _span_misses(left_a: Vector3, left_b: Vector3, right_a: Vector3, right_b: Vector3, t0: float, t1: float, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> bool:
+	var l0 := left_a.lerp(left_b, t0)
+	var l1 := left_a.lerp(left_b, t1)
+	var r0 := right_a.lerp(right_b, t0)
+	var r1 := right_a.lerp(right_b, t1)
+	var c0 := l0.lerp(r0, 0.5)
+	var c1 := l1.lerp(r1, 0.5)
+	return _chord_miss(l0, l1, grid, origin, n, spacing) or _chord_miss(r0, r1, grid, origin, n, spacing) or _chord_miss(c0, c1, grid, origin, n, spacing)
+
+
+func _chord_miss(a: Vector3, b: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> bool:
+	# Keep going under a metre. A 0.5 m chord across a cut still sits 15 cm
+	# above the heightfield, which is enough to walk under.
+	if Vector2(b.x - a.x, b.z - a.z).length() <= 0.15:
+		return false
+	var g0 := _ground(grid, origin, n, spacing, a.x, a.z)
+	var g1 := _ground(grid, origin, n, spacing, b.x, b.z)
+	if g0 < -70.0 or g1 < -70.0:
+		return false
+	for k in 3:
+		var t := float(k + 1) / 4.0
+		var p := a.lerp(b, t)
+		var g := _ground(grid, origin, n, spacing, p.x, p.z)
+		if g < -70.0:
+			continue
+		if absf(g - lerpf(g0, g1, t)) > 0.02:
+			return true
+	return false
 
 
 ## How far this quad's interior sits under the drawn ground. Zero when it already clears.
@@ -1814,6 +1895,9 @@ func _guard_edge(surf: _Surf, a: Vector3, b: Vector3, other: Vector3, grid: Pack
 
 
 ## Walkable quad, no render surface. Used where a landmark mesh is the deck.
+## Winding matches the asphalt ribbon: clockwise from above (geometric normal
+## y <= 0). The opposite winding is a back face, so a downward ray falls
+## through the deck onto the ground.
 func _solid_quad(faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
 	var la := WorldConfig.to_local(a)
 	var lb := WorldConfig.to_local(b)
@@ -1821,19 +1905,19 @@ func _solid_quad(faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3, 
 	var ld := WorldConfig.to_local(d)
 	var n1 := (lb - la).cross(lc - la)
 	var n2 := (lc - la).cross(ld - la)
-	if n1.y < 0.0:
+	if n1.y > 0.0:
 		faces.append(la)
 		faces.append(lc)
 		faces.append(lb)
-	else:
+	elif n1.length_squared() > 0.0000000001:
 		faces.append(la)
 		faces.append(lb)
 		faces.append(lc)
-	if n2.y < 0.0:
+	if n2.y > 0.0:
 		faces.append(la)
 		faces.append(ld)
 		faces.append(lc)
-	else:
+	elif n2.length_squared() > 0.0000000001:
 		faces.append(la)
 		faces.append(lc)
 		faces.append(ld)
