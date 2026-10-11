@@ -866,7 +866,7 @@ func _job_mark(host: Node3D, mark: Dictionary) -> void:
 	var at: Vector3 = mark["at"]
 	var yaw_deg := float(mark["yaw"])
 	# v4 lanes are local y=148 and the origin is the water, so landmark y is the
-	# water height and the deck lands on 142.76. File yaw -1.7 aims local +Z at
+	# water height and the deck lands on 142.76. File yaw +1.7 aims local +Z at
 	# the south road end. A centreline ray hits the median, so flush checks use a lane.
 	if str(mark["id"]) == "centennial_park_ramp":
 		# v2 pivot is the top edge. Local -Z runs downhill into the river.

@@ -55,14 +55,14 @@
     -6805.5
    ],
    "ground_y": -5.24,
-   "yaw_deg": -1.7,
+   "yaw_deg": 1.7,
    "footprint_m": [
     19.7,
     457
    ],
    "source": "lidar + bible (148 m above water)",
    "model": "res://Models/twin_falls/canyon_hero/tf_perrine_lookalike_bridge_v4.glb",
-   "note": "v4 glb, origin at water level; lanes at 142.76"
+   "note": "v4 glb, origin at water level; lanes at 142.76; yaw +1.7 aims local +Z at the south road end"
   },
   {
    "id": "visitor_centre",
