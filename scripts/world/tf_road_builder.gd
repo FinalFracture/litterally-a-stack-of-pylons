@@ -37,6 +37,10 @@ const BRIDGE_SLOTS := {
 }
 ## Minor roads ramp to the wider road over this distance so a junction has no step.
 const JOIN_M := 16.0
+## Footprint samples about this far apart. A plinth fills anything steeper than this.
+const FOOT_STEP_M := 1.0
+const PLINTH_GAP_M := 0.02
+const STATION_MODULE_M := 25.0
 const DROP_RAIL_M := 2.0
 const GUARD_ROADS := {
 	"canyon_springs_grade": true,
@@ -818,6 +822,9 @@ func _apply_named_slots(root: Node, slots: Dictionary) -> void:
 
 
 func _job_mark(host: Node3D, mark: Dictionary) -> void:
+	if str(mark["id"]) == "station_site":
+		_place_station(host, mark)
+		return
 	var node_name := "Lm_%s" % str(mark["id"])
 	if host.get_node_or_null(node_name) != null:
 		return
@@ -839,25 +846,64 @@ func _job_mark(host: Node3D, mark: Dictionary) -> void:
 		at = RAMP_TOP
 		yaw_deg = 0.0
 	var fp: Vector2 = mark.get("fp", Vector2(4.0, 4.0))
-	var foot := _foot_ys(host, at, yaw_deg, fp)
-	var mesh_bottom := 0.0
-	if bool(mark.get("seat", false)):
-		mesh_bottom = _mesh_min_y(inst)
-		if foot.x > -70.0:
-			# Mesh bottom on the high corner. The plinth fills down to the low corner.
-			at.y = foot.y - mesh_bottom
-	inst.position = WorldConfig.to_local(at)
-	inst.rotation = Vector3(0.0, deg_to_rad(yaw_deg), 0.0)
-	host.add_child(inst)
-	_ensure_collision(inst)
-	if bool(mark.get("seat", false)) and foot.x > -70.0 and foot.y - foot.x > 0.12:
-		_plinth(inst, fp, foot.y - foot.x, mesh_bottom)
+	_finish_mark(host, inst, at, yaw_deg, fp, bool(mark.get("seat", false)))
 	if str(mark["id"]) == "perrine_bridge":
 		_apply_named_slots(inst, BRIDGE_SLOTS)
 	if str(mark["id"]) == "centennial_park_ramp":
 		_place_dock(host, at)
 	if str(mark["id"]) == "coin_viewers":
 		_extra_viewers(inst, str(mark["path"]))
+
+
+## The depot glb is one 25 m module. The site footprint is six of them end to end.
+func _place_station(host: Node3D, mark: Dictionary) -> void:
+	var packed := load(str(mark["path"])) as PackedScene
+	if packed == null:
+		push_error("Landmark failed to load: %s" % str(mark["path"]))
+		return
+	var at: Vector3 = mark["at"]
+	var yaw_deg := float(mark["yaw"])
+	var fp_site: Vector2 = mark.get("fp", Vector2(150.0, 4.0))
+	var count := maxi(int(round(fp_site.x / STATION_MODULE_M)), 1)
+	var mod_len := fp_site.x / float(count)
+	for i in count:
+		var node_name := "Lm_station_site_%d" % i
+		if host.get_node_or_null(node_name) != null:
+			continue
+		var inst := packed.instantiate() as Node3D
+		if inst == null:
+			return
+		inst.name = node_name
+		var lx := -fp_site.x * 0.5 + mod_len * 0.5 + float(i) * mod_len
+		var off := _yaw_offset(yaw_deg, lx, 0.0)
+		var pos := Vector3(at.x + off.x, at.y, at.z + off.y)
+		_finish_mark(host, inst, pos, yaw_deg, Vector2(mod_len, fp_site.y), true)
+
+
+func _finish_mark(host: Node3D, inst: Node3D, at: Vector3, yaw_deg: float, fp: Vector2, seat: bool) -> void:
+	var min_x := -fp.x * 0.5
+	var max_x := fp.x * 0.5
+	var min_z := -fp.y * 0.5
+	var max_z := fp.y * 0.5
+	var box := _mesh_aabb(inst)
+	if box.size.length_squared() > 0.01:
+		min_x = minf(min_x, box.position.x)
+		max_x = maxf(max_x, box.end.x)
+		min_z = minf(min_z, box.position.z)
+		max_z = maxf(max_z, box.end.z)
+	var foot := _foot_ys(host, at, yaw_deg, min_x, max_x, min_z, max_z)
+	var mesh_bottom := 0.0
+	if seat:
+		mesh_bottom = _mesh_min_y(inst)
+		if foot.x > -70.0:
+			# Mesh bottom on the high sample. The plinth fills down to the low sample.
+			at.y = foot.y - mesh_bottom
+	inst.position = WorldConfig.to_local(at)
+	inst.rotation = Vector3(0.0, deg_to_rad(yaw_deg), 0.0)
+	host.add_child(inst)
+	_ensure_collision(inst)
+	if seat and foot.x > -70.0 and foot.y - foot.x > PLINTH_GAP_M:
+		_plinth(inst, max_x - min_x, max_z - min_z, (min_x + max_x) * 0.5, (min_z + max_z) * 0.5, foot.y - foot.x, mesh_bottom)
 
 
 func _major_id(item: Dictionary) -> String:
@@ -1048,20 +1094,23 @@ func _advisory_plate(node: Node3D, font: Font) -> void:
 
 
 ## Returns (min_y, max_y). min_y < -70 when the footprint is off the DEM.
-func _foot_ys(host: Node, at: Vector3, yaw_deg: float, fp: Vector2) -> Vector2:
-	var yaw := deg_to_rad(yaw_deg)
-	var c := cos(yaw)
-	var s := sin(yaw)
+## `min_*` / `max_*` are local XZ before yaw. Offset matches Node3D yaw.
+func _foot_ys(host: Node, at: Vector3, yaw_deg: float, min_x: float, max_x: float, min_z: float, max_z: float) -> Vector2:
+	var span_x := maxf(max_x - min_x, 0.1)
+	var span_z := maxf(max_z - min_z, 0.1)
+	var nx := mini(maxi(int(ceil(span_x / FOOT_STEP_M)) + 1, 3), 41)
+	var nz := mini(maxi(int(ceil(span_z / FOOT_STEP_M)) + 1, 3), 41)
 	var lo := 1.0e9
 	var hi := -1.0e9
 	var hits := 0
-	for ix in [-1.0, 0.0, 1.0]:
-		for iz in [-1.0, 0.0, 1.0]:
-			var lx := float(ix) * fp.x * 0.5
-			var lz := float(iz) * fp.y * 0.5
-			var x := at.x + lx * c - lz * s
-			var z := at.z + lx * s + lz * c
-			var h := _terrain_at(host, x, z)
+	for ix in nx:
+		var u := 0.0 if nx == 1 else float(ix) / float(nx - 1)
+		var lx := lerpf(min_x, max_x, u)
+		for iz in nz:
+			var v := 0.0 if nz == 1 else float(iz) / float(nz - 1)
+			var lz := lerpf(min_z, max_z, v)
+			var off := _yaw_offset(yaw_deg, lx, lz)
+			var h := _terrain_at(host, at.x + off.x, at.z + off.y)
 			if h < -70.0:
 				continue
 			hits += 1
@@ -1070,6 +1119,29 @@ func _foot_ys(host: Node, at: Vector3, yaw_deg: float, fp: Vector2) -> Vector2:
 	if hits == 0:
 		return Vector2(-80.0, -80.0)
 	return Vector2(lo, hi)
+
+
+func _yaw_offset(yaw_deg: float, lx: float, lz: float) -> Vector2:
+	var yaw := deg_to_rad(yaw_deg)
+	var c := cos(yaw)
+	var s := sin(yaw)
+	return Vector2(lx * c + lz * s, -lx * s + lz * c)
+
+
+func _mesh_aabb(root: Node3D) -> AABB:
+	var box := AABB()
+	var found := false
+	for node in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var ab: AABB = _mesh_xf(root, mi) * mi.mesh.get_aabb()
+		if not found:
+			box = ab
+			found = true
+		else:
+			box = box.merge(ab)
+	return box if found else AABB()
 
 
 func _mesh_min_y(root: Node3D) -> float:
@@ -1095,14 +1167,14 @@ func _mesh_min_y(root: Node3D) -> float:
 
 
 ## `top_y` is the mesh bottom in the landmark's local frame. The box meets that
-## bottom and reaches `drop` metres further down, to the low corner of the slope.
-func _plinth(inst: Node3D, fp: Vector2, drop: float, top_y: float) -> void:
+## bottom and reaches `drop` metres further down, to the low sample of the slope.
+func _plinth(inst: Node3D, size_x: float, size_z: float, center_x: float, center_z: float, drop: float, top_y: float) -> void:
 	var mesh := BoxMesh.new()
-	mesh.size = Vector3(fp.x, drop, fp.y)
+	mesh.size = Vector3(maxf(size_x, 0.2), drop, maxf(size_z, 0.2))
 	var mi := MeshInstance3D.new()
 	mi.name = "Plinth"
 	mi.mesh = mesh
-	mi.position = Vector3(0.0, top_y - drop * 0.5, 0.0)
+	mi.position = Vector3(center_x, top_y - drop * 0.5, center_z)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.55, 0.53, 0.50)
 	mat.roughness = 0.9
