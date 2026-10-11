@@ -9,6 +9,7 @@ extends RigidBody3D
 ## "-col" shape can replace it without touching code.
 ## Car hits: physics decides the push; the velocity it imparts is capped, plus a slight random spin.
 
+const _River := preload("res://scripts/twin_falls_river.gd")
 const _COLLIDER_SCENES := {
 	0: preload("res://scenes/player/colliders/standard_cone_world_collider.tscn"),
 	1: preload("res://scenes/player/colliders/mini_cone_world_collider.tscn"),
@@ -33,6 +34,10 @@ var _spin_pending := false
 var _sound_ms := 0
 var _refresh_queued := false
 var _settled_once := false
+## Downstream unit vector while this stack is touching the river. The force is applied
+## above the custom centre of mass so the bottom-heavy stack leans instead of sliding.
+var river_flow := Vector3.ZERO
+var river_flow_on := false
 
 
 func _init() -> void:
@@ -67,6 +72,8 @@ func car_impact(travel: Vector3, _hitter: Node = null) -> void:
 
 
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	if river_flow_on and river_flow.length_squared() > 0.0001:
+		_river_force(state)
 	if Time.get_ticks_msec() >= _impact_until:
 		return
 	if state.linear_velocity.length() > _impact_cap:
@@ -79,6 +86,19 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		if axis.length_squared() < 0.0001:
 			axis = Vector3.RIGHT
 		state.angular_velocity += axis.normalized() * randf_range(CAR_SPIN_MIN, CAR_SPIN_MAX)
+
+
+func _river_force(state: PhysicsDirectBodyState3D) -> void:
+	var dir := river_flow
+	var hv := Vector3(state.linear_velocity.x, 0.0, state.linear_velocity.z)
+	var along := hv.dot(dir)
+	var speed := _River.FLOW_SPEED
+	if along < speed:
+		var accel := minf((speed - along) * 4.0, _River.FLOW_ACCEL)
+		var at := state.transform * (center_of_mass + Vector3(0.0, _River.LEAN_ARM, 0.0))
+		state.apply_force(dir * mass * accel, at)
+	elif along > speed + 0.05:
+		state.linear_velocity = Vector3(hv.x, state.linear_velocity.y, hv.z) - dir * (along - speed)
 
 
 func pieces() -> Array:

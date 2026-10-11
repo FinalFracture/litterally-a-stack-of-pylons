@@ -8,6 +8,7 @@ extends Node
 ##   PYLONS_SPAWN=x,y,z    --spawn=x,y,z     spawn point (default: a sidewalk in the centre chunk)
 ##   PYLONS_MAX_FPS=N      --max-fps=N       Engine.max_fps (0 = uncapped)
 ##   PYLONS_KEYMOUSE=1     --keymouse        keyboard stand-in for mouse look and click verbs
+##                         --keymouse is also read when it sits before the `--` separator.
 ##   PYLONS_LOGS=1         --logs            telemetry prints and traffic log files
 ##   PYLONS_CHUNK=x,z      --chunk=x,z       start (teleport) in chunk x,z (500 m grid; default 0,0)
 ##   PYLONS_WORLD_HALF_M=N --world-half-m=N  world edge at +-N metres (default 2000; fall-off beyond)
@@ -47,6 +48,9 @@ var has_chunk_flag := false
 var world_half_m := 2000.0
 var peds := 16
 var _announced := false
+## Chunk the player was actually placed in. The launch line prints this, not the raw flag.
+var placed_chunk := Vector2i.ZERO
+var has_placed_chunk := false
 
 
 func _init() -> void:
@@ -103,8 +107,19 @@ func _parse() -> void:
 	var raw_peds := _pick(args, "peds", "PYLONS_PEDS")
 	if raw_peds != "" and raw_peds.is_valid_int():
 		peds = maxi(int(raw_peds), 0)
-	keymouse = _flag(args, "keymouse", "PYLONS_KEYMOUSE")
+	keymouse = _flag(args, "keymouse", "PYLONS_KEYMOUSE") or _keymouse_before_separator()
 	logs = _flag(args, "logs", "PYLONS_LOGS")
+
+
+func _keymouse_before_separator() -> bool:
+	for raw in OS.get_cmdline_args():
+		var arg := String(raw).strip_edges().to_lower()
+		if arg == "--keymouse":
+			return true
+		if arg.begins_with("--keymouse="):
+			var value := arg.substr(11)
+			return value == "1" or value == "true" or value == "yes" or value == "on"
+	return false
 
 
 func _user_args() -> Dictionary:
@@ -157,6 +172,8 @@ func log_line(line: String) -> void:
 ## Called once by City after the centre chunk is built and the soul is placed.
 func announce(spawn: Vector3) -> void:
 	effective_spawn = spawn
+	placed_chunk = WorldConfig.chunk_of(spawn.x, spawn.z)
+	has_placed_chunk = true
 	if _announced:
 		return
 	_announced = true
@@ -182,7 +199,8 @@ func launch_line() -> String:
 	var tail := ""
 	if not flags.is_empty():
 		tail = " " + " ".join(flags)
-	var chunk_text := "%d,%d" % [start_chunk.x, start_chunk.y]
+	var chunk_v := placed_chunk if has_placed_chunk else start_chunk
+	var chunk_text := "%d,%d" % [chunk_v.x, chunk_v.y]
 	return "PYLONS_LAUNCH seed=%d (%s) chunk=%s (%s) spawn=%s (%s) max_fps=%d keymouse=%s logs=%s | replay: %sgodot --path . -- --seed=%d --chunk=%s --spawn=%s --max-fps=%d%s" % [
 		world_seed, seed_source, chunk_text, "flag" if has_chunk_flag else "default", spawn_text,
 		"flag" if has_spawn_override else "sidewalk", max_fps,

@@ -23,6 +23,8 @@ var _bounds := Rect2(0.0, 0.0, 500.0, 500.0)
 var _bounds_read := false
 var max_speed: float = DEFAULT_SPEED
 var jump_height: float = 0.49
+## Downstream drift set by the river while this stack is touching the water. Zero on land.
+var flow_velocity := Vector3.ZERO
 
 
 func _ready() -> void:
@@ -43,7 +45,10 @@ func _physics_process(delta: float) -> void:
 	floor_snap_length = 0.0 if hold_column else 0.2
 	var accel := GROUND_ACCEL if is_on_floor() else AIR_ACCEL
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
-	horizontal = horizontal.move_toward(wish * max_speed, accel * delta)
+	var target := wish * max_speed
+	if flow_velocity.length_squared() > 0.0001:
+		target += flow_velocity
+	horizontal = horizontal.move_toward(target, accel * delta)
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
 

@@ -676,6 +676,7 @@ func _job_part(host: Node3D, pay: ChunkPay, index: int) -> void:
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	var inst := MeshInstance3D.new()
 	inst.name = "Terrain_%d" % index
+	inst.add_to_group("terrain_mesh")
 	inst.mesh = mesh
 	inst.material_override = _mat
 	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

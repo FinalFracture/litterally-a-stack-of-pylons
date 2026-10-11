@@ -2,10 +2,12 @@ extends Node3D
 
 ## Twin Falls streaming world. Terrain comes from TwinFallsTerrainGenerator.
 ## The player stays frozen until the chunk under them has a heightfield body.
-## Below y -300 they respawn at the spawn.json point.
+## Below y -300, or when the whole stack is under the river, they respawn at
+## --spawn when that flag is set, otherwise at spawn.json. --spawn y snaps to the ground.
 
 const _Gen := preload("res://scripts/world/twin_falls_terrain_generator.gd")
 const _Streamer := preload("res://scripts/world/chunk_streamer.gd")
+const _River := preload("res://scripts/twin_falls_river.gd")
 
 ## Basalt talus rests near 35 degrees. Steeper than this, the cone is not on a floor and slides.
 const TALUS_FLOOR_DEG := 34.0
@@ -13,6 +15,7 @@ const KILL_Y := -300.0
 
 var streamer: ChunkStreamer
 var generator: TwinFallsTerrainGenerator
+var _river
 var _soul: CharacterBody3D
 var _stand := Vector3.ZERO
 var _held_chunk := Vector2i(999999, 999999)
@@ -43,6 +46,10 @@ func _ready() -> void:
 	streamer.name = "ChunkStreamer"
 	add_child(streamer)
 	streamer.setup(null, 1, generator)
+	_river = _River.new()
+	_river.name = "RiverFlow"
+	_river.setup(generator)
+	add_child(_river)
 	_stand = _boot_stand()
 	_warm_shader()
 	_soul = get_node("SoulBody") as CharacterBody3D
@@ -105,7 +112,8 @@ func _boot_stand() -> Vector3:
 	if LaunchConfig.has_spawn_override:
 		var s := LaunchConfig.spawn_override
 		var ground := generator.height_at(s.x, s.z)
-		var y := s.y if s.y >= ground + 0.05 else ground + 0.2
+		# On the DEM the flag's y is ignored and the stack stands on the ground.
+		var y := ground + 0.2 if ground > -70.0 else s.y
 		return Vector3(s.x, y, s.z)
 	if LaunchConfig.has_chunk_flag:
 		var center := WorldConfig.chunk_center(_flag_chunk(LaunchConfig.start_chunk))
@@ -135,7 +143,12 @@ func _physics_process(_delta: float) -> void:
 	if _soul == null:
 		return
 	if _soul.global_position.y < KILL_Y:
-		_respawn_at_json()
+		respawn_player()
+		return
+	# The river is mid-sink. Leave the body frozen so this step does not clear boot_held.
+	if _river != null and bool(_river.call("holds_player")):
+		_soul.boot_held = true
+		_soul.velocity = Vector3.ZERO
 		return
 	if not _released:
 		return
@@ -164,11 +177,18 @@ func _floor_ready(at: Vector3) -> bool:
 	return host.get_node_or_null("TerrainBody") != null
 
 
-func _respawn_at_json() -> void:
+## Kill plane and a fully submerged stack share this point.
+func respawn_player() -> void:
 	var s := generator.spawn
-	var y := generator.height_at(s.x, s.z) + 0.2
+	if LaunchConfig.has_spawn_override:
+		s = LaunchConfig.spawn_override
+	var ground := generator.height_at(s.x, s.z)
+	var y := ground + 0.2
+	if ground <= -70.0 and LaunchConfig.has_spawn_override:
+		y = s.y
 	_soul.global_position = Vector3(s.x, y, s.z)
 	_soul.velocity = Vector3.ZERO
+	_soul.flow_velocity = Vector3.ZERO
 	_soul.boot_held = not _floor_ready(_soul.global_position)
 	if streamer != null:
 		streamer.target = _soul

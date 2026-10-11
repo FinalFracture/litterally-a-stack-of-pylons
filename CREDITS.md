@@ -190,6 +190,9 @@ In-house (no AI): core buildings (6-storey pair, T5 tower, school, police, fire 
 ## 5. Engine
 - Godot Engine 4.7 (MIT license, https://godotengine.org/license). If exported builds ship, include Godot's license and third-party notices per that page.
 
+## 5b. Elevation data
+Elevation data: U.S. Geological Survey 3DEP
+
 
 ## 6. AI-generated content disclosure (Steam) - added 2026-10-09
 Policy: allowed only when disclosed here (this is §6; style-guide §13–§14); prefer CC0 or in-house replacements. "AI" = images or models produced by a generative-AI tool.

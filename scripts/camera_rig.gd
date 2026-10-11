@@ -4,6 +4,8 @@ const BOOM_BASE := 2.4
 const BOOM_PER_M := 0.55
 const LOOK_BIAS := 0.08
 const SPRING_MARGIN := 0.3
+## Layer 1 is terrain and the world. Layer 3 is city curbs. Both block the camera.
+const COLLIDE_MASK := 1 | 4
 const MOUSE_SENS := 0.003
 const PITCH_MIN := 0.15
 const PITCH_MAX := 1.2
@@ -17,16 +19,33 @@ var _target: Node3D
 var _camera: Camera3D
 var _yaw := 0.0
 var _pitch := atan(1.25 / 2.4)
+var _spring_shape: SphereShape3D
+var _spring_query: PhysicsShapeQueryParameters3D
+var _debug_on := false
+var _debug_layer: CanvasLayer
+var _debug_label: Label
 
 
 func _ready() -> void:
 	_target = get_node_or_null(target_path) as Node3D
 	_camera = get_node_or_null("Camera3D") as Camera3D
+	_spring_shape = SphereShape3D.new()
+	_spring_shape.margin = 0.0
+	_spring_query = PhysicsShapeQueryParameters3D.new()
+	_spring_query.shape = _spring_shape
+	_spring_query.collide_with_areas = false
+	_spring_query.collide_with_bodies = true
+	_spring_query.collision_mask = COLLIDE_MASK
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	_place()
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key != null and key.pressed and not key.echo and key.keycode == KEY_F3:
+		_toggle_debug()
+		get_viewport().set_input_as_handled()
+		return
 	var button := event as InputEventMouseButton
 	if button != null and button.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not get_tree().paused:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -47,6 +66,7 @@ func _process(delta: float) -> void:
 	if LaunchConfig.keymouse_on() and not get_tree().paused:
 		_key_look(delta)
 	_place()
+	_refresh_debug()
 
 
 func _key_look(delta: float) -> void:
@@ -116,13 +136,120 @@ func _spring(look: Vector3, desired: Vector3) -> Vector3:
 	var to_cam := desired - look
 	if to_cam.length_squared() < 0.0001:
 		return desired
-	var origin := look + to_cam.normalized() * 0.15
+	var dir := to_cam.normalized()
+	var radius := _spring_radius()
+	var space := world.direct_space_state
+	var exclude := _spring_exclude()
+	# Start the ray in front of the stack, level with the look point, so it is not
+	# born inside the heightfield. A ray that starts inside that solid does not hit.
+	var flat := Vector3(dir.x, 0.0, dir.z)
+	if flat.length_squared() < 0.0001:
+		flat = Vector3.FORWARD
+	flat = flat.normalized()
+	var origin := look - flat * 0.8
 	var query := PhysicsRayQueryParameters3D.create(origin, desired)
 	query.collide_with_areas = false
-	query.collision_mask = 5
-	if _target is CollisionObject3D:
-		query.exclude = [(_target as CollisionObject3D).get_rid()]
-	var hit: Dictionary = world.direct_space_state.intersect_ray(query)
-	if hit.is_empty():
+	query.collision_mask = COLLIDE_MASK
+	query.exclude = exclude
+	var hit: Dictionary = space.intersect_ray(query)
+	if not hit.is_empty():
+		var pulled: Vector3 = hit.position - dir * SPRING_MARGIN
+		var normal: Vector3 = hit.normal
+		if normal.y < 0.75:
+			var nudged := pulled + normal * radius
+			if not _sphere_blocked(space, nudged, radius, exclude):
+				pulled = nudged
+		if pulled.distance_squared_to(look) > to_cam.length_squared():
+			return desired
+		return pulled
+	if not _sphere_blocked(space, desired, radius, exclude):
 		return desired
-	return hit.position + (look - desired).normalized() * SPRING_MARGIN
+	if _sphere_blocked(space, look, radius, exclude):
+		origin = _walk_clear(space, look, -flat, radius, exclude)
+	var max_d := origin.distance_to(desired)
+	if max_d < 0.05:
+		return origin
+	var lo := 0.0
+	var hi := max_d
+	var into := (desired - origin).normalized()
+	for _i in 6:
+		var mid := (lo + hi) * 0.5
+		if _sphere_blocked(space, origin + into * mid, radius, exclude):
+			hi = mid
+		else:
+			lo = mid
+	return _clear_steep_face(space, origin + into * lo, into, radius, exclude)
+
+
+func _spring_radius() -> float:
+	var near := 0.05
+	if _camera != null:
+		near = _camera.near
+	return maxf(SPRING_MARGIN, near + 0.2)
+
+
+func _spring_exclude() -> Array[RID]:
+	var exclude: Array[RID] = []
+	if _target is CollisionObject3D:
+		exclude.append((_target as CollisionObject3D).get_rid())
+	return exclude
+
+
+func _sphere_blocked(space: PhysicsDirectSpaceState3D, at: Vector3, radius: float, exclude: Array[RID]) -> bool:
+	_spring_shape.radius = radius
+	_spring_query.transform = Transform3D(Basis.IDENTITY, at)
+	_spring_query.exclude = exclude
+	return not space.intersect_shape(_spring_query, 1).is_empty()
+
+
+## Look point buried in a heightfield: step through the player until the sphere is in open air.
+func _walk_clear(space: PhysicsDirectSpaceState3D, from: Vector3, dir: Vector3, radius: float, exclude: Array[RID]) -> Vector3:
+	var pos := from
+	for i in 16:
+		pos = from + dir * (radius * 0.5 * float(i + 1))
+		if not _sphere_blocked(space, pos, radius, exclude):
+			return pos
+	return pos
+
+
+## A steep face needs the near plane in front of the rock, not buried in the collision volume.
+func _clear_steep_face(space: PhysicsDirectSpaceState3D, pos: Vector3, dir: Vector3, radius: float, exclude: Array[RID]) -> Vector3:
+	var query := PhysicsRayQueryParameters3D.create(pos, pos + dir * (radius + 0.2))
+	query.collide_with_areas = false
+	query.collision_mask = COLLIDE_MASK
+	query.exclude = exclude
+	var hit: Dictionary = space.intersect_ray(query)
+	if hit.is_empty():
+		return pos
+	var normal: Vector3 = hit.normal
+	if normal.y >= 0.75:
+		return pos
+	var extra := radius
+	var nudged := pos + normal * extra
+	if _sphere_blocked(space, nudged, radius, exclude):
+		return pos
+	return nudged
+
+
+func _toggle_debug() -> void:
+	_debug_on = not _debug_on
+	if _debug_layer == null:
+		_debug_layer = CanvasLayer.new()
+		_debug_layer.layer = 30
+		add_child(_debug_layer)
+		_debug_label = Label.new()
+		_debug_label.position = Vector2(12, 12)
+		_debug_label.add_theme_font_size_override("font_size", 16)
+		_debug_label.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
+		_debug_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0))
+		_debug_label.add_theme_constant_override("outline_size", 4)
+		_debug_layer.add_child(_debug_label)
+	_debug_layer.visible = _debug_on
+
+
+func _refresh_debug() -> void:
+	if not _debug_on or _debug_label == null or _camera == null:
+		return
+	var parts := get_tree().get_nodes_in_group("terrain_mesh").size()
+	var p := global_position
+	_debug_label.text = "cam %.2f, %.2f, %.2f\nnear %.3f\nterrain_mesh %d" % [p.x, p.y, p.z, _camera.near, parts]
