@@ -28,6 +28,13 @@ const SIGN_SCENE := "res://Models/street_furniture/tf_street_name_sign.glb"
 const RAMP_SCENE := "res://Models/twin_falls/tf_boat_ramp_8m_v2.glb"
 const DOCK_SCENE := "res://Models/twin_falls/tf_launch_dock_3x15m.glb"
 const FONT_PATH := "res://Models/street_furniture/_fonts/Overpass-Bold.ttf"
+## v4 slots that have a matching tres. Lamp and rail stay on the glb materials.
+const BRIDGE_SLOTS := {
+	"bridge_deck_concrete": "res://materials/twin_falls/bridge_deck_concrete.tres",
+	"bridge_road_asphalt": "res://materials/twin_falls/bridge_road_asphalt.tres",
+	"bridge_steel_corten": "res://materials/twin_falls/bridge_steel_corten.tres",
+	"bridge_xbrace_card": "res://materials/twin_falls/bridge_xbrace_card.tres",
+}
 ## Minor roads ramp to the wider road over this distance so a junction has no step.
 const JOIN_M := 16.0
 const DROP_RAIL_M := 2.0
@@ -788,6 +795,28 @@ func _job_signs(host: Node3D, signs: Array) -> void:
 			_post_box(inst)
 
 
+func _apply_named_slots(root: Node, slots: Dictionary) -> void:
+	var loaded := {}
+	for node in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		for s in mi.mesh.get_surface_count():
+			var mat := mi.mesh.surface_get_material(s)
+			if mat == null:
+				continue
+			var key := str(mat.resource_name)
+			if not slots.has(key):
+				continue
+			if not loaded.has(key):
+				loaded[key] = load(str(slots[key])) as Material
+			var ext: Material = loaded[key]
+			if ext == null:
+				push_error("Material slot missing: %s" % str(slots[key]))
+				continue
+			mi.set_surface_override_material(s, ext)
+
+
 func _job_mark(host: Node3D, mark: Dictionary) -> void:
 	var node_name := "Lm_%s" % str(mark["id"])
 	if host.get_node_or_null(node_name) != null:
@@ -823,6 +852,8 @@ func _job_mark(host: Node3D, mark: Dictionary) -> void:
 	_ensure_collision(inst)
 	if bool(mark.get("seat", false)) and foot.x > -70.0 and foot.y - foot.x > 0.12:
 		_plinth(inst, fp, foot.y - foot.x, mesh_bottom)
+	if str(mark["id"]) == "perrine_bridge":
+		_apply_named_slots(inst, BRIDGE_SLOTS)
 	if str(mark["id"]) == "centennial_park_ramp":
 		_place_dock(host, at)
 	if str(mark["id"]) == "coin_viewers":
