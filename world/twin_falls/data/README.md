@@ -75,3 +75,8 @@ A chunk is flagged if its **99th-percentile slope is over 45°** (slope computed
   - Canyon Springs Grade is a hand-fit switchback: 3 legs that follow the contours, 2 hairpins of R 12 m. It is 1.95 km long at 10%, with cut/fill from −19 to +18 m. A 3-point radius check finds a minimum of 10.7 m where a leg leaves a hairpin, so that spot is still under 12 m.
   - Spawn moved to the visitor-lot north sidewalk; the original position is kept in `moved_from`.
   - LP-17 now sits at the lidar south water edge.
+- **Rev 3 (visitor-centre refit):** the visitor centre, lot, lot drive, D07b bin, LP-09 coin viewers, restripe cone cache, LP-08 truck and LP-11 trail moved about 200 m north to the real layout: south rim, west of US-93, at the SW end of the bridge. Positions are in the `VC` constants in tf_roads.py.
+  - Sites were fitted on the hi-res slope grid: 95th-percentile slope under 5° and no >30° cell within 15 m (requirement: 10 m). The lot east edge sits 40 m west of the US-93 edge.
+  - The lot drive joins US-93 at z_north 6510 (node n028).
+  - Spawn is on the lot's rim-side sidewalk, with `yaw_deg` facing the deck midpoint. `spawn.json` → `line_of_sight` records the eye-height terrain check.
+  - The Developer's perrine_* entries and half_span 247.5 (repo d43fac3) are hard-coded in `DEV_PERRINE`/`DEV_HALF_SPAN`. `--out DIR` writes the outputs somewhere else. A run to /tmp gave a landmarks.json identical to the edited file.

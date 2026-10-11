@@ -1,9 +1,10 @@
 {
  "spawn": {
-  "x": 3301.74,
-  "z_north": 6321.5,
-  "godot_z": -6321.5,
-  "y": 149.204
+  "x": 3320.0,
+  "z_north": 6531.5,
+  "godot_z": -6531.5,
+  "y": 143.073,
+  "yaw_deg": -9.05
  },
  "lat": 42.5980008,
  "lon": -114.4537377,
@@ -28,7 +29,21 @@
  "moved_from": {
   "x": 3359.38,
   "z_north": 6546.88,
-  "reason": "was 11.9 m from the US-93 centreline (approach verge/fill); moved to the visitor-centre lot sidewalk"
+  "reason": "was 11.9 m from the US-93 centreline (approach verge/fill); moved to the visitor-centre lot rim-side sidewalk"
  },
- "spawn_note": "visitor-centre lot north sidewalk, walk top +0.15 m over terrain; 17.9 m from the lot drive-aisle edge, 25.8 m from the nearest road edge. lat/lon/utm/dem fields refer to moved_from"
+ "spawn_note": "visitor-centre lot rim-side (north) sidewalk; yaw_deg is Godot yaw (0 = -Z/north, + = turn left), here facing NNE at the deck midpoint; walk top +0.15 m over terrain; 17.9 m from the lot drive-aisle edge, 20.2 m from the nearest road edge. lat/lon/utm/dem fields refer to moved_from",
+ "line_of_sight": {
+  "eye_y": 144.673,
+  "target": "perrine_bridge deck midpoint at lane y",
+  "target_pos": [
+   3363.62,
+   142.76,
+   -6805.5
+  ],
+  "distance_m": 277.5,
+  "min_terrain_clearance_m": 1.86,
+  "blocked_by_terrain": false,
+  "crosses_visitor_centre_footprint": false,
+  "pitch_deg": -0.4
+ }
 }

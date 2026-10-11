@@ -68,17 +68,17 @@
    "id": "visitor_centre",
    "name": "Visitor centre (generic)",
    "position": [
-    3261.74,
-    148.627,
-    -6330
+    3302.0,
+    143.152,
+    -6558.0
    ],
-   "ground_y": 148.627,
+   "ground_y": 143.152,
    "yaw_deg": -1.7,
    "footprint_m": [
     30,
     20
    ],
-   "source": "bible (shifted to lidar bridge line)",
+   "source": "real layout (S rim, W of US-93, SW end of bridge) fitted to lidar <5 deg",
    "model": "res://Models/buildings/twin_falls/tf_visitor_centre.glb",
    "note": "handoff 18 path is res://Models/buildings/twin_falls/, not res://Models/twin_falls/"
   },
@@ -86,35 +86,35 @@
    "id": "visitor_lot",
    "name": "Visitor-centre lot",
    "position": [
-    3291.74,
-    149.121,
-    -6300
+    3293.0,
+    143.218,
+    -6510.0
    ],
-   "ground_y": 149.121,
+   "ground_y": 143.218,
    "yaw_deg": -1.7,
    "footprint_m": [
     60,
     40
    ],
-   "source": "estimate (shifted)",
+   "source": "fitted to lidar <5 deg; 40 m W of the US-93 edge",
    "model": null,
-   "note": null
+   "note": "central E-W drive aisle 7.3 m; drive exits east to US-93 at z_north 6510"
   },
   {
    "id": "lost_found_bin",
    "name": "Lost & found bin (D07b)",
    "position": [
-    3261.74,
-    148.699,
-    -6318
+    3302.0,
+    143.128,
+    -6546.5
    ],
-   "ground_y": 148.699,
+   "ground_y": 143.128,
    "yaw_deg": -1.7,
    "footprint_m": [
     0.6,
     0.6
    ],
-   "source": "challenge-sites 4 (shifted)",
+   "source": "challenge-sites 4; by the visitor-centre S entrance",
    "model": "res://Models/twin_falls/tf_lost_found_bin.glb",
    "note": null
   },
@@ -122,17 +122,17 @@
    "id": "coin_viewers",
    "name": "Overlook coin viewers (LP-09) x3",
    "position": [
-    3251.74,
-    146.917,
-    -6360
+    3310.0,
+    143.181,
+    -6585.0
    ],
-   "ground_y": 146.917,
+   "ground_y": 143.181,
    "yaw_deg": -1.7,
    "footprint_m": [
     6,
     2
    ],
-   "source": "lore 6 (shifted)",
+   "source": "lore 6; rim overlook N of the visitor centre, 13 m from the steep edge",
    "model": "res://Models/twin_falls/tf_coin_viewer.glb",
    "note": null
   },
@@ -338,17 +338,17 @@
    "id": "cache_visitor_restripe",
    "name": "Cone cache: visitor-lot restriping (10)",
    "position": [
-    3291.74,
-    149.121,
-    -6300
+    3280.0,
+    142.951,
+    -6520.0
    ],
-   "ground_y": 149.121,
+   "ground_y": 142.951,
    "yaw_deg": -1.7,
    "footprint_m": [
     13.5,
     5.4
    ],
-   "source": "challenge-sites 6 (shifted)",
+   "source": "challenge-sites 6; N stall row, W half of the lot",
    "model": "res://Models/twin_falls/tf_restripe_paint_cart.glb",
    "note": null
   },
@@ -428,17 +428,17 @@
    "id": "lp08_inspection_truck",
    "name": "LP-08 inspection truck",
    "position": [
-    3281.74,
-    149.172,
-    -6320
+    3315.0,
+    143.253,
+    -6515.0
    ],
-   "ground_y": 149.172,
+   "ground_y": 143.253,
    "yaw_deg": -1.7,
    "footprint_m": [
     2.6,
     9
    ],
-   "source": "lore 4 (shifted)",
+   "source": "lore 4; E end of the lot, nose to the bridge",
    "model": null,
    "note": null
   },
@@ -482,17 +482,17 @@
    "id": "lp11_rim_trail",
    "name": "LP-11/12 rim-trail sign + bench",
    "position": [
-    3031.74,
-    147.922,
-    -6330
+    3052.0,
+    145.672,
+    -6571.0
    ],
-   "ground_y": 147.922,
+   "ground_y": 145.672,
    "yaw_deg": 0,
    "footprint_m": [
     10,
     2
    ],
-   "source": "lore 8 (shifted)",
+   "source": "lore 8; 250 m W of the visitor centre, 8 m back from the rim",
    "model": null,
    "note": null
   },
