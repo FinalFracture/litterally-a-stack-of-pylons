@@ -18,15 +18,15 @@
     142.76,
     -6558.0
    ],
-   "ground_y": 138.297,
+   "ground_y": -5.24,
    "yaw_deg": -1.7,
    "footprint_m": [
     19.7,
     10
    ],
    "source": "lidar rim (slope>40 deg) + bible",
-   "model": "res://Models/twin_falls/canyon_hero/tf_perrine_lookalike_bridge_v2.glb",
-   "note": null
+   "model": "res://Models/twin_falls/canyon_hero/tf_perrine_lookalike_bridge_v3.glb",
+   "note": "origin at water level (v3)"
   },
   {
    "id": "perrine_north_abutment",
@@ -36,15 +36,15 @@
     142.76,
     -7053.0
    ],
-   "ground_y": 137.276,
+   "ground_y": -5.24,
    "yaw_deg": -1.7,
    "footprint_m": [
     19.7,
     10
    ],
    "source": "lidar rim (slope>40 deg) + bible",
-   "model": "res://Models/twin_falls/canyon_hero/tf_perrine_lookalike_bridge_v2.glb",
-   "note": null
+   "model": "res://Models/twin_falls/canyon_hero/tf_perrine_lookalike_bridge_v3.glb",
+   "note": "origin at water level (v3)"
   },
   {
    "id": "perrine_bridge",
@@ -54,15 +54,15 @@
     142.76,
     -6805.5
    ],
-   "ground_y": -4.902,
+   "ground_y": -5.24,
    "yaw_deg": -1.7,
    "footprint_m": [
     19.7,
     495.0
    ],
    "source": "lidar + bible (148 m above water)",
-   "model": "res://Models/twin_falls/canyon_hero/tf_perrine_lookalike_bridge_v2.glb",
-   "note": "lane y = water -5.24 + 148 = 142.76; model origin at deck centre"
+   "model": "res://Models/twin_falls/canyon_hero/tf_perrine_lookalike_bridge_v3.glb",
+   "note": "origin at water level (v3)"
   },
   {
    "id": "visitor_centre",
