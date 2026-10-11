@@ -33,6 +33,7 @@ var _shooting := false
 var _aim := Vector3.ZERO
 var _warm: MeshInstance3D
 var _warm_frames := 0
+var _roads_logged := false
 
 
 func _ready() -> void:
@@ -102,7 +103,9 @@ func _release_spawn(_spawn: Vector3) -> void:
 	_soul.boot_held = false
 	_soul.set_physics_process(true)
 	LaunchConfig.announce(_stand)
-	_aim = _soul.global_position + Vector3(0.0, -40.0, -520.0)
+	var yaw := generator.spawn_yaw
+	var dir := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	_aim = _soul.global_position + dir * 280.0 + Vector3(0.0, -6.0, 0.0)
 	_look()
 
 
@@ -198,6 +201,17 @@ func _process(_delta: float) -> void:
 		if _warm_frames > 3:
 			_warm.visible = false
 			_warm = null
+	if not _roads_logged and _released and streamer != null and _soul != null:
+		var here := WorldConfig.chunk_of(_soul.global_position.x, _soul.global_position.z)
+		var host := streamer.host_for(here)
+		if host != null and streamer.is_loaded(here) and host.get_node_or_null("Roads") != null:
+			_roads_logged = true
+			var marks := 0
+			for child in host.get_children():
+				if str(child.name).begins_with("Lm_"):
+					marks += 1
+			var signs := host.get_node_or_null("StreetSigns") != null
+			print("TF_ROADS chunk=%s marks=%d signs=%s" % [host.name, marks, str(signs)])
 	if not _capture or _shooting:
 		return
 	if Time.get_ticks_msec() - _started_ms > 240000:

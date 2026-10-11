@@ -34,8 +34,13 @@ const SKIP_HI := {
 	"1_4": true,
 }
 
-var spawn := Vector3(3359.38, 140.243, -6546.88)
+var spawn := Vector3(3320.0, 143.073, -6531.5)
+## Godot yaw: 0 looks north (-Z), positive turns left. From spawn.json.
+var spawn_yaw := 0.0
 var water_pts: Array[Vector3] = []
+
+const _RoadBuilder := preload("res://scripts/world/tf_road_builder.gd")
+var _roads
 
 var _mat: ShaderMaterial
 var _hi: Dictionary = {}
@@ -55,6 +60,7 @@ class ChunkPay:
 	var center := Vector3.ZERO
 	var tris := 0
 	var content_hash := ""
+	var roads: Dictionary = {}
 
 
 class Build:
@@ -74,6 +80,7 @@ class Build:
 	var water_y: PackedFloat32Array
 	var water_empty := true
 	var talus: PackedFloat32Array
+	var road_break: Dictionary = {}
 
 
 func _init() -> void:
@@ -86,6 +93,8 @@ func material() -> ShaderMaterial:
 
 func prepare() -> void:
 	_load_meta()
+	_roads = _RoadBuilder.new()
+	_roads.prepare()
 	_mat = ShaderMaterial.new()
 	var shader := load("res://shaders/twin_falls_terrain.gdshader") as Shader
 	if shader == null:
@@ -131,6 +140,8 @@ func build_jobs(data: ChunkData, host: Node3D) -> Array[Callable]:
 	jobs.append(_job_body.bind(host, pay))
 	for i in pay.parts.size():
 		jobs.append(_job_part.bind(host, pay, i))
+	if _roads != null and not pay.roads.is_empty():
+		jobs.append_array(_roads.jobs(host, pay.roads))
 	return jobs
 
 
@@ -267,6 +278,8 @@ func _build(coord: Vector2i, dc: Vector2i, hi: bool) -> ChunkPay:
 		# Detach from the height cache. Carve and the mesh must not rewrite the DEM.
 		b.grid = b.grid.duplicate()
 		_carve_bed(b)
+		if _roads != null:
+			_roads.apply_cuts(b.grid, b.origin, b.n, b.spacing)
 		if hi:
 			_emit_hi(b)
 		else:
@@ -281,6 +294,8 @@ func _build(coord: Vector2i, dc: Vector2i, hi: bool) -> ChunkPay:
 	pay.center = _center_of(coord)
 	pay.tris = b.indices.size() / 3
 	pay.parts = _split(b.verts, b.norms, b.cols, b.indices)
+	if _roads != null and b.grid.size() == b.n * b.n:
+		pay.roads = _roads.build_chunk(coord, b.grid, b.n, b.spacing)
 	var g := pay.heights
 	var h0 := g[0] if not g.is_empty() else 0.0
 	var h1 := g[g.size() / 2] if not g.is_empty() else 0.0
@@ -742,7 +757,42 @@ func _merge_ok(b: Build, cell_c: int, cell_r: int) -> bool:
 	var rect := _block_rect(b.dc, cell_c, cell_r)
 	if rect.z < rect.x:
 		return false
-	return not _rect_hits_river(rect)
+	if _rect_hits_river(rect):
+		return false
+	# A road cut has to survive the 16 m collapse, on both sides of a chunk seam.
+	return not _road_breaks(b, cell_c, cell_r)
+
+
+## Shared by both chunks: DEM height versus the road cut, not this chunk's grid.
+func _road_breaks(b: Build, cell_c: int, cell_r: int) -> bool:
+	if _roads == null:
+		return false
+	var key := Vector2i(cell_c, cell_r)
+	if b.road_break.has(key):
+		return bool(b.road_break[key])
+	var rect := _block_rect(b.dc, cell_c, cell_r)
+	var breaks: bool = _roads.cuts_block(rect, 0.25, Callable(self, "_dem_at"))
+	b.road_break[key] = breaks
+	return breaks
+
+
+func _dem_at(x: float, z: float) -> float:
+	var cx := int(floor(x / 500.0))
+	var cz := int(floor((-z) / 500.0))
+	if cx < 0 or cx > 9 or cz < 0 or cz > 15:
+		return -80.0
+	var hi := _is_hi(cx, cz)
+	var n := HI_N if hi else LOW_N
+	var sp := HI_SP if hi else LOW_SP
+	var grid := _heights(cx, cz, hi)
+	if grid.size() != n * n:
+		return -80.0
+	var origin := _data_origin(cx, cz)
+	var col := (x - origin.x) / sp
+	var row := (z - origin.y) / sp
+	if col < -0.01 or row < -0.01 or col > float(n - 1) + 0.01 or row > float(n - 1) + 0.01:
+		return height_at(x, z)
+	return _bilinear(grid, n, col, row)
 
 
 func _edge_fine(b: Build, cell_c: int, cell_r: int, step: int) -> bool:
@@ -1363,6 +1413,8 @@ func _load_meta() -> void:
 	if spawned is Dictionary:
 		var s: Dictionary = (spawned as Dictionary).get("spawn", {})
 		spawn = Vector3(float(s["x"]), float(s["y"]), float(s["godot_z"]))
+		if s.has("yaw_deg"):
+			spawn_yaw = deg_to_rad(float(s["yaw_deg"]))
 	var water: Variant = JSON.parse_string(FileAccess.get_file_as_string(DATA + "/water.json"))
 	if water is Dictionary:
 		for item2 in (water as Dictionary).get("vertices", []):

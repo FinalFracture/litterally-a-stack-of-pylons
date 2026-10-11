@@ -35,7 +35,7 @@ light_energy = 1.35
 shadow_enabled = false
 
 [node name="SoulBody" type="CharacterBody3D" parent="." groups=["soul"]]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3359.38, 142, -6546.88)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3320, 143.073, -6531.5)
 collision_layer = 1
 collision_mask = 5
 script = ExtResource("2_soul")
