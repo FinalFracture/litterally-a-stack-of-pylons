@@ -58,11 +58,11 @@
    "yaw_deg": -1.7,
    "footprint_m": [
     19.7,
-    495.0
+    457
    ],
    "source": "lidar + bible (148 m above water)",
-   "model": "res://Models/twin_falls/canyon_hero/tf_perrine_lookalike_bridge_v3.glb",
-   "note": "v3 glb origin at water level; lanes at y 142.76"
+   "model": "res://Models/twin_falls/canyon_hero/tf_perrine_lookalike_bridge_v4.glb",
+   "note": "v4 glb, origin at water level; lanes at 142.76"
   },
   {
    "id": "visitor_centre",
