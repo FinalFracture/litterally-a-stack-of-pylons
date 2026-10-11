@@ -1,0 +1,14 @@
+[gd_resource type="StandardMaterial3D" load_steps=3 format=3]
+[ext_resource type="Texture2D" path="res://materials/twin_falls/hero/rust_coarse_01_albedo_1k.jpg" id="1"]
+[ext_resource type="Texture2D" path="res://materials/twin_falls/hero/rust_coarse_01_normal_gl_1k.jpg" id="2"]
+[resource]
+resource_name = "bridge_steel_corten"
+albedo_color = Color(0.62, 0.5, 0.46, 1)
+albedo_texture = ExtResource("1")
+normal_enabled = true
+normal_texture = ExtResource("2")
+roughness = 0.75
+metallic = 0.2
+uv1_triplanar = true
+uv1_world_triplanar = true
+uv1_scale = Vector3(0.5, 0.5, 0.5)

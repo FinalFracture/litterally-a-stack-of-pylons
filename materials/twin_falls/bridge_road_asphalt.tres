@@ -1,0 +1,14 @@
+[gd_resource type="StandardMaterial3D" load_steps=3 format=3]
+[ext_resource type="Texture2D" path="res://materials/twin_falls/hero/asphalt_02_albedo_2k.jpg" id="1"]
+[ext_resource type="Texture2D" path="res://materials/twin_falls/hero/asphalt_02_normal_gl_2k.jpg" id="2"]
+[resource]
+resource_name = "bridge_road_asphalt"
+albedo_color = Color(0.75, 0.75, 0.75, 1)
+albedo_texture = ExtResource("1")
+normal_enabled = true
+normal_texture = ExtResource("2")
+roughness = 0.9
+metallic = 0
+uv1_triplanar = true
+uv1_world_triplanar = true
+uv1_scale = Vector3(0.33, 0.33, 0.33)
