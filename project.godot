@@ -83,6 +83,10 @@ dialogue_advance={
 ]
 }
 
+[filesystem]
+
+import/blender/enabled=false
+
 [physics]
 
 3d/physics_engine="Jolt Physics"
