@@ -531,6 +531,42 @@
    "source": "lore 10 (refit)",
    "model": null,
    "note": null
+  },
+  {
+   "id": "perrine_south_end",
+   "name": "Perrine Bridge south end (457 m real length)",
+   "position": [
+    3370.41,
+    142.76,
+    -6577.0
+   ],
+   "ground_y": 126.539,
+   "yaw_deg": -1.7,
+   "footprint_m": [
+    19.7,
+    0.5
+   ],
+   "source": "Wikipedia 457 m x 19.7 m, centred on lidar midpoint",
+   "model": null,
+   "note": "marker only; US-93 approach fill runs from the lidar rim to here at deck y"
+  },
+  {
+   "id": "perrine_north_end",
+   "name": "Perrine Bridge north end (457 m real length)",
+   "position": [
+    3356.84,
+    142.76,
+    -7034.0
+   ],
+   "ground_y": 124.926,
+   "yaw_deg": -1.7,
+   "footprint_m": [
+    19.7,
+    0.5
+   ],
+   "source": "Wikipedia 457 m x 19.7 m, centred on lidar midpoint",
+   "model": null,
+   "note": "marker only; US-93 approach fill runs from the lidar rim to here at deck y"
   }
  ]
 }

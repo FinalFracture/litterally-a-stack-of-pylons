@@ -80,3 +80,7 @@ A chunk is flagged if its **99th-percentile slope is over 45°** (slope computed
   - The lot drive joins US-93 at z_north 6510 (node n028).
   - Spawn is on the lot's rim-side sidewalk, with `yaw_deg` facing the deck midpoint. `spawn.json` → `line_of_sight` records the eye-height terrain check.
   - The Developer's perrine_* entries and half_span 247.5 (repo d43fac3) are hard-coded in `DEV_PERRINE`/`DEV_HALF_SPAN`. `--out DIR` writes the outputs somewhere else. A run to /tmp gave a landmarks.json identical to the edited file.
+- **Rev 4 (QA Roads @6aa644f):**
+  - **Canyon Springs Grade:** hairpin radius is now 13 m (3-point minimum 12.95 m). A 25 m tangent run-out follows each hairpin. The posted limit stays 25 mph. `advisory_mph` gives one value per segment: 15 on each hairpin ± 50 m, else null. The `hairpins` field lists the hairpin centres and radii.
+  - **Rail:** `gauge_m` is 1.435. The profile is a 1.5% Lipschitz envelope smoothed with two 200 m moving-average passes for vertical curves (max grade 1.27%). Segments are tagged cut/fill/trestle, with trestle meaning more than 8 m above the ground.
+  - **Bridge:** `us93_perrine_bridge` is now the real 457 m length, centred on the lidar midpoint, with ends at z_north 6577 and 7034. The US-93 approaches run at deck y 142.76 over the ~19 m between each lidar rim and the bridge end; this ground drops away, so these stretches are tagged `deck`. Landmarks gained the `perrine_south_end` and `perrine_north_end` markers (model null). The Developer's existing perrine_* entries are unchanged.
