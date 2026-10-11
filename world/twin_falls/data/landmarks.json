@@ -1,0 +1,536 @@
+{
+ "map": "Twin Falls TF-02",
+ "coords": "position [x, y, z_godot]; yaw deg about +y; footprint [w, d] m",
+ "bible_shift_x_m": -168.3,
+ "deck_y": 142.76,
+ "water_y_at_bridge": -5.24,
+ "rim_z_north": {
+  "south": 6558.0,
+  "north": 7053.0
+ },
+ "half_span_m": 247.5,
+ "landmarks": [
+  {
+   "id": "perrine_south_abutment",
+   "name": "Perrine Bridge south abutment",
+   "position": [
+    3370.97,
+    142.76,
+    -6558.0
+   ],
+   "ground_y": 138.297,
+   "yaw_deg": -1.7,
+   "footprint_m": [
+    19.7,
+    10
+   ],
+   "source": "lidar rim (slope>40 deg) + bible",
+   "model": "res://Models/twin_falls/canyon_hero/tf_perrine_lookalike_bridge_v2.glb",
+   "note": null
+  },
+  {
+   "id": "perrine_north_abutment",
+   "name": "Perrine Bridge north abutment",
+   "position": [
+    3356.28,
+    142.76,
+    -7053.0
+   ],
+   "ground_y": 137.276,
+   "yaw_deg": -1.7,
+   "footprint_m": [
+    19.7,
+    10
+   ],
+   "source": "lidar rim (slope>40 deg) + bible",
+   "model": "res://Models/twin_falls/canyon_hero/tf_perrine_lookalike_bridge_v2.glb",
+   "note": null
+  },
+  {
+   "id": "perrine_bridge",
+   "name": "Perrine Bridge (lookalike) deck centre",
+   "position": [
+    3363.62,
+    142.76,
+    -6805.5
+   ],
+   "ground_y": -4.902,
+   "yaw_deg": -1.7,
+   "footprint_m": [
+    19.7,
+    495.0
+   ],
+   "source": "lidar + bible (148 m above water)",
+   "model": "res://Models/twin_falls/canyon_hero/tf_perrine_lookalike_bridge_v2.glb",
+   "note": "lane y = water -5.24 + 148 = 142.76; model origin at deck centre"
+  },
+  {
+   "id": "visitor_centre",
+   "name": "Visitor centre (generic)",
+   "position": [
+    3261.74,
+    148.627,
+    -6330
+   ],
+   "ground_y": 148.627,
+   "yaw_deg": -1.7,
+   "footprint_m": [
+    30,
+    20
+   ],
+   "source": "bible (shifted to lidar bridge line)",
+   "model": "res://Models/buildings/twin_falls/tf_visitor_centre.glb",
+   "note": "handoff 18 path is res://Models/buildings/twin_falls/, not res://Models/twin_falls/"
+  },
+  {
+   "id": "visitor_lot",
+   "name": "Visitor-centre lot",
+   "position": [
+    3291.74,
+    149.121,
+    -6300
+   ],
+   "ground_y": 149.121,
+   "yaw_deg": -1.7,
+   "footprint_m": [
+    60,
+    40
+   ],
+   "source": "estimate (shifted)",
+   "model": null,
+   "note": null
+  },
+  {
+   "id": "lost_found_bin",
+   "name": "Lost & found bin (D07b)",
+   "position": [
+    3261.74,
+    148.699,
+    -6318
+   ],
+   "ground_y": 148.699,
+   "yaw_deg": -1.7,
+   "footprint_m": [
+    0.6,
+    0.6
+   ],
+   "source": "challenge-sites 4 (shifted)",
+   "model": "res://Models/twin_falls/tf_lost_found_bin.glb",
+   "note": null
+  },
+  {
+   "id": "coin_viewers",
+   "name": "Overlook coin viewers (LP-09) x3",
+   "position": [
+    3251.74,
+    146.917,
+    -6360
+   ],
+   "ground_y": 146.917,
+   "yaw_deg": -1.7,
+   "footprint_m": [
+    6,
+    2
+   ],
+   "source": "lore 6 (shifted)",
+   "model": "res://Models/twin_falls/tf_coin_viewer.glb",
+   "note": null
+  },
+  {
+   "id": "base_jump_area",
+   "name": "BASE jump exit point (bridge walkway mid-span)",
+   "position": [
+    3372.22,
+    142.91,
+    -6805.5
+   ],
+   "ground_y": -4.532,
+   "yaw_deg": -1.7,
+   "footprint_m": [
+    3,
+    3
+   ],
+   "source": "bible 3 / estimate",
+   "model": null,
+   "note": null
+  },
+  {
+   "id": "base_landing",
+   "name": "BASE landing (south bank below bridge)",
+   "position": [
+    3305.27,
+    14.667,
+    -6750
+   ],
+   "ground_y": 14.667,
+   "yaw_deg": 0,
+   "footprint_m": [
+    60,
+    40
+   ],
+   "source": "estimate",
+   "model": null,
+   "note": null
+  },
+  {
+   "id": "downtown",
+   "name": "Downtown core (Main Ave / Shoshone St)",
+   "position": [
+    2210,
+    182.735,
+    -1830
+   ],
+   "ground_y": 182.735,
+   "yaw_deg": 45,
+   "footprint_m": [
+    1500,
+    1500
+   ],
+   "source": "bible 5 (EST)",
+   "model": null,
+   "note": null
+  },
+  {
+   "id": "blue_lakes_corridor",
+   "name": "Blue Lakes Blvd N corridor",
+   "position": [
+    3439.47,
+    166.09,
+    -4250
+   ],
+   "ground_y": 166.09,
+   "yaw_deg": -1.7,
+   "footprint_m": [
+    60,
+    3500
+   ],
+   "source": "bible 6 (EST)",
+   "model": null,
+   "note": null
+  },
+  {
+   "id": "bigbox_lot",
+   "name": "Big-box lot on Blue Lakes (generic)",
+   "position": [
+    3304.63,
+    162.25,
+    -4750
+   ],
+   "ground_y": 162.25,
+   "yaw_deg": 0,
+   "footprint_m": [
+    100,
+    60
+   ],
+   "source": "bible 11 (EST)",
+   "model": "res://Models/buildings/twin_falls/tf_bigbox_unbranded.glb",
+   "note": null
+  },
+  {
+   "id": "station_site",
+   "name": "Twin Falls Depot platform site",
+   "position": [
+    1700,
+    166.487,
+    -1180
+   ],
+   "ground_y": 166.487,
+   "yaw_deg": 8,
+   "footprint_m": [
+    150,
+    4
+   ],
+   "source": "bible 12 [REC]",
+   "model": "res://Models/twin_falls/tf_depot_platform_25m.glb",
+   "note": "6 x 25 m modules + tf_depot_canopy_25m.glb"
+  },
+  {
+   "id": "grain_elevator_tw3",
+   "name": "Depot grain elevator (TW-3)",
+   "position": [
+    1450,
+    184.832,
+    -1150
+   ],
+   "ground_y": 184.832,
+   "yaw_deg": 8,
+   "footprint_m": [
+    40,
+    20
+   ],
+   "source": "challenge-sites 1",
+   "model": "res://Models/twin_falls/tf_grain_elevator_tw3.glb",
+   "note": null
+  },
+  {
+   "id": "water_tower",
+   "name": "Municipal water tower",
+   "position": [
+    2600,
+    179.815,
+    -2150
+   ],
+   "ground_y": 179.815,
+   "yaw_deg": 0,
+   "footprint_m": [
+    15,
+    15
+   ],
+   "source": "estimate (no source location; placed in core edge)",
+   "model": "res://Models/twin_falls/tf_water_tower_municipal.glb",
+   "note": null
+  },
+  {
+   "id": "shoshone_falls_card",
+   "name": "Shoshone Falls distance card (TF-01, out of bounds)",
+   "position": [
+    5000,
+    -5.13,
+    -6600
+   ],
+   "ground_y": -5.13,
+   "yaw_deg": 90,
+   "footprint_m": [
+    300,
+    75
+   ],
+   "source": "estimate: east edge, canyon axis; real falls ~2.9 km E",
+   "model": "res://Models/twin_falls/tf_shoshone_falls_card.glb",
+   "note": "card faces west toward the bridge; place at the east map edge or push to skybox distance"
+  },
+  {
+   "id": "centennial_park_ramp",
+   "name": "Centennial Waterfront Park boat ramp / respawn",
+   "position": [
+    2450,
+    0.031,
+    -6600
+   ],
+   "ground_y": 0.031,
+   "yaw_deg": 0,
+   "footprint_m": [
+    8,
+    40
+   ],
+   "source": "challenge-sites 3",
+   "model": "res://Models/twin_falls/tf_boat_ramp_8m.glb",
+   "note": null
+  },
+  {
+   "id": "cache_rim_guardrail",
+   "name": "Cone cache: rim-road guardrail repair (12)",
+   "position": [
+    4450,
+    128.039,
+    -5999.97
+   ],
+   "ground_y": 128.039,
+   "yaw_deg": 90,
+   "footprint_m": [
+    60,
+    3
+   ],
+   "source": "challenge-sites 6; z refit to lidar rim road (bible z 6330 is in the canyon)",
+   "model": "res://Models/twin_falls/tf_wbeam_guardrail_damaged.glb",
+   "note": null
+  },
+  {
+   "id": "cache_visitor_restripe",
+   "name": "Cone cache: visitor-lot restriping (10)",
+   "position": [
+    3291.74,
+    149.121,
+    -6300
+   ],
+   "ground_y": 149.121,
+   "yaw_deg": -1.7,
+   "footprint_m": [
+    13.5,
+    5.4
+   ],
+   "source": "challenge-sites 6 (shifted)",
+   "model": "res://Models/twin_falls/tf_restripe_paint_cart.glb",
+   "note": null
+  },
+  {
+   "id": "cache_elevator_annex",
+   "name": "Cone cache: elevator annex roof (20)",
+   "position": [
+    1425,
+    194.325,
+    -1150
+   ],
+   "ground_y": 185.325,
+   "yaw_deg": 8,
+   "footprint_m": [
+    8,
+    8
+   ],
+   "source": "challenge-sites 1",
+   "model": null,
+   "note": null
+  },
+  {
+   "id": "lp01_ramp_cluster",
+   "name": "LP-01..04 ramp cluster",
+   "position": [
+    4600,
+    151.713,
+    -5983.07
+   ],
+   "ground_y": 151.713,
+   "yaw_deg": 0,
+   "footprint_m": [
+    40,
+    24
+   ],
+   "source": "lore 1; z refit to lidar rim (bible z 6350 is in the canyon)",
+   "model": null,
+   "note": null
+  },
+  {
+   "id": "lp05_wall_face",
+   "name": "LP-05 wall face decal",
+   "position": [
+    4300,
+    146.491,
+    -6135.0
+   ],
+   "ground_y": 145.158,
+   "yaw_deg": 0,
+   "footprint_m": [
+    4,
+    4
+   ],
+   "source": "lore 2; z refit to lidar rim edge, y = rim - 2",
+   "model": null,
+   "note": null
+  },
+  {
+   "id": "lp06_midspan_post",
+   "name": "LP-06/07 mid-span rail post",
+   "position": [
+    3373.47,
+    143.83,
+    -6805.5
+   ],
+   "ground_y": -4.459,
+   "yaw_deg": -1.7,
+   "footprint_m": [
+    0.2,
+    0.2
+   ],
+   "source": "lore 3 (refit to lidar bridge)",
+   "model": null,
+   "note": null
+  },
+  {
+   "id": "lp08_inspection_truck",
+   "name": "LP-08 inspection truck",
+   "position": [
+    3281.74,
+    149.172,
+    -6320
+   ],
+   "ground_y": 149.172,
+   "yaw_deg": -1.7,
+   "footprint_m": [
+    2.6,
+    9
+   ],
+   "source": "lore 4 (shifted)",
+   "model": null,
+   "note": null
+  },
+  {
+   "id": "lp25_benchmark",
+   "name": "LP-25 benchmark disc",
+   "position": [
+    3368.28,
+    137.953,
+    -7055.0
+   ],
+   "ground_y": 137.953,
+   "yaw_deg": 0,
+   "footprint_m": [
+    0.1,
+    0.1
+   ],
+   "source": "lore 5 (refit to lidar N abutment)",
+   "model": null,
+   "note": null
+  },
+  {
+   "id": "lp10_spray_ledge",
+   "name": "LP-10 ledge behind spring cascade",
+   "position": [
+    2950,
+    145.976,
+    -6450
+   ],
+   "ground_y": 145.976,
+   "yaw_deg": 0,
+   "footprint_m": [
+    2,
+    1
+   ],
+   "source": "lore 7",
+   "model": null,
+   "note": null
+  },
+  {
+   "id": "lp11_rim_trail",
+   "name": "LP-11/12 rim-trail sign + bench",
+   "position": [
+    3031.74,
+    147.922,
+    -6330
+   ],
+   "ground_y": 147.922,
+   "yaw_deg": 0,
+   "footprint_m": [
+    10,
+    2
+   ],
+   "source": "lore 8 (shifted)",
+   "model": null,
+   "note": null
+  },
+  {
+   "id": "lp17_return_cone",
+   "name": "LP-17 PLEASE RETURN cone (eddy edge)",
+   "position": [
+    3302.3,
+    -4.938,
+    -6803.5
+   ],
+   "ground_y": -4.938,
+   "yaw_deg": 0,
+   "footprint_m": [
+    0.4,
+    0.4
+   ],
+   "source": "lore 9; refit to the lidar south water edge 60 m W of the bridge axis",
+   "model": null,
+   "note": null
+  },
+  {
+   "id": "lp19_back_sign",
+   "name": "LP-19 back-facing R2-1",
+   "position": [
+    3393.6,
+    150.404,
+    -6200
+   ],
+   "ground_y": 150.404,
+   "yaw_deg": 180,
+   "footprint_m": [
+    0.6,
+    0.1
+   ],
+   "source": "lore 10 (refit)",
+   "model": null,
+   "note": null
+  }
+ ]
+}

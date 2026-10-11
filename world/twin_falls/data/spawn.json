@@ -1,9 +1,9 @@
 {
  "spawn": {
-  "x": 3359.38,
-  "z_north": 6546.88,
-  "godot_z": -6546.88,
-  "y": 140.243
+  "x": 3301.74,
+  "z_north": 6321.5,
+  "godot_z": -6321.5,
+  "y": 149.204
  },
  "lat": 42.5980008,
  "lon": -114.4537377,
@@ -24,5 +24,11 @@
  },
  "method": "Rim = first sample walking north along lon -114.4537 from 42.5953 with mean slope > 40 deg. Spawn = nearest sample to it with slope < 5 deg in a 9x9 (~9 m) window and 15-30 m from any slope > 30 deg cell, on the south side.",
  "axes": "x east, y up, z_north north; godot_z = -z_north",
- "facing_hint": "north (toward bridge/canyon)"
+ "facing_hint": "north (toward bridge/canyon)",
+ "moved_from": {
+  "x": 3359.38,
+  "z_north": 6546.88,
+  "reason": "was 11.9 m from the US-93 centreline (approach verge/fill); moved to the visitor-centre lot sidewalk"
+ },
+ "spawn_note": "visitor-centre lot north sidewalk, walk top +0.15 m over terrain; 17.9 m from the lot drive-aisle edge, 25.8 m from the nearest road edge. lat/lon/utm/dem fields refer to moved_from"
 }

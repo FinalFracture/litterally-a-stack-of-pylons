@@ -59,3 +59,19 @@ A chunk is flagged if its **99th-percentile slope is over 45°** (slope computed
 - **River height:** the bible's EPQS spot value is 958 m at the bridge. This DEM gives about 952-953 m (y ≈ −5.2), so the river is about 5 m below y = 0. The difference could come from the river stage in 2018 or from EPQS using a different source; not verified.
 - **Rim height:** the bible gives a south rim of 1107 m at 42.5953. The rim edge found here at the bridge is about 1097 m, about 300 m further north.
 - The task brief's "floor ~1000 m" does not match: the real floor is about 952 m.
+
+## Roads and landmarks (tools/tf_roads.py, 2026-10-10) — SCHEMATIC
+- Rerun from `twin-falls/`: `python3 tools/tf_roads.py` (numpy + pillow; `--no-osm` skips Overpass). It tries Overpass first; on 2026-10-10 overpass-api.de returned 406 and then timed out, and overpass.kumi.systems returned 500. So **every road is SCHEMATIC**: alignments come from tf_map.py and the bible, names are real street names, and positions are estimates. There are no business names and no OSM ids. If Overpass answers, the script stops with an error instead of mixing OSM and schematic data (the OSM import is not written yet).
+- `roads.json`: 22 roads, 35 intersection nodes (shared vertices), 1 freight railway. Polylines are `[x, y, z_godot]`, with y bilinear from `tiles/`. They are densified at 5 m and then thinned with 3D Douglas-Peucker at 0.5 m, so straight flat runs have gaps longer than 5 m. Lanes, widths and speeds all come from the 02-civil-works standards and are listed in `defaulted`.
+- **US-93 / Perrine line refit to lidar:** a true-north line through the lidar rim at x 3371 (grid convergence 1.7°). tf_map.py's x 3546 is about 170 m too far east. Landmarks tied to the bridge (visitor centre, lot, bin, viewers, LP-08/11) are shifted by −168 m in x (`bible_shift_x_m`).
+- **Bridge:** water y −5.24 at the bridge, so deck/lanes y = 142.76 (148 m above water). Abutments (rim edge, terrain within 6 m of the deck) are at z_north 6559 and 7053: span 494 m, half-span 247 m. The deck is linear and flat. Approach slabs are 40 m long.
+- **Spawn:** not moved. It is 11.9 m west of the US-93 centreline, just outside the 4-lane half-width plus 1.5 m that the script tests. It is probably on the approach fill or verge.
+- **Known problems:** roads sampled from terrain have spikes from canals and cuts (max segment grade: Addison 77%, Blue Lakes N 43%, Falls/Pole Line 16-18%). The Canyon Springs Grade is a placeholder switchback (215%). The rim road crosses side gullies (min y 128). A gully on US-93 north (z_north 7110-7185, about 17 m deep) needs fill. The eastern lore and cache sites (LP-01, LP-05, guardrail cache) were in the canyon at their bible z and have been moved onto the lidar rim.
+- **Rev 2 (same day):** terrain is now sampled from tiles_hi where available.
+  - Every road profile goes through a ~35 m median filter, then a g-Lipschitz envelope (mean of the upper and lower cones), so cut and fill stay balanced. Bridge ends are pinned to the deck.
+  - Grade caps: 6% downtown and arterials, 5% US-93, 8% rim road, 10% Canyon Springs Rd and Grade.
+  - Each road now has `earthwork_dz_m` (road y minus ground, per vertex) and `segments` as [i0, i1, grade|cut|fill|deck|bridge]. `deck` means more than 6 m above the ground; `cut`/`fill` means more than 0.3 m off it.
+  - The separate 40 m approach slab is gone. US-93 now ramps to the deck at 5%.
+  - Canyon Springs Grade is a hand-fit switchback: 3 legs that follow the contours, 2 hairpins of R 12 m. It is 1.95 km long at 10%, with cut/fill from −19 to +18 m. A 3-point radius check finds a minimum of 10.7 m where a leg leaves a hairpin, so that spot is still under 12 m.
+  - Spawn moved to the visitor-lot north sidewalk; the original position is kept in `moved_from`.
+  - LP-17 now sits at the lidar south water edge.
