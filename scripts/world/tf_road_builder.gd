@@ -1007,21 +1007,29 @@ func _emit_road(road: Dictionary, rect: Rect2, grid: PackedFloat32Array, n: int,
 		var full_len := Vector2(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z).length()
 		var seg_len := full_len * (t1 - t0)
 		var pieces := maxi(int(ceil(seg_len / 4.0)), 1)
-		# Overlap the Perrine joints. A ray on the shared edge misses both quads
-		# and the cone drops into the canyon.
-		var overlap := 0.35 if _perrine_road(road_id) and full_len > 1.0 else 0.0
+		# Perrine spans overlap the next span by 2 m. The overlap is a separate
+		# sheet that starts flush and falls away, so the mesh boundary sits
+		# under the next surface instead of standing on the lane.
+		var overlap := 2.0 if _perrine_road(road_id) and full_len > 1.0 else 0.0
 		var dt := overlap / full_len
 		for p in pieces:
-			var a := t0 + (t1 - t0) * float(p) / float(pieces)
-			var b := t0 + (t1 - t0) * float(p + 1) / float(pieces)
+			var a0 := t0 + (t1 - t0) * float(p) / float(pieces)
+			var b0 := t0 + (t1 - t0) * float(p + 1) / float(pieces)
+			var a := a0
+			var b := b0
 			if p == 0:
 				a -= dt
 			if p == pieces - 1:
 				b += dt
-			_emit_span(road_id, kind, rail, lanes, half, lift, left[i], left[i + 1], right[i], right[i + 1], bank[i], bank[i + 1], crown[i], crown[i + 1], chain[i], chain[i + 1], a, b, grid, origin, n, spacing, surfs, faces)
+			if a < a0 - 0.0000001:
+				_emit_span(road_id, kind, rail, lanes, half, lift, left[i], left[i + 1], right[i], right[i + 1], bank[i], bank[i + 1], crown[i], crown[i + 1], chain[i], chain[i + 1], a, a0, grid, origin, n, spacing, surfs, faces, -1)
+			if b0 - a0 > 0.0000001:
+				_emit_span(road_id, kind, rail, lanes, half, lift, left[i], left[i + 1], right[i], right[i + 1], bank[i], bank[i + 1], crown[i], crown[i + 1], chain[i], chain[i + 1], a0, b0, grid, origin, n, spacing, surfs, faces, 0)
+			if b > b0 + 0.0000001:
+				_emit_span(road_id, kind, rail, lanes, half, lift, left[i], left[i + 1], right[i], right[i + 1], bank[i], bank[i + 1], crown[i], crown[i + 1], chain[i], chain[i + 1], b0, b, grid, origin, n, spacing, surfs, faces, 1)
 
 
-func _emit_span(road_id: String, kind: String, rail: bool, lanes: int, half: float, lift: float, left_a: Vector3, left_b: Vector3, right_a: Vector3, right_b: Vector3, bank_a: float, bank_b: float, crown_a: float, crown_b: float, chain_a: float, chain_b: float, t0: float, t1: float, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, surfs: Dictionary, faces: PackedVector3Array) -> void:
+func _emit_span(road_id: String, kind: String, rail: bool, lanes: int, half: float, lift: float, left_a: Vector3, left_b: Vector3, right_a: Vector3, right_b: Vector3, bank_a: float, bank_b: float, crown_a: float, crown_b: float, chain_a: float, chain_b: float, t0: float, t1: float, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, surfs: Dictionary, faces: PackedVector3Array, ramp_end: int = 0) -> void:
 	var l0 := left_a.lerp(left_b, t0)
 	var l1 := left_a.lerp(left_b, t1)
 	var r0 := right_a.lerp(right_b, t0)
@@ -1037,6 +1045,24 @@ func _emit_span(road_id: String, kind: String, rail: bool, lanes: int, half: flo
 	var m1 := l1.lerp(r1, 0.5)
 	m0.y = s0.y
 	m1.y = s1.y
+	# ramp_end -1: outer edge is t0. +1: outer edge is t1. The inner edge stays
+	# on the carriageway height so the sheet welds to it. The outer edge drops
+	# 30 cm. The approach is already ~10 cm below the deck 2 m out, so a 10 cm
+	# drop leaves the boundary on the lane and the cone stops on it.
+	if ramp_end < 0:
+		var inner_y := s1.y
+		l0.y = inner_y - 0.30
+		r0.y = inner_y - 0.30
+		m0.y = inner_y - 0.30
+	elif ramp_end > 0:
+		var inner_y := s0.y
+		l1.y = inner_y - 0.30
+		r1.y = inner_y - 0.30
+		m1.y = inner_y - 0.30
+	if ramp_end != 0:
+		_solid_quad(faces, l0, m0, m1, l1)
+		_solid_quad(faces, m0, r0, r1, m1)
+		return
 	var c0 := chain_a + (chain_b - chain_a) * t0
 	var c1 := chain_a + (chain_b - chain_a) * t1
 	# The v4 model is the deck. A second asphalt sheet hides the lanes and
@@ -1065,7 +1091,7 @@ func _emit_span(road_id: String, kind: String, rail: bool, lanes: int, half: flo
 		_skirts(surfs["earth"], l0, r0, l1, r1, grid, origin, n, spacing)
 	# The apron is above the canyon lip. A thin ribbon lets the cone fall through.
 	if _perrine_road(road_id) and kind != "bridge":
-		_close_span(surfs, l0, r0, l1, r1, grid, origin, n, spacing, faces, kind)
+		_close_span(surfs, l0, r0, l1, r1, grid, origin, n, spacing, faces, kind, t0 >= 0.0, t1 <= 1.0)
 	if GUARD_ROADS.has(road_id):
 		var rim := road_id == "rim_road_south"
 		_guard_edge(surfs["guard"], l0, l1, r0, grid, origin, n, spacing, faces, rim)
@@ -1106,7 +1132,7 @@ func _perrine_road(road_id: String) -> bool:
 
 ## Solid volume under a floating approach. Deck spans and anything more than 6 m
 ## up are bridge structure. Shorter lifts stay earth, with collision either way.
-func _close_span(surfs: Dictionary, l0: Vector3, r0: Vector3, l1: Vector3, r1: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array, kind: String) -> void:
+func _close_span(surfs: Dictionary, l0: Vector3, r0: Vector3, l1: Vector3, r1: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array, kind: String, cap0: bool = true, cap1: bool = true) -> void:
 	if n < 2:
 		return
 	var tops: Array[Vector3] = [l0, r0, r1, l1]
@@ -1127,8 +1153,20 @@ func _close_span(surfs: Dictionary, l0: Vector3, r0: Vector3, l1: Vector3, r1: V
 	_solid_both(faces, bl0, br0, br1, bl1)
 	_solid_both(faces, l0, l1, bl1, bl0)
 	_solid_both(faces, r1, r0, br0, br1)
-	_solid_both(faces, l0, bl0, br0, r0)
-	_solid_both(faces, l1, r1, br1, bl1)
+	# End caps stop 12 cm under the ribbon. The cone base is 2.8 cm tall, and a
+	# cap flush with the deck edge still catches its front face.
+	if cap0:
+		var c0l := l0
+		var c0r := r0
+		c0l.y -= 0.12
+		c0r.y -= 0.12
+		_solid_both(faces, c0l, bl0, br0, c0r)
+	if cap1:
+		var c1l := l1
+		var c1r := r1
+		c1l.y -= 0.12
+		c1r.y -= 0.12
+		_solid_both(faces, c1l, c1r, br1, bl1)
 	if kind == "deck" or gap > 6.0:
 		var panel: _Surf = surfs["panel"]
 		_earth_quad(panel, l0, l1, bl1, bl0)
@@ -1554,6 +1592,7 @@ func _job_body(host: Node3D, faces: PackedVector3Array) -> void:
 	var shape := ConcavePolygonShape3D.new()
 	shape.data = faces
 	shape.backface_collision = true
+	shape.margin = 0.0
 	var col := CollisionShape3D.new()
 	col.shape = shape
 	body.add_child(col)
@@ -2041,10 +2080,14 @@ func _collect_meshes(root: Node3D, node: Node, body: StaticBody3D) -> void:
 	if node is MeshInstance3D:
 		var mi := node as MeshInstance3D
 		# Skip -colonly leftovers; the importer already made StaticBody3D nodes.
-		if mi.mesh != null and not str(mi.name).contains("col"):
+		# bridge_rail has an end plate across the lanes, 2 cm above the deck.
+		# The side boxes below are the rail collision, so that plate is not used.
+		var mesh_name := str(mi.name)
+		if mi.mesh != null and not mesh_name.contains("col") and mesh_name != "bridge_rail":
 			var shape := mi.mesh.create_trimesh_shape()
 			if shape != null:
 				var col := CollisionShape3D.new()
+				col.name = str(mi.name)
 				col.shape = shape
 				col.transform = _mesh_xf(root, mi)
 				body.add_child(col)
@@ -2135,6 +2178,96 @@ func _bridge_extras(root: Node3D, host: Node3D) -> void:
 		if mat != null:
 			mi.material_override = mat
 		root.add_child(mi)
+	_sink_rail_plates(root)
+	_bury_deck_lips(root)
+
+
+## The rail mesh carries five plates across the lanes at local y 148.02, 2 cm
+## above the deck. Drop those verts under the road. The side rails stay.
+func _sink_rail_plates(root: Node3D) -> void:
+	var mi := root.find_child("bridge_rail", true, false) as MeshInstance3D
+	if mi == null or mi.mesh == null:
+		return
+	var src := mi.mesh
+	var arrays := src.surface_get_arrays(0)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var changed := false
+	for i in verts.size():
+		var p := verts[i]
+		if p.y < 148.25:
+			p.y = 147.90
+			verts[i] = p
+			changed = true
+	if not changed:
+		return
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	var out := ArrayMesh.new()
+	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var mat := src.surface_get_material(0)
+	if mat != null:
+		out.surface_set_material(0, mat)
+	mi.mesh = out
+
+
+## Deck-end walls and a second copy of the deck slab sit on the driving line.
+## The slab drops a few centimetres so the road body is the surface a cone
+## rides. A wall across the lanes stops 14 cm under that surface.
+func _bury_deck_lips(root: Node3D) -> void:
+	var cols: Array[CollisionShape3D] = []
+	_gather_cols(root, cols)
+	for col in cols:
+		if col.shape == null:
+			continue
+		col.shape.margin = 0.0
+		if not (col.shape is ConcavePolygonShape3D):
+			continue
+		var src := col.shape as ConcavePolygonShape3D
+		var data := src.data
+		if data.size() < 3:
+			continue
+		var to_root := root.global_transform.affine_inverse() * col.global_transform
+		var back := to_root.affine_inverse()
+		var changed := false
+		var i := 0
+		while i + 2 < data.size():
+			var a := to_root * data[i]
+			var b := to_root * data[i + 1]
+			var c := to_root * data[i + 2]
+			var min_x := minf(a.x, minf(b.x, c.x))
+			var max_x := maxf(a.x, maxf(b.x, c.x))
+			var min_y := minf(a.y, minf(b.y, c.y))
+			var max_y := maxf(a.y, maxf(b.y, c.y))
+			var min_z := minf(a.z, minf(b.z, c.z))
+			var max_z := maxf(a.z, maxf(b.z, c.z))
+			var across := max_x - min_x > 4.0
+			var end_wall := across and absf(min_z) > 220.0 and absf(max_z) > 220.0 and max_z - min_z < 1.5 and max_y > 147.90
+			var deck_top := across and max_z - min_z > 5.0 and max_y - min_y < 0.04 and max_y >= 147.97 and max_y <= 148.03
+			var plate := across and max_z - min_z < 1.5 and max_y - min_y < 0.05 and max_y > 148.005 and max_y < 148.25
+			if end_wall or plate:
+				for k in 3:
+					var p := to_root * data[i + k]
+					if p.y > 147.86:
+						p.y = 147.86
+						data[i + k] = back * p
+						changed = true
+			elif deck_top:
+				for k in 3:
+					var p2 := to_root * data[i + k]
+					p2.y -= 0.06
+					data[i + k] = back * p2
+				changed = true
+			i += 3
+		if changed:
+			var copy := src.duplicate() as ConcavePolygonShape3D
+			copy.data = data
+			col.shape = copy
+
+
+func _gather_cols(node: Node, into: Array[CollisionShape3D]) -> void:
+	if node is CollisionShape3D:
+		into.append(node as CollisionShape3D)
+	for child in node.get_children():
+		_gather_cols(child, into)
 
 
 func _solid_beam(body: StaticBody3D, a: Vector3, b: Vector3, thick: float) -> void:
