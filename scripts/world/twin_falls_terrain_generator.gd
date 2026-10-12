@@ -36,6 +36,8 @@ const SKIP_HI := {
 }
 
 var spawn := Vector3(3320.0, 143.073, -6531.5)
+## "bank" lifts the dry shore so it covers the ribbon. "clip" leaves the DEM and tucks the mesh under.
+var water_edge := "bank"
 ## Godot yaw: 0 looks north (-Z), positive turns left. From spawn.json.
 var spawn_yaw := 0.0
 var water_pts: Array[Vector3] = []
@@ -1043,6 +1045,46 @@ func _carve_bed(b: Build) -> void:
 			continue
 		var bank_y := (wy - BED_DEPTH_M) + maxf(dist - 1.2, 0.0) * rise
 		b.grid[i] = minf(original, bank_y)
+	if water_edge == "bank":
+		_lift_shore(b)
+
+
+## Dry cells that already sit on the waterline rise 0.15 m so the ribbon can
+## tuck under them. The wet 17 deg bank (still below the water) is left alone.
+## A full grid walk: the centreline stamp misses cells on the outside of a bend.
+func _lift_shore(b: Build) -> void:
+	var n := b.n
+	var sp := b.spacing
+	var ox := b.origin.x
+	var oz := b.origin.y
+	var band := 36.0
+	var shore := 3.2
+	for s in water_pts.size() - 1:
+		var a: Vector3 = water_pts[s]
+		var p: Vector3 = water_pts[s + 1]
+		if maxf(a.x, p.x) < ox - band or minf(a.x, p.x) > ox + 500.0 + band:
+			continue
+		if maxf(a.z, p.z) < oz - band or minf(a.z, p.z) > oz + 500.0 + band:
+			continue
+		var c0 := clampi(int(floor((minf(a.x, p.x) - band - ox) / sp)), 0, n - 1)
+		var c1 := clampi(int(ceil((maxf(a.x, p.x) + band - ox) / sp)), 0, n - 1)
+		var r0 := clampi(int(floor((minf(a.z, p.z) - band - oz) / sp)), 0, n - 1)
+		var r1 := clampi(int(ceil((maxf(a.z, p.z) + band - oz) / sp)), 0, n - 1)
+		for r in range(r0, r1 + 1):
+			var z := oz + float(r) * sp
+			var row := r * n
+			for c in range(c0, c1 + 1):
+				var x := ox + float(c) * sp
+				var hit := _seg_dist(x, z, a, p)
+				if hit.x < shore or hit.x >= band:
+					continue
+				var i := row + c
+				var h := b.grid[i]
+				var wy := hit.y
+				if h > wy + 4.0:
+					continue
+				if h >= wy - 0.02 and h < wy + 0.15:
+					b.grid[i] = wy + 0.15
 
 
 func _chunk_near_river(origin: Vector2) -> bool:
