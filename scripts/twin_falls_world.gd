@@ -45,6 +45,7 @@ func _ready() -> void:
 	_capture = _wants_capture()
 	_started_ms = Time.get_ticks_msec()
 	generator = _Gen.new()
+	generator.water_edge = _water_edge()
 	streamer = _Streamer.new()
 	streamer.name = "ChunkStreamer"
 	add_child(streamer)
@@ -90,8 +91,22 @@ func _warm_shader() -> void:
 	_warm = warm
 
 
+func _water_shot() -> bool:
+	return OS.get_cmdline_user_args().has("--water-shot")
+
+
+func _water_edge() -> String:
+	for arg in OS.get_cmdline_user_args():
+		var text := str(arg)
+		if text.begins_with("--water="):
+			var mode := text.substr(8)
+			if mode == "clip" or mode == "bank":
+				return mode
+	return "bank"
+
+
 func _wants_capture() -> bool:
-	if OS.get_cmdline_user_args().has("--tf-capture"):
+	if OS.get_cmdline_user_args().has("--tf-capture") or _water_shot():
 		return true
 	for arg in OS.get_cmdline_args():
 		if str(arg) == "--tf-capture":
@@ -254,6 +269,26 @@ func _process(_delta: float) -> void:
 	if not _released or _soul == null:
 		return
 	_look()
+	if _water_shot() and _phase < 20:
+		_teleport(Vector3(3383.9, -1.8, -6783.0), Vector3(-18.0, -3.5, -16.0))
+		_phase = 20
+		_hold = 0
+		return
+	if _phase == 20:
+		if not _view_ready():
+			_hold = 0
+			return
+		_hold += 1
+		if _hold < 20:
+			return
+		_shooting = true
+		var file := "res://_diag/tf07d_water_b.png" if generator.water_edge == "bank" else "res://_diag/tf07d_water_a.png"
+		_shot(file, 21)
+		return
+	if _phase == 21:
+		print("WATER_SHOT %s" % generator.water_edge)
+		get_tree().quit()
+		return
 	if _phase == 0:
 		if not _view_ready():
 			_hold = 0
@@ -430,22 +465,25 @@ func _build_river() -> void:
 			side = Vector2(-d0.y, d0.x)
 		side = side.normalized()
 		var along := Vector2(-d0.y, d0.x)
-		var denom := clampf(side.dot(along), 0.35, 1.0)
-		var miter := half / denom
-		# water.json height is the surface. The bed is carved below it.
+		var denom := clampf(side.dot(along), 0.75, 1.0)
+		var widen := 1.0 / denom
+		# Flat water stops just before each bank crosses the surface, then a lip
+		# drops under the shore. "bank" also lifts the dry shelf 0.15 m.
 		var y := p.y
-		verts.append(WorldConfig.to_local(Vector3(p.x - side.x * miter, y, p.z - side.y * miter)))
-		verts.append(WorldConfig.to_local(Vector3(p.x + side.x * miter, y, p.z + side.y * miter)))
-		norms.append(Vector3.UP)
-		norms.append(Vector3.UP)
+		var lip := 8.0
+		var drop := 1.15
+		var left_in := _shore_inner(p, -side)
+		var right_in := _shore_inner(p, side)
+		_river_vert(verts, norms, p, -side, (left_in + lip) * widen, y - drop)
+		_river_vert(verts, norms, p, -side, left_in * widen, y)
+		_river_vert(verts, norms, p, side, right_in * widen, y)
+		_river_vert(verts, norms, p, side, (right_in + lip) * widen, y - drop)
 	for i in count - 1:
-		var a := i * 2
-		indices.append(a)
-		indices.append(a + 1)
-		indices.append(a + 2)
-		indices.append(a + 1)
-		indices.append(a + 3)
-		indices.append(a + 2)
+		var a := i * 4
+		# Flat channel, then a lip that ducks under the shore on each side.
+		_river_quad(indices, a + 1, a + 2, a + 6, a + 5)
+		_river_quad(indices, a + 0, a + 1, a + 5, a + 4)
+		_river_quad(indices, a + 2, a + 3, a + 7, a + 6)
 	var arrays: Array = []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
@@ -466,6 +504,43 @@ func _build_river() -> void:
 	inst.material_override = mat
 	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(inst)
+
+
+## Half-width of the flat ribbon on one side. Stops 1.2 m before the carved
+## bank (or the dry DEM) reaches the water, so the lip is already under ground.
+func _shore_inner(p: Vector3, side: Vector2) -> float:
+	var wy := p.y
+	var rise := tan(deg_to_rad(17.0))
+	var inner := 2.4
+	for step in range(1, 36):
+		var dist := float(step) * 0.5
+		var original := generator.height_at(p.x + side.x * dist, p.z + side.y * dist)
+		if original < -70.0:
+			return maxf(inner, 2.0)
+		var ground := original
+		if original <= wy + 4.0:
+			var bank_y := (wy - 1.5) + maxf(dist - 1.2, 0.0) * rise
+			ground = minf(original, bank_y)
+		if generator.water_edge == "bank" and ground >= wy - 0.02:
+			ground = maxf(ground, wy + 0.15)
+		if ground >= wy - 0.04:
+			return maxf(dist - 1.2, 2.0)
+		inner = dist
+	return inner
+
+
+func _river_vert(verts: PackedVector3Array, norms: PackedVector3Array, p: Vector3, side: Vector2, dist: float, y: float) -> void:
+	verts.append(WorldConfig.to_local(Vector3(p.x + side.x * dist, y, p.z + side.y * dist)))
+	norms.append(Vector3.UP)
+
+
+func _river_quad(indices: PackedInt32Array, a: int, b: int, c: int, d: int) -> void:
+	indices.append(a)
+	indices.append(b)
+	indices.append(c)
+	indices.append(a)
+	indices.append(c)
+	indices.append(d)
 
 
 func _write_stats(reason: String) -> void:
