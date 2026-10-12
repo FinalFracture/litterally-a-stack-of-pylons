@@ -239,12 +239,12 @@ Original brief §13 is correct. The mistake is asking one agent to do §13.1 thr
 
 Create:
 
-- `project.godot` (if needed): main scene `scenes/main.tscn`, autoload `GameConstants`
+- `project.godot` (if needed): main scene `scenes/twin_falls.tscn`, autoload `GameConstants`
 - `scripts/game_constants.gd`
 - `scripts/soul_body.gd` (CharacterBody3D)
 - `scripts/camera_rig.gd`
 - `scenes/player/standard_cone.tscn` (mesh + collider only)
-- `scenes/main.tscn`: StaticBody plane, one cone instance, camera rig, DirectionalLight, WorldEnvironment
+- `scenes/twin_falls.tscn`: StaticBody plane, one cone instance, camera rig, DirectionalLight, WorldEnvironment
 - Input map: move_left/right/forward/back, jump, drop, swap, pause, controls, dialogue_advance
 
 Movement feel:

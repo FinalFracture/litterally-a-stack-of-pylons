@@ -5,7 +5,7 @@ Godot 4.7 (GDScript), Jolt physics.
 
 ## Run it
 
-- **Editor:** open `project.godot` in Godot 4.7 and press **F5** (main scene: `scenes/main.tscn`).
+- **Editor:** open `project.godot` in Godot 4.7 and press **F5** (main scene: `scenes/twin_falls.tscn`).
 - **Command line:** `godot --path .` from the repo root.
   Add test flags after `--`, e.g. `godot --path . -- --seed=7 --max-fps=45`.
 
