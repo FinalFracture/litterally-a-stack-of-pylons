@@ -1004,11 +1004,20 @@ func _emit_road(road: Dictionary, rect: Rect2, grid: PackedFloat32Array, n: int,
 		var road_id := str(road["id"])
 		var kind := kinds[i]
 		var lift := DECK_LIFT_M if (kind == "deck" or kind == "bridge") else LIFT_M
-		var seg_len := Vector2(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z).length() * (t1 - t0)
+		var full_len := Vector2(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z).length()
+		var seg_len := full_len * (t1 - t0)
 		var pieces := maxi(int(ceil(seg_len / 4.0)), 1)
+		# Overlap the Perrine joints. A ray on the shared edge misses both quads
+		# and the cone drops into the canyon.
+		var overlap := 0.35 if _perrine_road(road_id) and full_len > 1.0 else 0.0
+		var dt := overlap / full_len
 		for p in pieces:
 			var a := t0 + (t1 - t0) * float(p) / float(pieces)
 			var b := t0 + (t1 - t0) * float(p + 1) / float(pieces)
+			if p == 0:
+				a -= dt
+			if p == pieces - 1:
+				b += dt
 			_emit_span(road_id, kind, rail, lanes, half, lift, left[i], left[i + 1], right[i], right[i + 1], bank[i], bank[i + 1], crown[i], crown[i + 1], chain[i], chain[i + 1], a, b, grid, origin, n, spacing, surfs, faces)
 
 
@@ -1054,6 +1063,9 @@ func _emit_span(road_id: String, kind: String, rail: bool, lanes: int, half: flo
 	_paint_lines(road_id, surfs, l0, r0, l1, r1, half, lanes, c0, c1)
 	if kind != "deck" and kind != "bridge":
 		_skirts(surfs["earth"], l0, r0, l1, r1, grid, origin, n, spacing)
+	# The apron is above the canyon lip. A thin ribbon lets the cone fall through.
+	if _perrine_road(road_id) and kind != "bridge":
+		_close_span(surfs, l0, r0, l1, r1, grid, origin, n, spacing, faces, kind)
 	if GUARD_ROADS.has(road_id):
 		var rim := road_id == "rim_road_south"
 		_guard_edge(surfs["guard"], l0, l1, r0, grid, origin, n, spacing, faces, rim)
@@ -1086,6 +1098,43 @@ func _paint_lines(road_id: String, surfs: Dictionary, l0: Vector3, r0: Vector3, 
 				_line(surfs["white"], ll0, rr0, ll1, rr1, half, float(k) * lane_w, LINE_W, 0.01, ca, cb, true)
 				_line(surfs["white"], ll0, rr0, ll1, rr1, half, -float(k) * lane_w, LINE_W, 0.01, ca, cb, true)
 				k += 1
+
+
+func _perrine_road(road_id: String) -> bool:
+	return road_id == "us93_south_approach" or road_id == "us93_north" or road_id == "us93_perrine_bridge"
+
+
+## Solid volume under a floating approach. Deck spans and anything more than 6 m
+## up are bridge structure. Shorter lifts stay earth, with collision either way.
+func _close_span(surfs: Dictionary, l0: Vector3, r0: Vector3, l1: Vector3, r1: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array, kind: String) -> void:
+	if n < 2:
+		return
+	var tops: Array[Vector3] = [l0, r0, r1, l1]
+	var bots: Array[Vector3] = []
+	var gap := 0.0
+	for p in tops:
+		var g := _ground(grid, origin, n, spacing, p.x, p.z)
+		if g < -70.0:
+			return
+		gap = maxf(gap, p.y - g)
+		bots.append(Vector3(p.x, minf(g, p.y - 0.2), p.z))
+	if gap < 0.35:
+		return
+	var bl0: Vector3 = bots[0]
+	var br0: Vector3 = bots[1]
+	var br1: Vector3 = bots[2]
+	var bl1: Vector3 = bots[3]
+	_solid_both(faces, bl0, br0, br1, bl1)
+	_solid_both(faces, l0, l1, bl1, bl0)
+	_solid_both(faces, r1, r0, br0, br1)
+	_solid_both(faces, l0, bl0, br0, r0)
+	_solid_both(faces, l1, r1, br1, bl1)
+	if kind == "deck" or gap > 6.0:
+		var panel: _Surf = surfs["panel"]
+		_earth_quad(panel, l0, l1, bl1, bl0)
+		_earth_quad(panel, r1, r0, br0, br1)
+		_earth_quad(panel, l0, bl0, br0, r0)
+		_earth_quad(panel, l1, r1, br1, bl1)
 
 
 func _skirts(surf: _Surf, l0: Vector3, r0: Vector3, l1: Vector3, r1: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> void:
@@ -1203,6 +1252,10 @@ func _emit_junctions(coord: Vector2i, surf: _Surf, faces: PackedVector3Array, _g
 	for item in _junctions:
 		var pos: Array = item.get("pos", [])
 		if pos.size() < 3:
+			continue
+		# The Perrine joints are collinear. A flat disc at deck height sits on
+		# the 5% approach and leaves a lip the cone cannot climb.
+		if _bridge_joint(item):
 			continue
 		var at := Vector3(float(pos[0]), float(pos[1]), float(pos[2]))
 		if WorldConfig.chunk_of(at.x, at.z) != coord:
@@ -1589,7 +1642,7 @@ func _job_mark(host: Node3D, mark: Dictionary) -> void:
 	_finish_mark(host, inst, at, yaw_deg, fp, bool(mark.get("seat", false)))
 	if str(mark["id"]) == "perrine_bridge":
 		_apply_named_slots(inst, BRIDGE_SLOTS)
-		_bridge_extras(inst)
+		_bridge_extras(inst, host)
 	if str(mark["id"]) == "centennial_park_ramp":
 		_place_dock(host, at)
 	if str(mark["id"]) == "coin_viewers":
@@ -2004,7 +2057,7 @@ func _collect_meshes(root: Node3D, node: Node, body: StaticBody3D) -> void:
 ## v4 colonly rails stop at 1.07 m. A 1.1 m box on each deck edge keeps a
 ## cone from sliding off the 148 m lane. Thin steel arch springs get a
 ## solid box so a cone cannot walk through the piers.
-func _bridge_extras(root: Node3D) -> void:
+func _bridge_extras(root: Node3D, host: Node3D) -> void:
 	var body := root.get_node_or_null("LandmarkBody") as StaticBody3D
 	if body == null:
 		body = StaticBody3D.new()
@@ -2029,6 +2082,79 @@ func _bridge_extras(root: Node3D) -> void:
 			col.shape = pier
 			col.position = Vector3(sx, 63.6, sz)
 			body.add_child(col)
+	# Arch shells are open cards. A box chain along each lower chord is solid.
+	var arch := PackedVector3Array([
+		Vector3(0.0, 59.6, -151.0),
+		Vector3(0.0, 84.0, -125.0),
+		Vector3(0.0, 112.3, -90.0),
+		Vector3(0.0, 125.6, -60.0),
+		Vector3(0.0, 137.2, -30.0),
+		Vector3(0.0, 139.4, 0.0),
+		Vector3(0.0, 137.2, 30.0),
+		Vector3(0.0, 125.6, 60.0),
+		Vector3(0.0, 112.3, 90.0),
+		Vector3(0.0, 84.0, 125.0),
+		Vector3(0.0, 59.6, 151.0),
+	])
+	for side in [-8.15, 8.15]:
+		for i in arch.size() - 1:
+			var a := arch[i]
+			var b := arch[i + 1]
+			a.x = side
+			b.x = side
+			_solid_beam(body, a, b, 1.5)
+	# Concrete shells stop at local y 134 and float 2-6 m off the wall.
+	# A block from that lip down to the drawn ground, with a base in the rock.
+	for ez in [-228.5, 228.5]:
+		var lip := Vector3(0.0, 134.2, ez)
+		var world_lip := root.to_global(lip)
+		var ground := _terrain_at(host, world_lip.x, world_lip.z)
+		var foot_y := 126.0
+		if ground > -70.0:
+			var local_g := root.to_local(Vector3(world_lip.x, ground, world_lip.z))
+			foot_y = minf(local_g.y - 1.5, 132.0)
+		var height := 134.2 - foot_y
+		if height < 0.4:
+			continue
+		var size := Vector3(19.7, height, 10.0)
+		var centre := Vector3(0.0, (134.2 + foot_y) * 0.5, ez)
+		var foot := BoxShape3D.new()
+		foot.size = size
+		var pad := CollisionShape3D.new()
+		pad.name = "Abutment"
+		pad.shape = foot
+		pad.position = centre
+		body.add_child(pad)
+		var mesh := BoxMesh.new()
+		mesh.size = size
+		var mi := MeshInstance3D.new()
+		mi.name = "Abutment"
+		mi.mesh = mesh
+		mi.position = centre
+		var mat := load("res://materials/twin_falls/bridge_deck_concrete.tres") as Material
+		if mat != null:
+			mi.material_override = mat
+		root.add_child(mi)
+
+
+func _solid_beam(body: StaticBody3D, a: Vector3, b: Vector3, thick: float) -> void:
+	var delta := b - a
+	var length := delta.length()
+	if length < 0.2:
+		return
+	var zaxis := delta / length
+	var xaxis := zaxis.cross(Vector3.UP)
+	if xaxis.length_squared() < 0.01:
+		xaxis = Vector3.RIGHT
+	xaxis = xaxis.normalized()
+	var yaxis := xaxis.cross(zaxis).normalized()
+	var box := BoxShape3D.new()
+	box.size = Vector3(thick, thick, length)
+	var col := CollisionShape3D.new()
+	col.name = "Steel"
+	col.shape = box
+	col.transform = Transform3D(Basis(xaxis, yaxis, zaxis), (a + b) * 0.5)
+	body.add_child(col)
 
 
 func _mesh_xf(root: Node3D, node: Node3D) -> Transform3D:
@@ -2467,6 +2593,13 @@ func _join_y(p: Vector3, road_id: String) -> float:
 
 
 ## Bridge joints stay on the lane height. A 3 cm lift would step the apron off the v4 deck.
+func _bridge_joint(item: Dictionary) -> bool:
+	for id in item.get("roads", []):
+		if str(id) == "us93_perrine_bridge":
+			return true
+	return false
+
+
 func _joint_lift(item: Dictionary) -> float:
 	for id in item.get("roads", []):
 		if str(id) == "us93_perrine_bridge":
