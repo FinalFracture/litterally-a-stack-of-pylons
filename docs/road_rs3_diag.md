@@ -60,6 +60,23 @@ The samples step 0.05 m per metre of station, about 7 m off the centreline (half
 
 The report cap is not why the headlines stuck. The uncapped per-road maxima match RS-1 on `us93_north` to the millimetre for across step, gap max, and edge drop.
 
-## Fix chosen
+## Fix
 
-Cause 1. `skip` will follow segment kind (`deck`, `bridge`, rail) instead of the road id, so fill, cut, and grade on the Perrine approaches take the same stamp as every other road. Deck and bridge stay unstamped and gap-exempt. Approach profiles stay pinned so the deck joint does not move. No per-road height edits.
+Cause 1, in `TfRoadBuilder._rebuild_edges`. `skip` is now `rail or kind == deck or kind == bridge`. Fill, cut, and grade on the Perrine approaches take the same stamp as every other road. Deck and bridge stay unstamped and gap-exempt. Approach profiles stay pinned, so the deck joint does not move. No per-road height edits.
+
+## Before / after
+
+Before is the RS-2 report on `45cf8d7` (`docs/road_report_rs2.md`, same JSON this note started from). After is a full `tools/road_report.gd` run on this stamp, 563,970 samples, 949 s. Network still **FAIL**. 22 roads, 0 pass, 22 fail. Hit rate 96.54% (before 96.53%). Components 1.
+
+| Metric | Before | After | Limit |
+|---|---:|---:|---:|
+| Max along step | 0.480 m | 0.500 m | 0.020 m |
+| Max across step | 13.700 m | 1.867 m | 0.030 m |
+| Gap min / max | -1.950 / 30.885 m | -0.325 / 1.016 m | 0.000 to 0.050 m |
+| Max edge drop with no barrier | 13.61 m | 13.61 m | 3.00 m |
+| Cone fails | 154 / 8010 | 147 / 8005 | 0 |
+| Junctions failing | 22 / 38 | 22 / 38 | 0 |
+
+`us93_north` gap max went from 30.885 m to 0.075 m and its across step from 13.700 m to 0.100 m. The 30 m fill is in the heightfield. `us93_south_approach` gap went from -1.950 / 7.964 m to -0.325 / 0.985 m, and its across step from 13.644 m to 1.867 m. That 1.867 m is now the network across-step maximum. The network gap maximum is now `canyon_springs_grade` at 1.016 m, which this change did not touch.
+
+Edge drop is still 13.614 m at (2743.2, -6389.5) on `canyon_springs_grade`. Hit rate and the 22 failing junctions are unchanged. Along step got worse by 0.020 m: `us93_south_approach` 0.480 m to 0.500 m. The bridge across step is still 0.810 m at (3371.2, -6578.0).
