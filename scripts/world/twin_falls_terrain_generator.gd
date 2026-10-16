@@ -334,16 +334,28 @@ func _build(coord: Vector2i, dc: Vector2i, hi: bool, floor_box: Dictionary = {})
 	# The simplified quad can bridge the carriageway. Put that footprint back on the cut.
 	if _roads != null and drawn.size() == b.n * b.n and b.grid.size() == b.n * b.n:
 		_roads.clamp_footprint(drawn, b.grid, b.origin, b.n, b.spacing)
+	var store_n := b.n
+	var store_sp := b.spacing
+	var coarse := drawn
+	# A 4 m cell cannot hold the crown and the side slope. The mesh stays coarse.
+	# The heightfield under the paint is rewritten at 1 m. The ribbon still
+	# samples the coarse grid it was built against.
+	if not b.hi and _roads != null and drawn.size() == b.n * b.n:
+		var fine := _fine_corridor(b, drawn)
+		if fine.size() == HI_N * HI_N:
+			drawn = fine
+			store_n = HI_N
+			store_sp = HI_SP
 	stage["sample"] = (Time.get_ticks_usec() - t_sample) / 1000
-	_store_drawn(coord, drawn, b.n, b.spacing)
+	_store_drawn(coord, drawn, store_n, store_sp)
 	pay.heights = drawn
-	pay.map_n = b.n
-	pay.spacing = b.spacing
+	pay.map_n = store_n
+	pay.spacing = store_sp
 	pay.center = _center_of(coord)
 	pay.tris = b.indices.size() / 3
 	var t_roads := Time.get_ticks_usec()
-	if _roads != null and drawn.size() == b.n * b.n:
-		pay.roads = _roads.build_chunk(coord, drawn, b.n, b.spacing)
+	if _roads != null and coarse.size() == b.n * b.n:
+		pay.roads = _roads.build_chunk(coord, coarse, b.n, b.spacing)
 	stage["roads"] = (Time.get_ticks_usec() - t_roads) / 1000
 	pay.stage_ms = stage
 	var g := pay.heights
@@ -1587,6 +1599,30 @@ func _bilinear(grid: PackedFloat32Array, n: int, col: float, row: float) -> floa
 	return lerpf(lerpf(h00, h10, tx), lerpf(h01, h11, tx), tz)
 
 
+## Upsample the drawn ground and restamp only the carriageway at 1 m.
+func _fine_corridor(b: Build, drawn: PackedFloat32Array) -> PackedFloat32Array:
+	if drawn.size() != b.n * b.n or b.n < 2:
+		return PackedFloat32Array()
+	var fine := _upsample_grid(drawn, b.n, HI_N)
+	if _roads != null:
+		_roads.apply_paint(fine, b.origin, HI_N, HI_SP)
+	return fine
+
+
+func _upsample_grid(src: PackedFloat32Array, sn: int, dn: int) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	out.resize(dn * dn)
+	if src.size() != sn * sn or dn < 2 or sn < 2:
+		return out
+	var scale := float(sn - 1) / float(dn - 1)
+	for r in dn:
+		var row := float(r) * scale
+		var base := r * dn
+		for c in dn:
+			out[base + c] = _bilinear(src, sn, float(c) * scale, row)
+	return out
+
+
 func _heights(cx: int, cz: int, hi: bool) -> PackedFloat32Array:
 	var key := "%d_%d_%d" % [cx, cz, int(hi)]
 	_lock.lock()
@@ -1596,7 +1632,15 @@ func _heights(cx: int, cz: int, hi: bool) -> PackedFloat32Array:
 		return hit
 	_lock.unlock()
 	var folder := "tiles_hi" if hi else "tiles"
-	var decoded := _decode_png("%s/%s/c_%d_%d.png" % [DATA, folder, cx, cz])
+	var path := "%s/%s/c_%d_%d.png" % [DATA, folder, cx, cz]
+	if hi and not FileAccess.file_exists(path):
+		var coarse := _heights(cx, cz, false)
+		var up := _upsample_grid(coarse, LOW_N, HI_N)
+		_lock.lock()
+		_cache[key] = up
+		_lock.unlock()
+		return up
+	var decoded := _decode_png(path)
 	_lock.lock()
 	_cache[key] = decoded
 	_lock.unlock()

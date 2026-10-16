@@ -40,6 +40,18 @@ const REGRESSIONS: Array[Dictionary] = [
 	{"id": "float_skirt_3218", "x": 3218.0, "z": -6368.0, "note": "float and skirts"},
 	{"id": "float_skirt_3320", "x": 3320.0, "z": -6511.0, "note": "float and skirts"},
 	{"id": "raised_strip_3365", "x": 3365.0, "z": -6510.0, "note": "raised strip"},
+	{"id": "pole_3491", "x": 3491.4, "z": -2494.1, "note": "RL-INT-01 pole outside every carriageway", "check": "pole"},
+	{"id": "pole_3417", "x": 3417.2, "z": -4994.1, "note": "RL-INT-01 pole outside every carriageway", "check": "pole"},
+	{"id": "paint_crown", "x": 0.0, "z": 0.0, "note": "RL-INT-02 paint follows the crowned surface", "check": "paint"},
+	{"id": "step_visitor", "x": 3363.4, "z": -6511.8, "note": "RL-INT-05 visitor T", "check": "step"},
+	{"id": "step_rim", "x": 3373.0, "z": -6338.5, "note": "RL-INT-05 rim T", "check": "step"},
+	{"id": "step_canyon", "x": 3387.5, "z": -6000.0, "note": "RL-INT-05 canyon springs", "check": "step"},
+	{"id": "lane_taper", "x": 3378.6, "z": -6300.0, "note": "RL-INT-08 US-93 lane taper", "check": "taper"},
+	{"id": "hole_3373", "x": 3373.0, "z": -6486.0, "note": "2 m hole on the south approach", "check": "hole"},
+	{"id": "bridge_ceiling", "x": 3378.8, "z": -6627.3, "note": "ceiling beside the bridge span", "check": "ceiling"},
+	{"id": "map_addison", "x": 5005.0, "z": -2500.0, "note": "map-edge exit on solid ground", "check": "exit"},
+	{"id": "map_falls", "x": 5005.0, "z": -5000.0, "note": "map-edge exit on solid ground", "check": "exit"},
+	{"id": "map_pole", "x": 5005.0, "z": -4200.0, "note": "map-edge exit on solid ground", "check": "exit"},
 ]
 
 var _gen: TwinFallsTerrainGenerator
@@ -935,6 +947,8 @@ func _find(parent: Dictionary, id: String) -> String:
 
 func _geometric_regressions() -> void:
 	for spot in REGRESSIONS:
+		if str(spot.get("check", "")) != "":
+			continue
 		var x := float(spot["x"])
 		var z := float(spot["z"])
 		var near := _nearest(x, z)
@@ -968,6 +982,7 @@ func _geometric_regressions() -> void:
 		_regressions.append(rec)
 	_guard_regression()
 	_junction_regression()
+	_qa_regressions()
 
 
 func _guard_regression() -> void:
@@ -1029,6 +1044,209 @@ func _junction_regression() -> void:
 		"tilt": float(worst["tilt"]),
 		"pass": bool(worst["pass"]),
 	})
+
+
+func _qa_regressions() -> void:
+	for spot in REGRESSIONS:
+		var kind := str(spot.get("check", ""))
+		if kind == "":
+			continue
+		var rec := {
+			"id": str(spot["id"]),
+			"note": str(spot["note"]),
+			"x": float(spot["x"]),
+			"z": float(spot["z"]),
+			"pass": false,
+		}
+		if kind == "pole":
+			_qa_pole(rec)
+		elif kind == "paint":
+			_qa_paint(rec)
+		elif kind == "step":
+			_qa_step(rec)
+		elif kind == "taper":
+			_qa_taper(rec)
+		elif kind == "hole":
+			_qa_hole(rec)
+		elif kind == "ceiling":
+			_qa_ceiling(rec)
+		elif kind == "exit":
+			_qa_exit(rec)
+		_regressions.append(rec)
+
+
+func _qa_pole(rec: Dictionary) -> void:
+	var x := float(rec["x"])
+	var z := float(rec["z"])
+	var best_d := 1.0e9
+	var item: Dictionary = {}
+	for junc in _builder._junctions:
+		var pos: Array = junc.get("pos", [])
+		if pos.size() < 3:
+			continue
+		var d := Vector2(float(pos[0]) - x, float(pos[2]) - z).length()
+		if d < best_d:
+			best_d = d
+			item = junc
+	if item.is_empty():
+		rec["margin_m"] = -1.0
+		return
+	var pos: Array = item.get("pos", [])
+	var at := Vector3(float(pos[0]), float(pos[1]), float(pos[2]))
+	var roads: Array = []
+	for id in item.get("roads", []):
+		if not _builder._by_id.has(str(id)):
+			continue
+		var road: Dictionary = _builder._roads[int(_builder._by_id[str(id)])]
+		if not bool(road["rail"]):
+			roads.append(road)
+	var stand: Vector3 = _builder._sign_stand(at, roads)
+	var margin: float = _builder._stand_margin(stand, roads)
+	rec["stand_x"] = stand.x
+	rec["stand_z"] = stand.z
+	rec["margin_m"] = margin
+	rec["pass"] = margin >= 1.6
+
+
+func _qa_paint(rec: Dictionary) -> void:
+	# Centre of a crowned lane. Edge lerp sits one crown drop low; the painter
+	# has to add the tent back. Checked on the function the ribbon calls.
+	var left_y := 100.0
+	var right_y := 100.0
+	var crown := 0.146
+	var centre := _builder._paint_y(left_y - crown, right_y - crown, 0.5, crown)
+	var edge := _builder._paint_y(left_y - crown, right_y - crown, 0.02, crown)
+	rec["centre_y"] = centre
+	rec["edge_err_m"] = absf(edge - (left_y - crown))
+	rec["pass"] = absf(centre - left_y) <= 0.005 and absf(edge - (left_y - crown)) <= 0.01
+
+
+func _qa_step(rec: Dictionary) -> void:
+	var x := float(rec["x"])
+	var z := float(rec["z"])
+	var item := _nearest_junction(x, z)
+	if item.is_empty():
+		rec["dev_m"] = 99.0
+		return
+	var worst := 0.0
+	var samples := 0
+	for dx in [-2.0, 0.0, 2.0]:
+		for dz in [-2.0, 0.0, 2.0]:
+			var px: float = x + float(dx)
+			var pz: float = z + float(dz)
+			var plane := _builder._plane_at(item, px, pz) + 0.02
+			var hit := _ray(Vector3(px, plane + 2.0, pz), Vector3(px, plane - 4.0, pz))
+			if not _is_road(hit):
+				continue
+			var y := _driving_y(Vector3(px, plane, pz), plane, hit)
+			worst = maxf(worst, absf(y - plane))
+			samples += 1
+	rec["dev_m"] = worst
+	rec["samples"] = samples
+	rec["pass"] = samples >= 3 and worst <= 0.03
+
+
+func _qa_taper(rec: Dictionary) -> void:
+	if not _builder._by_id.has("us93_south_approach") or not _builder._by_id.has("us93_blue_lakes_s"):
+		return
+	var wide: Dictionary = _builder._roads[int(_builder._by_id["us93_south_approach"])]
+	var narrow: Dictionary = _builder._roads[int(_builder._by_id["us93_blue_lakes_s"])]
+	var wpts: PackedVector3Array = wide["pts"]
+	var npts: PackedVector3Array = narrow["pts"]
+	var wchain: PackedFloat32Array = wide["chain"]
+	var bi := 0
+	var best := 1.0e9
+	for i in wpts.size():
+		var d := Vector2(wpts[i].x - 3378.6, wpts[i].z + 6300.0).length()
+		if d < best:
+			best = d
+			bi = i
+	var joint := _builder._half_at(wide, bi)
+	var other := float(narrow["half"])
+	var s0 := float(wchain[bi])
+	var far := joint
+	for i in wpts.size():
+		if absf(float(wchain[i]) - s0) >= 30.0:
+			far = _builder._half_at(wide, i)
+			break
+	# The far half is measured 30 m along the chain, toward the 4-lane section.
+	var full := float(wide["half"])
+	rec["joint_half_m"] = joint
+	rec["narrow_half_m"] = other
+	rec["far_half_m"] = far
+	rec["pass"] = absf(joint - other) <= 0.08 and far > full - 0.4
+
+
+func _qa_hole(rec: Dictionary) -> void:
+	var x := float(rec["x"])
+	var z := float(rec["z"])
+	var near := _nearest(x, z)
+	var road: Dictionary = _builder._roads[int(_builder._by_id[str(near.get("id", "us93_south_approach"))])]
+	var pose := _pose(road, float(near.get("s", 0.0)))
+	var expected := float(pose["y"])
+	var hit := _ray(Vector3(x, expected + 4.0, z), Vector3(x, expected - 8.0, z))
+	var ground := _gen.drawn_height_at(x, z)
+	var hit_y := -999.0
+	if _is_road(hit):
+		hit_y = _driving_y(Vector3(x, expected, z), expected, hit)
+	var gap := hit_y - ground if hit_y > -70.0 and ground > -70.0 else 999.0
+	rec["hit_y"] = hit_y
+	rec["terrain_y"] = ground
+	rec["gap_m"] = gap
+	rec["pass"] = _is_road(hit) and absf(hit_y - expected) <= 0.15 and gap >= -0.001 and gap <= GAP_MAX
+
+
+func _qa_ceiling(rec: Dictionary) -> void:
+	var x := float(rec["x"])
+	var z := float(rec["z"])
+	var near := _nearest(x, z)
+	var road_y := 142.76
+	if not near.is_empty() and _builder._by_id.has(str(near["id"])):
+		var road: Dictionary = _builder._roads[int(_builder._by_id[str(near["id"])])]
+		var pose := _pose(road, float(near["s"]))
+		road_y = float(pose["y"])
+	var base := _support(Vector3(x, road_y + 4.0, z))
+	var under := _under(base)
+	rec["base_y"] = base.y
+	rec["road_y"] = road_y
+	rec["pass"] = base.y > -70.0 and not (under and base.y < road_y - 0.20)
+
+
+func _qa_exit(rec: Dictionary) -> void:
+	var x := float(rec["x"])
+	var z := float(rec["z"])
+	var near := _nearest(x, z)
+	var road_y := 0.0
+	if not near.is_empty() and _builder._by_id.has(str(near["id"])):
+		var road: Dictionary = _builder._roads[int(_builder._by_id[str(near["id"])])]
+		var pts: PackedVector3Array = road["pts"]
+		road_y = pts[pts.size() - 1].y
+		if absf(pts[0].x - x) + absf(pts[0].z - z) < absf(pts[pts.size() - 1].x - x) + absf(pts[pts.size() - 1].z - z):
+			road_y = pts[0].y
+	var hit := _ray(Vector3(x, road_y + 30.0, z), Vector3(x, road_y - 40.0, z))
+	var hit_y := -999.0
+	var name := "miss"
+	if not hit.is_empty():
+		hit_y = float((hit["position"] as Vector3).y)
+		name = str((hit["collider"] as Node).name)
+	rec["hit"] = name
+	rec["hit_y"] = hit_y
+	rec["road_y"] = road_y
+	rec["pass"] = _is_road(hit) and absf(hit_y - road_y) < 1.5
+
+
+func _nearest_junction(x: float, z: float) -> Dictionary:
+	var best := 1.0e9
+	var found: Dictionary = {}
+	for item in _builder._junctions:
+		var pos: Array = item.get("pos", [])
+		if pos.size() < 3:
+			continue
+		var d := Vector2(float(pos[0]) - x, float(pos[2]) - z).length()
+		if d < best:
+			best = d
+			found = item
+	return found
 
 
 func _nearest(x: float, z: float) -> Dictionary:
@@ -1172,36 +1390,44 @@ func _is_road(hit: Dictionary) -> bool:
 ## `first` is the hit already cast from the design height; it is not recast.
 func _driving_y(at: Vector3, expected: float, first: Dictionary) -> float:
 	# A parapet cap or guard top is a walkable face in the same body, about
-	# 0.8 m above the lane. Start just above the design so that cap is not
-	# the surface. A ray that begins inside the wall hits the wall's floor,
-	# which is the carriageway.
+	# 0.8 m above the lane. Keep every walkable road face within 0.20 m of
+	# the design and use the one closest to it. The first face in that window
+	# can be a wing or a flare while the carriageway is a few centimetres lower.
+	var best := Vector2(expected, 1.0e9)
 	var near := _ray(Vector3(at.x, expected + 0.22, at.z), Vector3(at.x, expected - 0.35, at.z))
-	if _is_road(near):
-		var nn: Vector3 = near["normal"]
-		var np: Vector3 = near["position"]
-		if nn.y >= 0.45 and absf(np.y - expected) <= 0.20:
-			return np.y
+	best = _consider_drive(near, expected, best)
 	var hit := first
 	var from := Vector3(at.x, expected + 2.0, at.z)
 	var to := Vector3(at.x, expected - 80.0, at.z)
 	var guard := 0
 	while guard < 8:
-		if hit.is_empty():
+		if hit.is_empty() or not _is_road(hit):
 			break
-		if not _is_road(hit):
-			break
-		var n: Vector3 = hit["normal"]
+		best = _consider_drive(hit, expected, best)
 		var at_hit: Vector3 = hit["position"]
-		if n.y >= 0.45 and absf(at_hit.y - expected) <= 0.20:
-			return at_hit.y
 		from = at_hit + Vector3(0.0, -0.06, 0.0)
 		if from.y <= to.y + 0.05:
 			break
 		hit = _ray(from, to)
 		guard += 1
+	if best.y < 10.0:
+		return best.x
 	if _is_road(first):
 		return float((first["position"] as Vector3).y)
 	return expected
+
+
+func _consider_drive(hit: Dictionary, expected: float, best: Vector2) -> Vector2:
+	if not _is_road(hit):
+		return best
+	var n: Vector3 = hit["normal"]
+	if n.y < 0.45:
+		return best
+	var y := float((hit["position"] as Vector3).y)
+	var d := absf(y - expected)
+	if d <= 0.20 and d < best.y:
+		return Vector2(y, d)
+	return best
 
 
 func _flat_dir(v: Vector3) -> Vector3:
