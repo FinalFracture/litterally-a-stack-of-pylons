@@ -1024,6 +1024,7 @@ func _draw_chrome(view: Vector2) -> void:
 		var toast_at := Vector2(clampf(_cursor.x + 14.0, 8.0, view.x - tw - 8.0), clampf(_cursor.y - 28.0, 8.0, view.y - 28.0))
 		draw_rect(Rect2(toast_at, Vector2(tw, float(px) + 10.0)), Color(0.05, 0.05, 0.06, 0.9))
 		draw_string(font, toast_at + Vector2(8.0, float(px) + 1.0), _toast, HORIZONTAL_ALIGNMENT_LEFT, tw, px, Color(0.98, 0.94, 0.8))
+	_draw_credit(view, font, px)
 
 
 func _readout_lines(x: float, godot_z: float) -> PackedStringArray:
@@ -1039,6 +1040,15 @@ func _readout_lines(x: float, godot_z: float) -> PackedStringArray:
 		"chunk c_%d_%d" % [cx, cz],
 		road_line,
 	])
+
+
+func _draw_credit(view: Vector2, font: Font, px: int) -> void:
+	var credit := "© OpenStreetMap contributors"
+	var cpx := maxi(px - 2, 11)
+	var csize := font.get_string_size(credit, HORIZONTAL_ALIGNMENT_LEFT, -1, cpx)
+	var rect := Rect2(Vector2(view.x - csize.x - 16.0, view.y - float(cpx) - 14.0), Vector2(csize.x + 8.0, float(cpx) + 6.0))
+	draw_rect(rect, Color(0.04, 0.04, 0.05, 0.72))
+	draw_string(font, rect.position + Vector2(4.0, float(cpx)), credit, HORIZONTAL_ALIGNMENT_LEFT, -1, cpx, Color(0.9, 0.88, 0.82))
 
 
 func _draw_scale(view: Vector2, font: Font, px: int) -> void:
