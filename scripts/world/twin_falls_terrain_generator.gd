@@ -104,6 +104,7 @@ func prepare() -> void:
 	_load_meta()
 	_roads = _RoadBuilder.new()
 	_roads.prepare()
+	_roads._dem = Callable(self, "_dem_at")
 	_mat = ShaderMaterial.new()
 	var shader := load("res://shaders/twin_falls_terrain.gdshader") as Shader
 	if shader == null:

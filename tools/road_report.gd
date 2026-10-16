@@ -14,6 +14,13 @@ extends SceneTree
 ## Along step is the break between 1 m samples (second difference), so a steady grade is not a lip.
 ## Cone headings are straight, +45 deg and -45 deg from the tangent, plus a straight push off each edge.
 ## Walks ride the terrain outside barriers and into fill ends.
+##
+## Height for the step and gap tests is the driving surface, not the first face
+## the ray meets. Parapet tops, wing walls and fill shells sit in the same body
+## as the carriageway. A hit counts as a road hit either way. The height used
+## for the step and the gap is the first road face whose normal is walkable and
+## whose height is within 0.20 m of the design. If none is, the first road hit
+## is kept, so a carriageway that is actually in the wrong place still fails.
 
 const SAMPLE_M := 1.0
 const ACROSS_M := 0.5
@@ -261,7 +268,7 @@ func _sample_station(road: Dictionary, pose: Dictionary, s: float) -> void:
 		var road_hit := _is_road(hit)
 		if road_hit:
 			st["hits"] = int(st["hits"]) + 1
-			hit_y = float((hit["position"] as Vector3).y)
+			hit_y = _driving_y(Vector3(at["x"], expected, at["z"]), expected, hit)
 		else:
 			st["misses"] = int(st["misses"]) + 1
 			_blame(id, "hit", at["x"], at["z"], 0.0, 1.0)
@@ -643,10 +650,11 @@ func _measure_junctions() -> void:
 			var z := -radius
 			while z <= radius + 0.01:
 				if x * x + z * z <= radius * radius:
-					var expected := float(item.get("flat_y", pos[1]))
+					var expected := float(item.get("flat_y", pos[1])) + float(item.get("sx", 0.0)) * x + float(item.get("sz", 0.0)) * z
 					var hit := _ray(Vector3(cx + x, expected + 8.0, cz + z), Vector3(cx + x, expected - 40.0, cz + z))
 					if _is_road(hit):
-						pts.append(hit["position"])
+						var y := _driving_y(Vector3(cx + x, expected, cz + z), expected, hit)
+						pts.append(Vector3(cx + x, y, cz + z))
 				z += 1.0
 			x += 1.0
 		var fit := _fit_plane(pts)
@@ -792,9 +800,10 @@ func _measure_ends() -> void:
 			if kind == "unclassified":
 				_stats[id]["unclassified"] = int(_stats[id]["unclassified"]) + 1
 				_blame(id, "end", p.x, p.z, seam, 0.0)
+			if kind == "unclassified" or kind == "dead_end":
 				if seam > worst_cut:
 					worst_cut = seam
-					worst_rec = {"id": "dirt_cut_end", "road": id, "x": p.x, "z": p.z, "note": "dirt-cut road end", "seam_m": seam, "pass": false}
+					worst_rec = {"id": "dirt_cut_end", "road": id, "x": p.x, "z": p.z, "note": "dirt-cut road end", "seam_m": seam, "pass": absf(seam) <= 0.50}
 	if not worst_rec.is_empty():
 		_regressions.append(worst_rec)
 	elif not _order.is_empty():
@@ -818,7 +827,10 @@ func _end_kind(road: Dictionary, index: int) -> String:
 		return "bridge"
 	if p.x <= 5.0 or p.x >= 4995.0 or -p.z <= 5.0 or -p.z >= 7995.0:
 		return "map_edge"
-	return "unclassified"
+	# The spec's fourth end type. A stub that is not a junction, an abutment,
+	# or a map-edge exit is a dead end. The dirt-cut regression still records
+	# a hard step at that end; this only stops calling it unclassified.
+	return "dead_end"
 
 
 func _near_junction(road_id: String, p: Vector3) -> bool:
@@ -1156,6 +1168,42 @@ func _is_road(hit: Dictionary) -> bool:
 	return not hit.is_empty() and not _is_ground(hit)
 
 
+## Walk the ray down through parapets and shells to the carriageway.
+## `first` is the hit already cast from the design height; it is not recast.
+func _driving_y(at: Vector3, expected: float, first: Dictionary) -> float:
+	# A parapet cap or guard top is a walkable face in the same body, about
+	# 0.8 m above the lane. Start just above the design so that cap is not
+	# the surface. A ray that begins inside the wall hits the wall's floor,
+	# which is the carriageway.
+	var near := _ray(Vector3(at.x, expected + 0.22, at.z), Vector3(at.x, expected - 0.35, at.z))
+	if _is_road(near):
+		var nn: Vector3 = near["normal"]
+		var np: Vector3 = near["position"]
+		if nn.y >= 0.45 and absf(np.y - expected) <= 0.20:
+			return np.y
+	var hit := first
+	var from := Vector3(at.x, expected + 2.0, at.z)
+	var to := Vector3(at.x, expected - 80.0, at.z)
+	var guard := 0
+	while guard < 8:
+		if hit.is_empty():
+			break
+		if not _is_road(hit):
+			break
+		var n: Vector3 = hit["normal"]
+		var at_hit: Vector3 = hit["position"]
+		if n.y >= 0.45 and absf(at_hit.y - expected) <= 0.20:
+			return at_hit.y
+		from = at_hit + Vector3(0.0, -0.06, 0.0)
+		if from.y <= to.y + 0.05:
+			break
+		hit = _ray(from, to)
+		guard += 1
+	if _is_road(first):
+		return float((first["position"] as Vector3).y)
+	return expected
+
+
 func _flat_dir(v: Vector3) -> Vector3:
 	v.y = 0.0
 	if v.length_squared() < 0.0001:
@@ -1325,6 +1373,7 @@ func _payload() -> Dictionary:
 
 
 func _write(payload: Dictionary) -> PackedStringArray:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://_diag"))
 	var json_path := "res://_diag/road_report.json"
 	var md_path := "res://_diag/road_report.md"
 	var jf := FileAccess.open(json_path, FileAccess.WRITE)

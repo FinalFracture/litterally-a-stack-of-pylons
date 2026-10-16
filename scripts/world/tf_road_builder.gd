@@ -7,21 +7,38 @@ extends RefCounted
 ## one mesh, one collision body, the signs and the landmark instances under host.
 ##
 ## One pipeline from roads.json. The profile is smoothed inside the class grade
-## cap. Ordinary segments stamp cut and fill into the heightfield: shoulder,
-## ditch, a 0.25:1 face on basalt cliffs (soil stays 2:1), 1.5:1 fill, then a
-## 4 m blend back to the lidar. The ribbon sits 0.02 m above that grade and
-## the heightfield is the ground collision. Skirts are not built. Deck and bridge
-## keep their authored grade and are not stamped. Perrine approach profiles stay
-## pinned so the deck joint does not move, but their fill, cut, and grade
-## segments use this same stamp.
+## cap, then each junction gets one plane (tilt clamped) and the roads blend
+## into it. Ordinary segments, including the Perrine approach slabs, stamp cut
+## and fill into the heightfield: shoulder, ditch, a 0.25:1 face on grade and
+## rim cuts (soil stays 2:1 everywhere else), 1.5:1 fill, then a 4 m blend back
+## to the lidar. The ribbon sits 0.02 m above that grade. Collision is the same
+## plane flared past the paint so an edge ray stays on the carriageway. Skirts
+## are not built. The bridge span itself is not stamped.
 
 const DATA := "res://world/twin_falls/data"
 const BUCKET := 64.0
 const BLEND_M := 4.0
 const SHAVE_M := 0.02
 const LIFT_M := 0.03
-## Ordinary ribbon. Approaches keep LIFT_M so the deck joint does not move.
+## Ribbon above the graded heightfield. Deck, bridge, and the last 4 m of an
+## approach (blended) stay at DECK_LIFT_M so the joint is flush.
 const SURFACE_LIFT := 0.02
+## Collision extends past the paint and across the centre seam. The visual edge
+## stays on the paint line. A zero-margin ray on that line misses the triangle.
+const FLARE_M := 0.40
+const SEAM_M := 0.25
+const ALONG_M := 0.20
+## Junction blend. Each vertex may change grade by this much, which is the
+## along-step the report measures between 1 m samples.
+const BLEND_LIP := 0.008
+const BLEND_GRADE := 0.16
+const BLEND_WINDOW := 120.0
+## Two discs closer than this share one vertical curve. Curvature stays under
+## the 0.02 m along-step the report measures on 1 m samples.
+const GAP_MAX_M := 24.0
+const GAP_CURV := 0.016
+## Guard only once the drop inside 3 m would fail the report. Gentler ground stays open.
+const BARRIER_DROP_M := 2.5
 const DITCH_DROP := 0.30
 ## A cliff this steep is basalt, not walkable talus. Soil cuts stay at 2:1.
 const ROCK_DEG := 46.0
@@ -84,6 +101,9 @@ const GUARD_ROADS := {
 }
 
 var _roads: Array = []
+## Unstamped ground outside the chunk being built. Guards need the neighbour
+## canyon, which this chunk's grid clamps away.
+var _dem: Callable = Callable()
 var _edges: Array = []
 var _buckets: Dictionary = {}
 var _junctions: Array = []
@@ -367,17 +387,776 @@ func _extend_grade(pts: PackedVector3Array) -> PackedVector3Array:
 	return out
 
 
-## Junction heights, the 10% cap, crown/bank, then the cut edges and rail crossings.
+## Junction heights, the 10% cap, one plane per junction, crown/bank, then cuts.
 func _finish_profiles() -> void:
 	_match_junctions()
 	for road in _roads:
 		_cap_grade(road)
 	for item in _junctions:
 		item["flat_y"] = _major_y(item)
+	_assign_junction_planes()
+	_blend_junctions()
 	for road in _roads:
 		_store_bank(road)
 	_rebuild_edges()
 	_find_crossings()
+
+
+## Best-fit plane through the junction, tilt clamped. Bridge ends stay horizontal
+## at the deck so the span and the patch are the same plane.
+func _assign_junction_planes() -> void:
+	for item in _junctions:
+		var limit := 0.02
+		if _junction_grade(item) >= 0.06:
+			limit = 0.03
+		item["tilt_lim"] = limit
+		# Follow the major road, clamped. A flat disc between two close junctions
+		# at different heights cannot ease within the along-step limit.
+		if _bridge_joint(item) or _junction_turn(item) > 25.0:
+			item["sx"] = 0.0
+			item["sz"] = 0.0
+			continue
+		var slope := _major_slope(item)
+		var g := slope.length()
+		if g > limit and g > 0.000001:
+			slope = slope * (limit / g)
+		item["sx"] = slope.x
+		item["sz"] = slope.y
+
+
+## Degrees of heading change inside the disc. A corner on a tilted plane breaks the along step.
+func _junction_turn(item: Dictionary) -> float:
+	var pos: Array = item.get("pos", [])
+	if pos.size() < 3:
+		return 0.0
+	var x := float(pos[0])
+	var z := float(pos[2])
+	var rad := float(item.get("radius", 8.0)) + 2.0
+	var worst := 0.0
+	for rid in item.get("roads", []):
+		if not _by_id.has(str(rid)):
+			continue
+		var road: Dictionary = _roads[int(_by_id[str(rid)])]
+		var pts: PackedVector3Array = road["pts"]
+		for i in range(1, pts.size() - 1):
+			if Vector2(pts[i].x - x, pts[i].z - z).length() > rad:
+				continue
+			var a := Vector2(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z)
+			var b := Vector2(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z)
+			if a.length() < 0.5 or b.length() < 0.5:
+				continue
+			var ang := rad_to_deg(absf(a.angle_to(b)))
+			worst = maxf(worst, ang)
+	return worst
+
+
+func _junction_grade(item: Dictionary) -> float:
+	var pos: Array = item.get("pos", [])
+	if pos.size() < 3:
+		return 0.0
+	var x := float(pos[0])
+	var z := float(pos[2])
+	var worst := 0.0
+	for rid in item.get("roads", []):
+		if not _by_id.has(str(rid)):
+			continue
+		var road: Dictionary = _roads[int(_by_id[str(rid)])]
+		var pts: PackedVector3Array = road["pts"]
+		for i in pts.size() - 1:
+			var ab := Vector2(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z)
+			var ds := ab.length()
+			if ds < 0.5:
+				continue
+			var mid := pts[i].lerp(pts[i + 1], 0.5)
+			if Vector2(mid.x - x, mid.z - z).length() > 40.0:
+				continue
+			worst = maxf(worst, absf(pts[i + 1].y - pts[i].y) / ds)
+	return worst
+
+
+func _major_slope(item: Dictionary) -> Vector2:
+	var major := _major_id(item)
+	if major == "" or not _by_id.has(major):
+		return Vector2.ZERO
+	var pos: Array = item.get("pos", [])
+	if pos.size() < 3:
+		return Vector2.ZERO
+	var x := float(pos[0])
+	var z := float(pos[2])
+	var road: Dictionary = _roads[int(_by_id[major])]
+	var pts: PackedVector3Array = road["pts"]
+	var best := 1.0e12
+	var slope := Vector2.ZERO
+	for i in pts.size() - 1:
+		var abx := pts[i + 1].x - pts[i].x
+		var abz := pts[i + 1].z - pts[i].z
+		var len2 := abx * abx + abz * abz
+		if len2 < 0.04:
+			continue
+		var t := clampf(((x - pts[i].x) * abx + (z - pts[i].z) * abz) / len2, 0.0, 1.0)
+		var px := pts[i].x + abx * t
+		var pz := pts[i].z + abz * t
+		var d := Vector2(x - px, z - pz).length()
+		if d >= best:
+			continue
+		best = d
+		var ds := sqrt(len2)
+		var g := (pts[i + 1].y - pts[i].y) / ds
+		slope = Vector2(abx / ds * g, abz / ds * g)
+	return slope
+
+
+func _plane_at(item: Dictionary, x: float, z: float) -> float:
+	var pos: Array = item.get("pos", [])
+	var fallback := 0.0
+	if pos.size() >= 3:
+		fallback = float(pos[1])
+	var y := float(item.get("flat_y", fallback))
+	return y + float(item.get("sx", 0.0)) * (x - float(pos[0])) + float(item.get("sz", 0.0)) * (z - float(pos[2]))
+
+
+## How far this point sits outside the nearest junction disc on this road.
+func _blend_dist(road_id: String, p: Vector3) -> float:
+	var best := 1.0e9
+	for item in _junctions:
+		var ids: Array = item.get("roads", [])
+		if not ids.has(road_id):
+			continue
+		var pos: Array = item.get("pos", [])
+		if pos.size() < 3:
+			continue
+		var d := Vector2(p.x - float(pos[0]), p.z - float(pos[2])).length()
+		best = minf(best, d - float(item.get("radius", 8.0)))
+	return best
+
+
+func _junction_at(road_id: String, p: Vector3) -> Dictionary:
+	var best := 1.0e9
+	var found: Dictionary = {}
+	for item in _junctions:
+		var ids: Array = item.get("roads", [])
+		if not ids.has(road_id):
+			continue
+		var pos: Array = item.get("pos", [])
+		if pos.size() < 3:
+			continue
+		var d := Vector2(p.x - float(pos[0]), p.z - float(pos[2])).length()
+		if d < best:
+			best = d
+			found = item
+	return found
+
+
+## Insert samples only inside the blend window so a grade change can ease off
+## without densifying a whole highway.
+func _blend_junctions() -> void:
+	for road in _roads:
+		if bool(road["rail"]):
+			continue
+		_densify_blend(road)
+		_apply_blend(road)
+		_spread_kinks(road)
+		var half := float(road["half"])
+		var miters: Array = _miters(road["pts"], half)
+		road["left"] = miters[0]
+		road["right"] = miters[1]
+		_rebuild_chain(road)
+
+
+func _densify_blend(road: Dictionary) -> void:
+	var pts: PackedVector3Array = road["pts"]
+	var kinds: PackedStringArray = road["kind"]
+	var adv: PackedInt32Array = road["advisory"]
+	var out := PackedVector3Array()
+	var out_k := PackedStringArray()
+	var out_a := PackedInt32Array()
+	out.append(pts[0])
+	var id := str(road["id"])
+	for i in range(pts.size() - 1):
+		var a := pts[i]
+		var b := pts[i + 1]
+		var kind := "grade"
+		if i < kinds.size():
+			kind = kinds[i]
+		var advis := 0
+		if i < adv.size():
+			advis = int(adv[i])
+		var dist := Vector2(b.x - a.x, b.z - a.z).length()
+		if kind != "bridge" and dist > 1.05:
+			var cursor := 0.0
+			while cursor < dist - 0.4:
+				var here := a.lerp(b, cursor / dist)
+				var near := _blend_dist(id, here) <= BLEND_WINDOW
+				var step := 1.0 if near else 16.0
+				var nxt := cursor + step
+				if nxt > dist - 0.4:
+					break
+				var mid := a.lerp(b, nxt / dist)
+				if near or _blend_dist(id, mid) <= BLEND_WINDOW:
+					out.append(mid)
+					out_k.append(kind)
+					out_a.append(advis)
+				cursor = nxt
+		out.append(b)
+		out_k.append(kind)
+		out_a.append(advis)
+	road["pts"] = out
+	road["kind"] = out_k
+	road["advisory"] = out_a
+
+
+func _rebuild_chain(road: Dictionary) -> void:
+	var pts: PackedVector3Array = road["pts"]
+	var chain := PackedFloat32Array()
+	chain.resize(pts.size())
+	var walked := 0.0
+	for i in range(1, pts.size()):
+		walked += Vector2(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z).length()
+		chain[i] = walked
+	road["chain"] = chain
+
+
+## Pull carriageway vertices inside each disc onto that junction's plane, then
+## ease back to the capped profile. The ease is local: once height and grade
+## meet the original, the rest of the road is left exactly as the cap left it.
+func _apply_blend(road: Dictionary) -> void:
+	var pts: PackedVector3Array = road["pts"]
+	if pts.size() < 2:
+		return
+	var orig := PackedFloat32Array()
+	orig.resize(pts.size())
+	var fixed := PackedByteArray()
+	fixed.resize(pts.size())
+	var id := str(road["id"])
+	for i in pts.size():
+		orig[i] = pts[i].y
+		var item := _junction_at(id, pts[i])
+		if item.is_empty():
+			continue
+		var pos: Array = item.get("pos", [])
+		if pos.size() < 3:
+			continue
+		var d := Vector2(pts[i].x - float(pos[0]), pts[i].z - float(pos[2])).length()
+		if d > float(item.get("radius", 8.0)) + 0.2:
+			continue
+		var p := pts[i]
+		p.y = _plane_at(item, p.x, p.z)
+		pts[i] = p
+		fixed[i] = 1
+	_ease_from_fixed(pts, orig, fixed)
+	road["pts"] = pts
+
+
+func _ease_from_fixed(pts: PackedVector3Array, orig: PackedFloat32Array, fixed: PackedByteArray) -> void:
+	var n := pts.size()
+	var first := 0
+	while first < n and fixed[first] == 0:
+		first += 1
+	if first >= n:
+		return
+	var locked := PackedByteArray()
+	locked.resize(n)
+	if first > 0:
+		_ease(pts, orig, locked, first, 0, -1)
+	var run := first
+	while run < n:
+		while run + 1 < n and fixed[run + 1] == 1:
+			run += 1
+		var nxt := run + 1
+		while nxt < n and fixed[nxt] == 0:
+			nxt += 1
+		if nxt >= n:
+			_ease(pts, orig, locked, run, n - 1, 1)
+			break
+		if nxt <= run + 1:
+			run = nxt
+			continue
+		# Close junctions share one curve. A long gap eases back to the capped
+		# profile from each disc so the middle of the road is not rebuilt.
+		var fwd := pts.duplicate()
+		var back := pts.duplicate()
+		var lock_f := PackedByteArray()
+		var lock_b := PackedByteArray()
+		lock_f.resize(pts.size())
+		lock_b.resize(pts.size())
+		_ease(fwd, orig, lock_f, run, nxt - 1, 1)
+		_ease(back, orig, lock_b, nxt, run + 1, -1)
+		var span := maxf(_chain_len(pts, run, nxt), 0.5)
+		var walked := 0.0
+		var prev_i := run
+		for j in range(run + 1, nxt):
+			walked += Vector2(pts[j].x - pts[prev_i].x, pts[j].z - pts[prev_i].z).length()
+			var u := clampf(walked / span, 0.0, 1.0)
+			var w := u * u * (3.0 - 2.0 * u)
+			var p := pts[j]
+			p.y = lerpf(fwd[j].y, back[j].y, w)
+			pts[j] = p
+			prev_i = j
+		run = nxt
+
+
+## Curvature-limited curve from one disc edge to the next. Used when the two
+## junctions are too close for each side to rejoin the original profile.
+func _meet(pts: PackedVector3Array, a: int, b: int) -> void:
+	if b <= a + 1:
+		return
+	var g := 0.0
+	if a > 0:
+		g = _grade_of(pts, a - 1, a)
+	var gb := 0.0
+	if b + 1 < pts.size():
+		gb = _grade_of(pts, b, b + 1)
+	var prev := a
+	for j in range(a + 1, b):
+		var ds := Vector2(pts[j].x - pts[prev].x, pts[j].z - pts[prev].z).length()
+		if ds < 0.05:
+			var p0 := pts[j]
+			p0.y = pts[prev].y
+			pts[j] = p0
+			prev = j
+			continue
+		var remain := _chain_len(pts, prev, b)
+		var g_hit := (pts[b].y - pts[prev].y) / remain
+		var u := clampf(1.0 - remain / maxf(_chain_len(pts, a, b), 0.5), 0.0, 1.0)
+		var g_want := lerpf(g_hit, gb, u * u)
+		g = clampf(g_want, g - BLEND_LIP, g + BLEND_LIP)
+		g = clampf(g, -BLEND_GRADE, BLEND_GRADE)
+		var p := pts[j]
+		p.y = pts[prev].y + g * ds
+		pts[j] = p
+		prev = j
+
+
+func _chain_len(pts: PackedVector3Array, a: int, b: int) -> float:
+	var walked := 0.0
+	var i := mini(a, b)
+	var last := maxi(a, b)
+	while i < last:
+		walked += Vector2(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z).length()
+		i += 1
+	return walked
+
+
+func _grade_of(pts: PackedVector3Array, i: int, j: int) -> float:
+	var ds := Vector2(pts[j].x - pts[i].x, pts[j].z - pts[i].z).length()
+	if ds < 0.05:
+		return 0.0
+	return (pts[j].y - pts[i].y) / ds
+
+
+## Cubic between two disc edges. End heights and grades stay on the planes.
+func _hermite_gap(pts: PackedVector3Array, a: int, b: int) -> void:
+	if b <= a + 1:
+		return
+	var g0 := 0.0
+	if a > 0:
+		g0 = _grade_of(pts, a - 1, a)
+	var g1 := 0.0
+	if b + 1 < pts.size():
+		g1 = _grade_of(pts, b, b + 1)
+	var length := _chain_len(pts, a, b)
+	if length < 0.5:
+		return
+	var walked := 0.0
+	for j in range(a + 1, b):
+		walked += Vector2(pts[j].x - pts[j - 1].x, pts[j].z - pts[j - 1].z).length()
+		var u := clampf(walked / length, 0.0, 1.0)
+		var u2 := u * u
+		var u3 := u2 * u
+		var h00 := 2.0 * u3 - 3.0 * u2 + 1.0
+		var h10 := u3 - 2.0 * u2 + u
+		var h01 := -2.0 * u3 + 3.0 * u2
+		var h11 := u3 - u2
+		var p := pts[j]
+		p.y = h00 * pts[a].y + h10 * g0 * length + h01 * pts[b].y + h11 * g1 * length
+		pts[j] = p
+
+
+## A short gap between two discs cannot ease back to the capped profile from
+## both ends. Fit one vertical curve that keeps both end heights and both end
+## grades, with curvature under the along-step limit.
+func _bridge_close_gaps(road: Dictionary, pts: PackedVector3Array, fixed: PackedByteArray) -> void:
+	var n := pts.size()
+	var run := 0
+	while run < n and fixed[run] == 0:
+		run += 1
+	while run < n:
+		while run + 1 < n and fixed[run + 1] == 1:
+			run += 1
+		var nxt := run + 1
+		while nxt < n and fixed[nxt] == 0:
+			nxt += 1
+		if nxt >= n:
+			break
+		if nxt > run + 1 and _gap_has_lip(pts, run, nxt):
+			_bridge_gap(pts, run, nxt)
+		run = nxt
+
+
+func _gap_has_lip(pts: PackedVector3Array, a: int, b: int) -> bool:
+	var prev := 0.0
+	if a > 0:
+		prev = _grade_of(pts, a - 1, a)
+	var i := a
+	while i < b:
+		var g := _grade_of(pts, i, i + 1)
+		if absf(g - prev) > 0.018:
+			return true
+		prev = g
+		i += 1
+	if b + 1 < pts.size() and absf(_grade_of(pts, b, b + 1) - prev) > 0.018:
+		return true
+	return false
+
+
+func _bridge_gap(pts: PackedVector3Array, a: int, b: int) -> bool:
+	var length := _chain_len(pts, a, b)
+	if length < 0.5 or length > GAP_MAX_M:
+		return false
+	var g0 := 0.0
+	if a > 0:
+		g0 = _grade_of(pts, a - 1, a)
+	var g1 := 0.0
+	if b + 1 < pts.size():
+		g1 = _grade_of(pts, b, b + 1)
+	var y0 := pts[a].y
+	var y1 := pts[b].y
+	var solved := _solve_gap(length, g0, g1, y1 - y0)
+	if solved.is_empty():
+		return false
+	var c := float(solved["c"])
+	var t_switch := float(solved["t"])
+	var station := PackedFloat32Array()
+	station.resize(b - a + 1)
+	station[0] = 0.0
+	for i in range(a + 1, b + 1):
+		var ds := Vector2(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z).length()
+		station[i - a] = station[i - a - 1] + ds
+	var trial := pts.duplicate()
+	var y := y0
+	for i in range(a + 1, b + 1):
+		y += _gap_dy(station[i - a - 1], station[i - a], g0, c, t_switch)
+		if i == b:
+			break
+		var p := trial[i]
+		p.y = y
+		trial[i] = p
+	var residual := y1 - y
+	if absf(residual) > 0.025:
+		return false
+	if absf(residual) > 0.00001:
+		for i in range(a + 1, b):
+			var u := station[i - a] / length
+			var p := trial[i]
+			p.y += residual * u
+			trial[i] = p
+	if not _gap_grades_ok(trial, a, b, g0, g1):
+		return false
+	for i in range(a + 1, b):
+		pts[i] = trial[i]
+	return true
+
+
+func _gap_grades_ok(pts: PackedVector3Array, a: int, b: int, g0: float, g1: float) -> bool:
+	var prev := g0
+	var i := a
+	while i < b:
+		var g := _grade_of(pts, i, i + 1)
+		if absf(g) > BLEND_GRADE + 0.001:
+			return false
+		if absf(g - prev) > 0.019:
+			return false
+		prev = g
+		i += 1
+	return absf(g1 - prev) <= 0.019
+
+
+func _gap_dy(s0: float, s1: float, g0: float, c: float, t_switch: float) -> float:
+	var ds := s1 - s0
+	if ds <= 0.000001:
+		return 0.0
+	if t_switch <= s0 or t_switch >= s1:
+		var mid := 0.5 * (s0 + s1)
+		var g := g0 + c * mid
+		if mid > t_switch:
+			g = g0 + 2.0 * c * t_switch - c * mid
+		return g * ds
+	var g_s0 := g0 + c * s0
+	var g_t := g0 + c * t_switch
+	var g_s1 := g0 + 2.0 * c * t_switch - c * s1
+	var left := 0.5 * (g_s0 + g_t) * (t_switch - s0)
+	var right := 0.5 * (g_t + g_s1) * (s1 - t_switch)
+	return left + right
+
+
+func _solve_gap(length: float, g0: float, g1: float, height: float) -> Dictionary:
+	var need := absf(g1 - g0) / maxf(length, 0.001)
+	if need > GAP_CURV + 0.0001:
+		return {}
+	var best: Dictionary = {}
+	var best_err := 1.0e9
+	for sign in [-1.0, 1.0]:
+		var lo := maxf(need, 0.000001)
+		var hi := GAP_CURV
+		var h_lo := _gap_height(length, g0, g1, sign * lo)
+		var h_hi := _gap_height(length, g0, g1, sign * hi)
+		if h_lo.is_empty() or h_hi.is_empty():
+			continue
+		var e_lo := float(h_lo["h"]) - height
+		var e_hi := float(h_hi["h"]) - height
+		if e_lo * e_hi > 0.0:
+			if absf(e_lo) < best_err:
+				best_err = absf(e_lo)
+				best = h_lo
+			if absf(e_hi) < best_err:
+				best_err = absf(e_hi)
+				best = h_hi
+			continue
+		var pick := h_lo
+		for _step in 22:
+			var mid := 0.5 * (lo + hi)
+			var h_mid := _gap_height(length, g0, g1, sign * mid)
+			if h_mid.is_empty():
+				break
+			pick = h_mid
+			var e_mid := float(h_mid["h"]) - height
+			if e_lo * e_mid <= 0.0:
+				hi = mid
+				e_hi = e_mid
+			else:
+				lo = mid
+				e_lo = e_mid
+		var err := absf(float(pick["h"]) - height)
+		if err < best_err:
+			best_err = err
+			best = pick
+	if best.is_empty() or best_err > 0.008:
+		return {}
+	return best
+
+
+func _gap_height(length: float, g0: float, g1: float, c: float) -> Dictionary:
+	if absf(c) < 1.0e-9:
+		if absf(g1 - g0) > 0.0001:
+			return {}
+		return {"h": g0 * length, "t": 0.0, "c": 0.0}
+	var t := (g1 - g0 + c * length) / (2.0 * c)
+	if t < -0.05 or t > length + 0.05:
+		return {}
+	t = clampf(t, 0.0, length)
+	var g_mid := g0 + c * t
+	if maxf(absf(g0), maxf(absf(g1), absf(g_mid))) > BLEND_GRADE + 0.0001:
+		return {}
+	var tail := length - t
+	var h := g0 * t + 0.5 * c * t * t + g_mid * tail - 0.5 * c * tail * tail
+	return {"h": h, "t": t, "c": c}
+
+
+## An authored kink is a lip even on a long straight segment. Spread it over
+## 2 m samples without moving a junction disc or a bridge pin.
+func _spread_kinks(road: Dictionary) -> void:
+	_densify_kinks(road)
+	_collapse_short(road)
+	var pts: PackedVector3Array = road["pts"]
+	var fixed := _fixed_profile(road, pts)
+	for _round in 24:
+		var moved := false
+		for i in range(1, pts.size() - 1):
+			if fixed[i] == 1:
+				continue
+			var ds0 := Vector2(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z).length()
+			var ds1 := Vector2(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z).length()
+			if ds0 < 0.05 or ds1 < 0.05:
+				continue
+			if fixed[i - 1] == 1 or fixed[i + 1] == 1:
+				continue
+			var g0 := (pts[i].y - pts[i - 1].y) / ds0
+			var g1 := (pts[i + 1].y - pts[i].y) / ds1
+			var delta := g1 - g0
+			if absf(delta) <= BLEND_LIP:
+				continue
+			var target := clampf(delta, -BLEND_LIP, BLEND_LIP)
+			var y := (pts[i - 1].y / ds0 + pts[i + 1].y / ds1 - target) / (1.0 / ds0 + 1.0 / ds1)
+			var p := pts[i]
+			if absf(p.y - y) < 0.0001:
+				continue
+			p.y = y
+			pts[i] = p
+			moved = true
+		if not moved:
+			break
+	_bridge_close_gaps(road, pts, fixed)
+	road["pts"] = pts
+
+
+func _densify_kinks(road: Dictionary) -> void:
+	var pts: PackedVector3Array = road["pts"]
+	var kinds: PackedStringArray = road["kind"]
+	var adv: PackedInt32Array = road["advisory"]
+	var hot := PackedByteArray()
+	hot.resize(pts.size())
+	for i in range(1, pts.size() - 1):
+		var ds0 := Vector2(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z).length()
+		var ds1 := Vector2(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z).length()
+		if ds0 < 0.05 or ds1 < 0.05:
+			continue
+		var g0 := (pts[i].y - pts[i - 1].y) / ds0
+		var g1 := (pts[i + 1].y - pts[i].y) / ds1
+		if absf(g1 - g0) > BLEND_LIP:
+			hot[i] = 1
+	var out := PackedVector3Array()
+	var out_k := PackedStringArray()
+	var out_a := PackedInt32Array()
+	out.append(pts[0])
+	for i in range(pts.size() - 1):
+		var a := pts[i]
+		var b := pts[i + 1]
+		var kind := "grade"
+		if i < kinds.size():
+			kind = kinds[i]
+		var advis := 0
+		if i < adv.size():
+			advis = int(adv[i])
+		var dist := Vector2(b.x - a.x, b.z - a.z).length()
+		if dist > 1.05 and (hot[i] == 1 or hot[i + 1] == 1):
+			var cursor := 1.0
+			while cursor < dist - 1.0:
+				var t := cursor / dist
+				out.append(a.lerp(b, t))
+				out_k.append(kind)
+				out_a.append(advis)
+				cursor += 1.0
+		out.append(b)
+		out_k.append(kind)
+		out_a.append(advis)
+	road["pts"] = out
+	road["kind"] = out_k
+	road["advisory"] = out_a
+
+
+## A sub-metre segment turns a small height change into a grade spike the 1 m sample sees.
+func _collapse_short(road: Dictionary) -> void:
+	var pts: PackedVector3Array = road["pts"]
+	var kinds: PackedStringArray = road["kind"]
+	var adv: PackedInt32Array = road["advisory"]
+	if pts.size() < 3:
+		return
+	var fixed := _fixed_profile(road, pts)
+	var out := PackedVector3Array()
+	var out_k := PackedStringArray()
+	var out_a := PackedInt32Array()
+	out.append(pts[0])
+	for i in range(1, pts.size() - 1):
+		var prev: Vector3 = out[out.size() - 1]
+		var dist := Vector2(pts[i].x - prev.x, pts[i].z - prev.z).length()
+		if dist < 0.75 and fixed[i] == 0:
+			continue
+		out.append(pts[i])
+		var ki := i - 1
+		if ki < kinds.size():
+			out_k.append(kinds[ki])
+		else:
+			out_k.append("grade")
+		if ki < adv.size():
+			out_a.append(int(adv[ki]))
+		else:
+			out_a.append(0)
+	out.append(pts[pts.size() - 1])
+	var last := pts.size() - 2
+	if last >= 0 and last < kinds.size():
+		out_k.append(kinds[last])
+	else:
+		out_k.append("grade")
+	if last >= 0 and last < adv.size():
+		out_a.append(int(adv[last]))
+	else:
+		out_a.append(0)
+	road["pts"] = out
+	road["kind"] = out_k
+	road["advisory"] = out_a
+
+
+func _fixed_profile(road: Dictionary, pts: PackedVector3Array) -> PackedByteArray:
+	var fixed := PackedByteArray()
+	fixed.resize(pts.size())
+	var id := str(road["id"])
+	for i in pts.size():
+		if _vertex_locked(road, i):
+			fixed[i] = 1
+			continue
+		var item := _junction_at(id, pts[i])
+		if item.is_empty():
+			continue
+		var pos: Array = item.get("pos", [])
+		if pos.size() < 3:
+			continue
+		var d := Vector2(pts[i].x - float(pos[0]), pts[i].z - float(pos[2])).length()
+		if d <= float(item.get("radius", 8.0)) + 0.2:
+			fixed[i] = 1
+	return fixed
+
+
+func _ease(pts: PackedVector3Array, orig: PackedFloat32Array, locked: PackedByteArray, start: int, stop: int, dir: int) -> void:
+	var prev := start
+	var g := 0.0
+	var back := start - dir
+	if back >= 0 and back < pts.size():
+		var ds0 := Vector2(pts[start].x - pts[back].x, pts[start].z - pts[back].z).length()
+		if ds0 > 0.05:
+			g = (pts[start].y - pts[back].y) / ds0
+	var j := start + dir
+	while true:
+		if dir > 0 and j > stop:
+			break
+		if dir < 0 and j < stop:
+			break
+		if locked[j] == 1:
+			break
+		var ds := Vector2(pts[j].x - pts[prev].x, pts[j].z - pts[prev].z).length()
+		if ds < 0.02:
+			var p0 := pts[j]
+			p0.y = pts[prev].y
+			pts[j] = p0
+			prev = j
+			j += dir
+			continue
+		var g_lo := maxf(g - BLEND_LIP, -BLEND_GRADE)
+		var g_hi := minf(g + BLEND_LIP, BLEND_GRADE)
+		var g_orig := (orig[j] - orig[prev]) / ds
+		var g_snap := (orig[j] - pts[prev].y) / ds
+		var y := pts[prev].y
+		var g_use := g
+		var matched := false
+		if g_snap >= g_lo - 0.00001 and g_snap <= g_hi + 0.00001 and absf(g_snap - g_orig) <= BLEND_LIP + 0.00001:
+			y = orig[j]
+			g_use = g_snap
+			matched = true
+		else:
+			g_use = clampf(g_snap, g_lo, g_hi)
+			y = pts[prev].y + g_use * ds
+		var p := pts[j]
+		p.y = y
+		pts[j] = p
+		g = g_use
+		prev = j
+		var at := j
+		j += dir
+		if not matched:
+			continue
+		locked[at] = 1
+		while true:
+			if dir > 0 and j > stop:
+				break
+			if dir < 0 and j < stop:
+				break
+			if locked[j] == 1:
+				break
+			var q := pts[j]
+			q.y = orig[j]
+			pts[j] = q
+			locked[j] = 1
+			j += dir
+		break
 
 
 func _match_junctions() -> void:
@@ -714,6 +1493,9 @@ func _rebuild_edges() -> void:
 		road["right"] = right
 		var shoulder := float(road.get("shoulder", 1.2))
 		var ditch := float(road.get("ditch", 1.0))
+		var cls := str(road.get("class", ""))
+		var rock_cls := cls == "grade" or cls == "rim_local"
+		var approach := _approach_road(str(road["id"]))
 		for i in pts.size() - 1:
 			var kind := kinds[i]
 			var edge := {
@@ -726,7 +1508,9 @@ func _rebuild_edges() -> void:
 				"rail": rail,
 				"sh": shoulder,
 				"ditch": ditch,
-				"skip": rail or kind == "deck" or kind == "bridge",
+				# Approach slabs are fill, not a bridge span. The span itself stays open.
+				"skip": rail or kind == "bridge" or (kind == "deck" and not approach),
+				"rock": rock_cls,
 			}
 			var ei := _edges.size()
 			_edges.append(edge)
@@ -1054,6 +1838,8 @@ func _seg_hits_rect(ax: float, az: float, bx: float, bz: float, min_x: float, mi
 
 
 func _cut_edge(grid: PackedFloat32Array, orig: PackedFloat32Array, lock: PackedByteArray, best: PackedFloat32Array, origin: Vector2, n: int, spacing: float, edge: Dictionary) -> void:
+	if bool(edge.get("skip", false)):
+		return
 	var ax := float(edge["ax"])
 	var az := float(edge["az"])
 	var bx := float(edge["bx"])
@@ -1079,17 +1865,24 @@ func _cut_edge(grid: PackedFloat32Array, orig: PackedFloat32Array, lock: PackedB
 			if hit.x > reach:
 				continue
 			var i := row + c
-			if legacy:
-				var low := _cut_target(edge, hit.x, hit.y, hit.z)
-				if grid[i] > low:
-					grid[i] = low
+			if _past_bridge_end(x, z, ax, az, bx, bz):
 				continue
-			var rock := _steep_cell(orig, n, c, r, spacing)
+			if legacy:
+				# Deck, bridge, and rail stay off the heightfield. The old cutter
+				# only lowered, and its reach dug out the fill on the next segment.
+				continue
+			var rock := bool(edge.get("rock", false)) or _steep_cell(orig, n, c, r, spacing)
 			var stamp := _stamp_at(edge, hit.x, hit.y, hit.z, orig[i], rock, spacing)
 			if stamp.z < 0.5:
 				continue
 			if stamp.y > 0.5:
-				if hit.x < best[i]:
+				var half_w := float(edge["half"])
+				var on_paint := hit.x <= half_w + 0.25
+				if hit.x < best[i] - 0.001:
+					# Nearest carriageway owns the cell. It may not dig out a higher
+					# carriageway that already claimed the cell from its own paint.
+					if lock[i] == 1 and stamp.x < grid[i] - 0.05 and not on_paint:
+						continue
 					best[i] = hit.x
 					grid[i] = stamp.x
 					lock[i] = 1
@@ -1236,6 +2029,36 @@ func _cut_target(edge: Dictionary, dist: float, t: float, side: float) -> float:
 	return edge_y - CUT_CLEAR_M + (dist - flat_r) / CUT_H_PER_V
 
 
+## True when the cell is past an abutment and would fill the bridge span.
+## A few metres of cap close the joint. The span itself stays open.
+func _past_bridge_end(x: float, z: float, ax: float, az: float, bx: float, bz: float) -> bool:
+	var abx := bx - ax
+	var abz := bz - az
+	var len2 := abx * abx + abz * abz
+	if len2 < 0.0001:
+		return false
+	var raw := ((x - ax) * abx + (z - az) * abz) / len2
+	if raw >= 0.0 and raw <= 1.0:
+		return false
+	var endx := ax if raw < 0.0 else bx
+	var endz := az if raw < 0.0 else bz
+	if not _bridge_end_xz(endx, endz):
+		return false
+	var overrun := -raw * sqrt(len2) if raw < 0.0 else (raw - 1.0) * sqrt(len2)
+	return overrun > 3.0
+
+
+func _bridge_end_xz(x: float, z: float) -> bool:
+	if not _by_id.has("us93_perrine_bridge"):
+		return false
+	var road: Dictionary = _roads[int(_by_id["us93_perrine_bridge"])]
+	var pts: PackedVector3Array = road["pts"]
+	for q in pts:
+		if Vector2(x - q.x, z - q.z).length() <= 3.0:
+			return true
+	return false
+
+
 ## Distance, t, and side (+1 is the miter's left).
 func _seg_side(px: float, pz: float, ax: float, az: float, bx: float, bz: float) -> Vector3:
 	var abx := bx - ax
@@ -1272,44 +2095,27 @@ func _emit_road(road: Dictionary, rect: Rect2, grid: PackedFloat32Array, n: int,
 		var t1 := span[1]
 		var road_id := str(road["id"])
 		var kind := kinds[i]
-		var lift := LIFT_M
-		if kind == "deck" or kind == "bridge":
-			lift = DECK_LIFT_M
-		elif not _approach_road(road_id):
-			lift = SURFACE_LIFT
 		var full_len := Vector2(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z).length()
 		var seg_len := full_len * (t1 - t0)
 		var pieces := maxi(int(ceil(seg_len / 4.0)), 1)
-		# Perrine spans overlap the next span by 2 m. The overlap is a separate
-		# sheet that starts flush and falls away, so the mesh boundary sits
-		# under the next surface instead of standing on the lane.
-		var overlap := 2.0 if _perrine_road(road_id) and full_len > 1.0 else 0.0
-		var dt := overlap / full_len
 		for p in pieces:
 			var a0 := t0 + (t1 - t0) * float(p) / float(pieces)
 			var b0 := t0 + (t1 - t0) * float(p + 1) / float(pieces)
-			var a := a0
-			var b := b0
-			if p == 0:
-				a -= dt
-			if p == pieces - 1:
-				b += dt
-			if a < a0 - 0.0000001:
-				_emit_span(road_id, kind, rail, lanes, half, lift, left[i], left[i + 1], right[i], right[i + 1], bank[i], bank[i + 1], crown[i], crown[i + 1], chain[i], chain[i + 1], a, a0, grid, origin, n, spacing, surfs, faces, -1)
-			if b0 - a0 > 0.0000001:
-				_emit_span(road_id, kind, rail, lanes, half, lift, left[i], left[i + 1], right[i], right[i + 1], bank[i], bank[i + 1], crown[i], crown[i + 1], chain[i], chain[i + 1], a0, b0, grid, origin, n, spacing, surfs, faces, 0)
-			if b > b0 + 0.0000001:
-				_emit_span(road_id, kind, rail, lanes, half, lift, left[i], left[i + 1], right[i], right[i + 1], bank[i], bank[i + 1], crown[i], crown[i + 1], chain[i], chain[i + 1], b0, b, grid, origin, n, spacing, surfs, faces, 1)
+			if b0 - a0 <= 0.0000001:
+				continue
+			var lift0 := _ribbon_lift(road_id, kind, pts[i].lerp(pts[i + 1], a0))
+			var lift1 := _ribbon_lift(road_id, kind, pts[i].lerp(pts[i + 1], b0))
+			_emit_span(road_id, kind, rail, lanes, half, lift0, lift1, left[i], left[i + 1], right[i], right[i + 1], bank[i], bank[i + 1], crown[i], crown[i + 1], chain[i], chain[i + 1], a0, b0, grid, origin, n, spacing, surfs, faces)
 
 
-func _emit_span(road_id: String, kind: String, rail: bool, lanes: int, half: float, lift: float, left_a: Vector3, left_b: Vector3, right_a: Vector3, right_b: Vector3, bank_a: float, bank_b: float, crown_a: float, crown_b: float, chain_a: float, chain_b: float, t0: float, t1: float, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, surfs: Dictionary, faces: PackedVector3Array, ramp_end: int = 0) -> void:
+func _emit_span(road_id: String, kind: String, rail: bool, lanes: int, half: float, lift0: float, lift1: float, left_a: Vector3, left_b: Vector3, right_a: Vector3, right_b: Vector3, bank_a: float, bank_b: float, crown_a: float, crown_b: float, chain_a: float, chain_b: float, t0: float, t1: float, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, surfs: Dictionary, faces: PackedVector3Array) -> void:
 	var l0 := left_a.lerp(left_b, t0)
 	var l1 := left_a.lerp(left_b, t1)
 	var r0 := right_a.lerp(right_b, t0)
 	var r1 := right_a.lerp(right_b, t1)
 	var flat := rail or kind == "deck" or kind == "bridge"
-	var s0 := _section(l0.y + lift, lerpf(bank_a, bank_b, t0), lerpf(crown_a, crown_b, t0), half) if not flat else Vector3(l0.y + lift, l0.y + lift, l0.y + lift)
-	var s1 := _section(l1.y + lift, lerpf(bank_a, bank_b, t1), lerpf(crown_a, crown_b, t1), half) if not flat else Vector3(l1.y + lift, l1.y + lift, l1.y + lift)
+	var s0 := _section(l0.y + lift0, lerpf(bank_a, bank_b, t0), lerpf(crown_a, crown_b, t0), half) if not flat else Vector3(l0.y + lift0, l0.y + lift0, l0.y + lift0)
+	var s1 := _section(l1.y + lift1, lerpf(bank_a, bank_b, t1), lerpf(crown_a, crown_b, t1), half) if not flat else Vector3(l1.y + lift1, l1.y + lift1, l1.y + lift1)
 	l0.y = s0.x
 	l1.y = s1.x
 	r0.y = s0.z
@@ -1318,57 +2124,87 @@ func _emit_span(road_id: String, kind: String, rail: bool, lanes: int, half: flo
 	var m1 := l1.lerp(r1, 0.5)
 	m0.y = s0.y
 	m1.y = s1.y
-	# ramp_end -1: outer edge is t0. +1: outer edge is t1. The inner edge stays
-	# on the carriageway height so the sheet welds to it. The outer edge drops
-	# 30 cm. The approach is already ~10 cm below the deck 2 m out, so a 10 cm
-	# drop leaves the boundary on the lane and the cone stops on it.
-	if ramp_end < 0:
-		var inner_y := s1.y
-		l0.y = inner_y - 0.30
-		r0.y = inner_y - 0.30
-		m0.y = inner_y - 0.30
-	elif ramp_end > 0:
-		var inner_y := s0.y
-		l1.y = inner_y - 0.30
-		r1.y = inner_y - 0.30
-		m1.y = inner_y - 0.30
-	if ramp_end != 0:
-		_solid_quad(faces, l0, m0, m1, l1)
-		_solid_quad(faces, m0, r0, r1, m1)
-		return
 	var c0 := chain_a + (chain_b - chain_a) * t0
 	var c1 := chain_a + (chain_b - chain_a) * t1
-	# The v4 model is the deck. A second asphalt sheet hides the lanes and
-	# puts the ray on the sheet instead of the deck. Keep the walk surface.
+	# Visual stays on the paint. Collision is the same plane, flared so a ray
+	# on the paint edge or the centre seam is inside a triangle.
+	_solid_carriage(faces, l0, m0, m1, l1)
+	_solid_carriage(faces, r0, m0, m1, r1)
+	# The v4 model is the deck. A second asphalt sheet hides the lanes.
 	if kind == "bridge" and not rail:
-		_solid_quad(faces, l0, m0, m1, l1)
-		_solid_quad(faces, m0, r0, r1, m1)
 		return
 	if rail:
 		var on_panel := _rail_on_panel(m0) and _rail_on_panel(m1)
 		if not on_panel:
 			var ball: _Surf = surfs["ballast"]
-			_quad(ball, l0, m0, m1, l1, c0, c1, 0.0, half, true, faces)
-			_quad(ball, m0, r0, r1, m1, c0, c1, half, half * 2.0, true, faces)
+			_quad(ball, l0, m0, m1, l1, c0, c1, 0.0, half, false, faces)
+			_quad(ball, m0, r0, r1, m1, c0, c1, half, half * 2.0, false, faces)
 		_rails(surfs["rail"], l0, r0, r1, l1, c0, c1)
 		if kind == "trestle":
 			_trestle(surfs["basalt"], l0, r0, r1, l1, grid, origin, n, spacing, faces)
 		return
 	var top: _Surf = surfs["asphalt"]
-	_quad(top, l0, m0, m1, l1, c0, c1, 0.0, half, true, faces)
-	_quad(top, m0, r0, r1, m1, c0, c1, half, half * 2.0, true, faces)
+	_quad(top, l0, m0, m1, l1, c0, c1, 0.0, half, false, faces)
+	_quad(top, m0, r0, r1, m1, c0, c1, half, half * 2.0, false, faces)
 	_paint_lines(road_id, surfs, l0, r0, l1, r1, half, lanes, c0, c1)
-	# The apron is above the canyon lip. A thin ribbon lets the cone fall through.
-	if _perrine_road(road_id) and kind != "bridge":
-		_close_span(surfs, l0, r0, l1, r1, grid, origin, n, spacing, faces, kind, t0 >= 0.0, t1 <= 1.0)
-	# The deck over the pit, and the landward edge while it is still a fall.
-	# Parapets run into the bridge rail; the sides are solid 2:1 fill.
+	# Approach slabs keep parapets for the whole span. Other edges get one only
+	# while the graded ground is still a fall. The embankment is the heightfield.
 	if _approach_road(road_id) and kind != "bridge":
-		_approach_structure(surfs["panel"], surfs["earth"], l0, r0, l1, r1, grid, origin, n, spacing, faces)
-	if GUARD_ROADS.has(road_id):
+		_approach_structure(surfs["panel"], l0, r0, l1, r1, grid, origin, n, spacing, faces, kind == "deck")
+	if kind != "bridge":
 		var rim := road_id == "rim_road_south"
 		_guard_edge(surfs["guard"], l0, l1, r0, grid, origin, n, spacing, faces, rim)
 		_guard_edge(surfs["guard"], r0, r1, l0, grid, origin, n, spacing, faces, rim)
+
+
+func _ribbon_lift(_road_id: String, _kind: String, _p: Vector3) -> float:
+	# Deck, bridge, and approaches use the same lift as every other ribbon.
+	# The joint stays flush because both sides move together, and the ribbon
+	# stays above the heightfield where the stamp meets the deck.
+	return SURFACE_LIFT
+
+
+func _bridge_distance(p: Vector3) -> float:
+	if not _by_id.has("us93_perrine_bridge"):
+		return 1000.0
+	var road: Dictionary = _roads[int(_by_id["us93_perrine_bridge"])]
+	var pts: PackedVector3Array = road["pts"]
+	var best := 1000.0
+	for q in pts:
+		best = minf(best, Vector2(p.x - q.x, p.z - q.z).length())
+	return best
+
+
+## Flared collision quad. Outer edge past the paint, inner edge past the centre.
+func _solid_carriage(faces: PackedVector3Array, outer0: Vector3, inner0: Vector3, inner1: Vector3, outer1: Vector3) -> void:
+	var span0 := Vector2(outer0.x - inner0.x, outer0.z - inner0.z).length()
+	var span1 := Vector2(outer1.x - inner1.x, outer1.z - inner1.z).length()
+	if span0 < 0.05 or span1 < 0.05:
+		_solid_quad(faces, outer0, inner0, inner1, outer1)
+		return
+	var o0 := _extend_cross(inner0, outer0, span0, span0 + FLARE_M)
+	var o1 := _extend_cross(inner1, outer1, span1, span1 + FLARE_M)
+	var s0 := _extend_cross(inner0, outer0, span0, -SEAM_M)
+	var s1 := _extend_cross(inner1, outer1, span1, -SEAM_M)
+	var o0e := _extend_along(o0, o1, ALONG_M)
+	var o1e := _extend_along(o1, o0, ALONG_M)
+	var s0e := _extend_along(s0, s1, ALONG_M)
+	var s1e := _extend_along(s1, s0, ALONG_M)
+	_solid_quad(faces, o0e, s0e, s1e, o1e)
+
+
+func _extend_cross(origin: Vector3, toward: Vector3, span: float, dist: float) -> Vector3:
+	if span < 0.05:
+		return origin
+	return origin + (toward - origin) * (dist / span)
+
+
+func _extend_along(p: Vector3, other: Vector3, dist: float) -> Vector3:
+	var d := other - p
+	var xz := Vector2(d.x, d.z).length()
+	if xz < 0.05:
+		return p
+	return p - d * (dist / xz)
 
 
 func _paint_lines(road_id: String, surfs: Dictionary, l0: Vector3, r0: Vector3, l1: Vector3, r1: Vector3, half: float, lanes: int, c0: float, c1: float) -> void:
@@ -1452,11 +2288,11 @@ func _close_span(surfs: Dictionary, l0: Vector3, r0: Vector3, l1: Vector3, r1: V
 		_earth_quad(panel, l1, r1, br1, bl1)
 
 
-func _approach_structure(panel: _Surf, earth: _Surf, l0: Vector3, r0: Vector3, l1: Vector3, r1: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array) -> void:
-	if _approach_keep(l0, l1, grid, origin, n, spacing):
-		_approach_edge(panel, earth, l0, l1, r0, grid, origin, n, spacing, faces)
-	if _approach_keep(r0, r1, grid, origin, n, spacing):
-		_approach_edge(panel, earth, r0, r1, l0, grid, origin, n, spacing, faces)
+func _approach_structure(panel: _Surf, l0: Vector3, r0: Vector3, l1: Vector3, r1: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array, force: bool) -> void:
+	if force or _approach_keep(l0, l1, grid, origin, n, spacing):
+		_approach_edge(panel, l0, l1, r0, grid, origin, n, spacing, faces)
+	if force or _approach_keep(r0, r1, grid, origin, n, spacing):
+		_approach_edge(panel, r0, r1, l0, grid, origin, n, spacing, faces)
 
 
 ## Bridge joint, or an edge still high enough that a cone would fall off it.
@@ -1473,7 +2309,7 @@ func _edge_fall(p: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, s
 	return p.y - g
 
 
-func _approach_edge(panel: _Surf, earth: _Surf, a: Vector3, b: Vector3, other: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array) -> void:
+func _approach_edge(panel: _Surf, a: Vector3, b: Vector3, other: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array) -> void:
 	var outward := Vector3(a.x - other.x, 0.0, a.z - other.z)
 	if outward.length_squared() < 0.01:
 		return
@@ -1508,7 +2344,6 @@ func _approach_edge(panel: _Surf, earth: _Surf, a: Vector3, b: Vector3, other: V
 	_solid_both(faces, ob, oa, oa + up, ob + up)
 	_solid_both(faces, ia + up, ib + up, ob + up, oa + up)
 	_solid_both(faces, ia, oa, ob, ib)
-	_approach_fill(earth, a0, b0, outward, grid, origin, n, spacing, faces)
 
 
 ## Solid block from the road edge out to the rail, overlapping the span so the
@@ -1872,27 +2707,25 @@ func _emit_junctions(coord: Vector2i, surf: _Surf, faces: PackedVector3Array, _g
 		var pos: Array = item.get("pos", [])
 		if pos.size() < 3:
 			continue
-		# The Perrine joints are collinear. A flat disc at deck height sits on
-		# the 5% approach and leaves a lip the cone cannot climb.
-		if _bridge_joint(item):
-			continue
 		var at := Vector3(float(pos[0]), float(pos[1]), float(pos[2]))
 		if WorldConfig.chunk_of(at.x, at.z) != coord:
 			continue
 		var radius := float(item.get("radius", 8.0))
-		var centre_y := float(item.get("flat_y", at.y)) + _joint_lift(item)
-		# One flat disc. Every ring sits on the major-road height so a terrain
-		# triangle cannot show in the corner and the two roads share a plane.
+		var lift := _joint_lift(item)
+		# One plane for every junction, including the bridge ends. The roads
+		# were blended onto this plane, so the disc and the carriageway meet.
 		var rings := maxi(int(ceil(radius / 2.0)), 1)
 		var sides := maxi(int(ceil(TAU * radius / 2.0)), 12)
 		var prev := PackedVector3Array()
-		prev.append(WorldConfig.to_local(Vector3(at.x, centre_y, at.z)))
+		prev.append(WorldConfig.to_local(Vector3(at.x, _plane_at(item, at.x, at.z) + lift, at.z)))
 		for ring in rings:
 			var rad := radius * float(ring + 1) / float(rings)
 			var ring_pts := PackedVector3Array()
 			for s in sides:
 				var ang := float(s) / float(sides) * TAU
-				ring_pts.append(WorldConfig.to_local(Vector3(at.x + cos(ang) * rad, centre_y, at.z + sin(ang) * rad)))
+				var x := at.x + cos(ang) * rad
+				var z := at.z + sin(ang) * rad
+				ring_pts.append(WorldConfig.to_local(Vector3(x, _plane_at(item, x, z) + lift, z)))
 			for s in sides:
 				var nxt := (s + 1) % sides
 				if prev.size() == 1:
@@ -3315,13 +4148,9 @@ func _cut_joins(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: floa
 		var jx := float(pos[0])
 		var jz := float(pos[2])
 		var rad := float(item.get("radius", 8.0))
-		# The Perrine joint keeps the wide cut the seam was built against.
-		if _bridge_joint(item):
-			_cut_join_legacy(grid, origin, n, spacing, jx, jz, rad, float(item.get("flat_y", float(pos[1]))))
-			continue
-		# Corner spikes only. The road stamp owns the crowned carriageway, so this
-		# never lays a slope back into the canyon and never digs below the crown.
-		var road_y := float(item.get("flat_y", float(pos[1])))
+		# Corner spikes only. The road stamp owns the crowned carriageway and the
+		# embankment, including beside an approach slab. Hi-res across the seam
+		# still comes from _join_breaks, which did not change.
 		var flat_r := rad
 		if jx < origin.x - flat_r or jx > origin.x + 500.0 + flat_r:
 			continue
@@ -3339,6 +4168,7 @@ func _cut_joins(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: floa
 				if Vector2(x - jx, z - jz).length() > flat_r:
 					continue
 				var idx := row + c
+				var road_y := _plane_at(item, x, z)
 				if grid[idx] > road_y:
 					grid[idx] = road_y
 
@@ -3453,11 +4283,8 @@ func _bridge_joint(item: Dictionary) -> bool:
 	return false
 
 
-func _joint_lift(item: Dictionary) -> float:
-	for id in item.get("roads", []):
-		if str(id) == "us93_perrine_bridge":
-			return 0.0
-	return LIFT_M
+func _joint_lift(_item: Dictionary) -> float:
+	return SURFACE_LIFT
 
 
 func _major_y(item: Dictionary) -> float:
@@ -3615,15 +4442,39 @@ func _tri_y(x: float, z: float, a: Vector3, b: Vector3, c: Vector3) -> float:
 	return wa * a.y + wb * b.y + wc * c.y
 
 
+## Deepest drop within 3 m. A point outside this chunk uses the DEM so a canyon
+## that starts just past the seam still gets a rail.
+func _guard_drop(mid: Vector3, outward: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> float:
+	var worst := 0.0
+	var any := false
+	for dist in [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]:
+		var g := _sample_ground(grid, origin, n, spacing, mid.x + outward.x * dist, mid.z + outward.z * dist)
+		if g < -70.0:
+			continue
+		any = true
+		worst = maxf(worst, mid.y - g)
+	if not any:
+		return BARRIER_DROP_M
+	return worst
+
+
+func _sample_ground(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, x: float, z: float) -> float:
+	var max_x := origin.x + float(n - 1) * spacing
+	var max_z := origin.y + float(n - 1) * spacing
+	if x < origin.x or z < origin.y or x > max_x or z > max_z:
+		if _dem.is_valid():
+			return float(_dem.call(x, z))
+		return -80.0
+	return _ground(grid, origin, n, spacing, x, z)
+
+
 func _guard_edge(surf: _Surf, a: Vector3, b: Vector3, other: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array, rim: bool) -> void:
 	var outward := Vector3(a.x - other.x, 0.0, a.z - other.z)
 	if outward.length_squared() < 0.01:
 		return
 	outward = outward.normalized()
 	var mid := (a + b) * 0.5
-	var g := _ground(grid, origin, n, spacing, mid.x + outward.x * 3.0, mid.z + outward.z * 3.0)
-	var need := 0.35 if rim else DROP_RAIL_M
-	if g < -70.0 or mid.y - g < need:
+	if _guard_drop(mid, outward, grid, origin, n, spacing) < BARRIER_DROP_M:
 		return
 	if rim:
 		# Overlap the next piece and sit just inside the pavement edge.
