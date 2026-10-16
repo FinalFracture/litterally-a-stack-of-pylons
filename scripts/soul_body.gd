@@ -222,6 +222,9 @@ func _closest_on_box(shape_node: CollisionShape3D, here: Vector3) -> Vector3:
 
 
 func _wish_direction() -> Vector3:
+	# The playtest map stays unpaused, but WASD pans the map while it is open.
+	if _map_holds_keys():
+		return Vector3.ZERO
 	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var cam := get_viewport().get_camera_3d()
 	var wish := Vector3(input_dir.x, 0.0, input_dir.y)
@@ -233,6 +236,13 @@ func _wish_direction() -> Vector3:
 	if wish.length_squared() > 1.0:
 		wish = wish.normalized()
 	return wish
+
+
+func _map_holds_keys() -> bool:
+	var map := get_tree().get_first_node_in_group("tf_map")
+	if map == null or not map.has_method("blocks_movement"):
+		return false
+	return bool(map.call("blocks_movement"))
 
 
 func _gravity() -> float:

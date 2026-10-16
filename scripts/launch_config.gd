@@ -47,6 +47,8 @@ var start_chunk := Vector2i(0, 0)
 var has_chunk_flag := false
 var world_half_m := 2000.0
 var peds := 16
+## Playtest map (M). On unless --map=0 or PYLONS_MAP=0.
+var map_enabled := true
 var _announced := false
 ## Chunk the player was actually placed in. The launch line prints this, not the raw flag.
 var placed_chunk := Vector2i.ZERO
@@ -107,6 +109,10 @@ func _parse() -> void:
 	var raw_peds := _pick(args, "peds", "PYLONS_PEDS")
 	if raw_peds != "" and raw_peds.is_valid_int():
 		peds = maxi(int(raw_peds), 0)
+	var raw_map := _pick(args, "map", "PYLONS_MAP")
+	if raw_map != "":
+		var map_flag := raw_map.to_lower()
+		map_enabled = map_flag == "1" or map_flag == "true" or map_flag == "yes" or map_flag == "on"
 	keymouse = _flag(args, "keymouse", "PYLONS_KEYMOUSE") or _keymouse_before_separator()
 	logs = _flag(args, "logs", "PYLONS_LOGS")
 

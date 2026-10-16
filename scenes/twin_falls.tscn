@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scripts/twin_falls_world.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/soul_body.gd" id="2_soul"]
@@ -6,6 +6,7 @@
 [ext_resource type="PackedScene" uid="uid://dncgl25a25s8j" path="res://scenes/player/standard_cone.tscn" id="4_cone"]
 [ext_resource type="Script" path="res://scripts/camera_rig.gd" id="5_cam"]
 [ext_resource type="Script" path="res://scripts/twin_falls_ambience.gd" id="6_amb"]
+[ext_resource type="Script" path="res://scripts/tf_map.gd" id="7_map"]
 
 [sub_resource type="CameraAttributesPractical" id="CamAttr"]
 dof_blur_far_enabled = false
@@ -58,3 +59,16 @@ fov = 70.0
 
 [node name="Ambience" type="Node" parent="."]
 script = ExtResource("6_amb")
+
+[node name="PlaytestMap" type="CanvasLayer" parent="."]
+layer = 30
+
+[node name="Map" type="Control" parent="PlaytestMap"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("7_map")
