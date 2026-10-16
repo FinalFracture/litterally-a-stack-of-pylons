@@ -2146,15 +2146,23 @@ func _bridge_extras(root: Node3D, host: Node3D) -> void:
 			a.x = side
 			b.x = side
 			_solid_beam(body, a, b, 1.5)
-	# Concrete shells stop at local y 134 and float 2-6 m off the wall.
-	# A block from that lip down to the drawn ground, with a base in the rock.
+	# Concrete shells stop at local y 134 and float off the wall. The base
+	# follows the low side of the footprint so neither edge hangs in the air.
 	for ez in [-228.5, 228.5]:
-		var lip := Vector3(0.0, 134.2, ez)
-		var world_lip := root.to_global(lip)
-		var ground := _terrain_at(host, world_lip.x, world_lip.z)
+		var min_g := 1.0e9
+		var hits := 0
+		for ox in [-9.6, -4.8, 0.0, 4.8, 9.6]:
+			for oz in [-4.8, 0.0, 4.8]:
+				var world_p := root.to_global(Vector3(ox, 134.2, ez + oz))
+				var h := _terrain_at(host, world_p.x, world_p.z)
+				if h < -70.0:
+					continue
+				hits += 1
+				min_g = minf(min_g, h)
 		var foot_y := 126.0
-		if ground > -70.0:
-			var local_g := root.to_local(Vector3(world_lip.x, ground, world_lip.z))
+		if hits > 0:
+			var probe := root.to_global(Vector3(0.0, 134.2, ez))
+			var local_g := root.to_local(Vector3(probe.x, min_g, probe.z))
 			foot_y = minf(local_g.y - 1.5, 132.0)
 		var height := 134.2 - foot_y
 		if height < 0.4:
@@ -2164,22 +2172,75 @@ func _bridge_extras(root: Node3D, host: Node3D) -> void:
 		var foot := BoxShape3D.new()
 		foot.size = size
 		var pad := CollisionShape3D.new()
-		pad.name = "Abutment"
+		pad.name = "NorthAbutment" if ez < 0.0 else "SouthAbutment"
 		pad.shape = foot
 		pad.position = centre
 		body.add_child(pad)
 		var mesh := BoxMesh.new()
 		mesh.size = size
 		var mi := MeshInstance3D.new()
-		mi.name = "Abutment"
+		mi.name = pad.name
 		mi.mesh = mesh
 		mi.position = centre
 		var mat := load("res://materials/twin_falls/bridge_deck_concrete.tres") as Material
 		if mat != null:
 			mi.material_override = mat
 		root.add_child(mi)
+	# Mesh bottoms sit near world y 54. The canyon floor is 16-24 m below.
+	# A repeated node name is rewritten to @CollisionShape3D@id, so each foot
+	# keeps its own name. The boxes stay narrow along the span: the east pier
+	# and chord are 0.8 m apart and a shared slab would catch the other ray.
+	_ground_column(root, body, host, Vector3(3351.22, 54.6, -6957.0), 1.6, 0.50, "WestPierFoot")
+	_ground_column(root, body, host, Vector3(3367.01, 54.6, -6957.47), 1.6, 0.50, "EastPierFoot")
+	_ground_column(root, body, host, Vector3(3350.99, 54.6, -6956.19), 1.6, 0.50, "WestChordFoot")
+	_ground_column(root, body, host, Vector3(3367.29, 54.6, -6956.68), 1.6, 0.50, "EastChordFoot")
+	_ground_column(root, body, host, Vector3(3351.10, 54.6, -6956.60), 1.35, 0.16, "WestSole")
+	_ground_column(root, body, host, Vector3(3367.15, 54.6, -6957.08), 1.35, 0.16, "EastSole")
 	_sink_rail_plates(root)
 	_bury_deck_lips(root)
+
+
+## Column from a world point down into the terrain. Used where a pier or chord
+## ends in the air. Size is in bridge-local metres.
+func _ground_column(root: Node3D, body: StaticBody3D, host: Node, top_world: Vector3, size_x: float, size_z: float, node_name: String) -> void:
+	var ground := 1.0e9
+	var hits := 0
+	var hx := size_x * 0.5
+	var hz := size_z * 0.5
+	for ox in [-hx, 0.0, hx]:
+		for oz in [-hz, 0.0, hz]:
+			var h := _terrain_at(host, top_world.x + ox, top_world.z + oz)
+			if h < -70.0:
+				continue
+			hits += 1
+			ground = minf(ground, h)
+	if hits == 0 or ground > top_world.y - 0.4:
+		return
+	# Lowest sample under the footprint, buried a metre, so the uphill edge
+	# is not a gap under the sole.
+	var bot_world := Vector3(top_world.x, ground - 1.0, top_world.z)
+	var top_l := root.to_local(top_world)
+	var bot_l := root.to_local(bot_world)
+	var height := top_l.y - bot_l.y
+	if height < 0.4:
+		return
+	var box := BoxShape3D.new()
+	box.size = Vector3(size_x, height, size_z)
+	var col := CollisionShape3D.new()
+	col.name = node_name
+	col.shape = box
+	col.position = (top_l + bot_l) * 0.5
+	body.add_child(col)
+	var mesh := BoxMesh.new()
+	mesh.size = box.size
+	var mi := MeshInstance3D.new()
+	mi.name = node_name
+	mi.mesh = mesh
+	mi.position = col.position
+	var mat := load("res://materials/twin_falls/bridge_deck_concrete.tres") as Material
+	if mat != null:
+		mi.material_override = mat
+	root.add_child(mi)
 
 
 ## The rail mesh carries five plates across the lanes at local y 148.02, 2 cm
