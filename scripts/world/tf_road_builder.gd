@@ -45,7 +45,9 @@ const SHOULDER_M := 6.5
 const PARA_H := 0.80
 const PARA_T := 0.32
 const ABUT_HALF := 9.85
-const APPROACH_FILL_M := 80.0
+const APPROACH_FILL_M := 360.0
+## Keep the parapet until stepping off the edge is a short drop.
+const PARA_DROP_M := 0.5
 const SIGN_SCENE := "res://Models/street_furniture/tf_street_name_sign.glb"
 const RAMP_SCENE := "res://Models/twin_falls/tf_boat_ramp_8m_v2.glb"
 const DOCK_SCENE := "res://Models/twin_falls/tf_launch_dock_3x15m.glb"
@@ -1097,9 +1099,9 @@ func _emit_span(road_id: String, kind: String, rail: bool, lanes: int, half: flo
 	# The apron is above the canyon lip. A thin ribbon lets the cone fall through.
 	if _perrine_road(road_id) and kind != "bridge":
 		_close_span(surfs, l0, r0, l1, r1, grid, origin, n, spacing, faces, kind, t0 >= 0.0, t1 <= 1.0)
-	# The ~19 m deck between the rim and the bridge end is structure, not a
-	# floating ribbon over a pit. Parapets meet the abutment; the sides are fill.
-	if _perrine_road(road_id) and kind == "deck":
+	# The deck over the pit, and the landward edge while it is still a fall.
+	# Parapets run into the bridge rail; the sides are solid 2:1 fill.
+	if _approach_road(road_id) and kind != "bridge":
 		_approach_structure(surfs["panel"], surfs["earth"], l0, r0, l1, r1, grid, origin, n, spacing, faces)
 	if GUARD_ROADS.has(road_id):
 		var rim := road_id == "rim_road_south"
@@ -1137,6 +1139,10 @@ func _paint_lines(road_id: String, surfs: Dictionary, l0: Vector3, r0: Vector3, 
 
 func _perrine_road(road_id: String) -> bool:
 	return road_id == "us93_south_approach" or road_id == "us93_north" or road_id == "us93_perrine_bridge"
+
+
+func _approach_road(road_id: String) -> bool:
+	return road_id == "us93_south_approach" or road_id == "us93_north"
 
 
 ## Solid volume under a floating approach. Deck spans and anything more than 6 m
@@ -1185,8 +1191,24 @@ func _close_span(surfs: Dictionary, l0: Vector3, r0: Vector3, l1: Vector3, r1: V
 
 
 func _approach_structure(panel: _Surf, earth: _Surf, l0: Vector3, r0: Vector3, l1: Vector3, r1: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array) -> void:
-	_approach_edge(panel, earth, l0, l1, r0, grid, origin, n, spacing, faces)
-	_approach_edge(panel, earth, r0, r1, l0, grid, origin, n, spacing, faces)
+	if _approach_keep(l0, l1, grid, origin, n, spacing):
+		_approach_edge(panel, earth, l0, l1, r0, grid, origin, n, spacing, faces)
+	if _approach_keep(r0, r1, grid, origin, n, spacing):
+		_approach_edge(panel, earth, r0, r1, l0, grid, origin, n, spacing, faces)
+
+
+## Bridge joint, or an edge still high enough that a cone would fall off it.
+func _approach_keep(a: Vector3, b: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> bool:
+	if _at_bridge_joint(a) or _at_bridge_joint(b):
+		return true
+	return _edge_fall(a, grid, origin, n, spacing) >= PARA_DROP_M or _edge_fall(b, grid, origin, n, spacing) >= PARA_DROP_M
+
+
+func _edge_fall(p: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> float:
+	var g := _ground(grid, origin, n, spacing, p.x, p.z)
+	if g < -70.0:
+		return 0.0
+	return p.y - g
 
 
 func _approach_edge(panel: _Surf, earth: _Surf, a: Vector3, b: Vector3, other: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array) -> void:
@@ -1227,54 +1249,179 @@ func _approach_edge(panel: _Surf, earth: _Surf, a: Vector3, b: Vector3, other: V
 	_approach_fill(earth, a0, b0, outward, grid, origin, n, spacing, faces)
 
 
-## Wall from the road edge out to the abutment face, then down to the ground,
-## so the landward side of the abutment is not a pit.
+## Solid block from the road edge out to the rail, overlapping the span so the
+## parapet and the bridge rail share volume instead of leaving a corner gap.
 func _approach_wing(panel: _Surf, edge: Vector3, outward: Vector3, width: float, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array) -> void:
 	var extra := ABUT_HALF - width * 0.5
 	if extra < 0.3:
 		extra = 2.6
-	var far := edge + outward * extra
-	var up := Vector3(0.0, PARA_H, 0.0)
-	_wall(panel, edge, far, far + up, edge + up, false, faces)
-	_solid_both(faces, edge, far, far + up, edge + up)
-	var g_near := _ground(grid, origin, n, spacing, edge.x, edge.z)
-	var g_far := _ground(grid, origin, n, spacing, far.x, far.z)
-	if g_near < -70.0:
-		g_near = edge.y - 1.0
-	if g_far < -70.0:
-		g_far = far.y - 1.0
-	var bn := Vector3(edge.x, minf(g_near, edge.y - 0.4), edge.z)
-	var bf := Vector3(far.x, minf(g_far, far.y - 0.4), far.z)
-	# Filled wall: the face and the wedge back to the road so nothing is hollow.
-	_wall(panel, edge, far, bf, bn, false, faces)
-	_solid_both(faces, edge, far, bf, bn)
-	_solid_both(faces, edge, bn, bf, far)
+	var along := _bridge_inward(edge)
+	if along.length_squared() < 0.5:
+		along = Vector3(-outward.z, 0.0, outward.x)
+	var near := edge + outward * 0.06
+	# Past the rail outer face so the block and the rail box overlap.
+	var far := edge + outward * (extra + 0.5)
+	# 1.8 m onto the span covers the rail end. 0.6 m landward covers the parapet.
+	var nb := near - along * 0.6
+	var nf := near + along * 1.8
+	var ff := far + along * 1.8
+	var fb := far - along * 0.6
+	var floor_y := _lowest(grid, origin, n, spacing, [nb, nf, ff, fb, edge]) - 1.0
+	_solid_prism(panel, faces, nb, nf, ff, fb, floor_y, edge.y + PARA_H)
 
 
+## 2:1 fill as a closed solid: slope on the outside, walls through to a floor
+## under the terrain so a cone cannot walk in an open end and under the slope.
 func _approach_fill(surf: _Surf, a: Vector3, b: Vector3, outward: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, faces: PackedVector3Array) -> void:
 	var span := Vector2(b.x - a.x, b.z - a.z).length()
 	var steps := maxi(int(ceil(span / 2.0)), 1)
 	var tops: Array[Vector3] = []
-	var bots: Array[Vector3] = []
+	var runs: Array[float] = []
 	for s in steps + 1:
 		var t := float(s) / float(steps)
 		var p := a.lerp(b, t)
-		p += outward * (0.06 + PARA_T)
-		var toe := _fill_toe_reach(p, outward, grid, origin, n, spacing, APPROACH_FILL_M)
+		p += outward * 0.06
 		tops.append(p)
-		if toe.x < 0.4:
-			bots.append(p)
-		else:
-			bots.append(Vector3(p.x, toe.y, p.z) + outward * toe.x)
+		runs.append(_approach_toe(p, outward, grid, origin, n, spacing))
+	var raised := false
+	for s in steps + 1:
+		var g := _ground(grid, origin, n, spacing, tops[s].x, tops[s].z)
+		if runs[s] >= 0.4 or (g > -70.0 and tops[s].y - g >= PARA_DROP_M):
+			raised = true
+			break
+	if not raised:
+		return
 	for s in steps:
 		var top_a: Vector3 = tops[s]
 		var top_b: Vector3 = tops[s + 1]
-		var bot_b: Vector3 = bots[s + 1]
-		var bot_a: Vector3 = bots[s]
-		if top_a.distance_squared_to(bot_a) < 0.05 and top_b.distance_squared_to(bot_b) < 0.05:
-			continue
-		_earth_quad(surf, top_a, top_b, bot_b, bot_a)
-		_solid_both(faces, top_a, top_b, bot_b, bot_a)
+		var run_a := runs[s]
+		var run_b := runs[s + 1]
+		var toe_a := _slope_at(top_a, outward, run_a)
+		var toe_b := _slope_at(top_b, outward, run_b)
+		if run_a >= 0.4 or run_b >= 0.4:
+			_earth_quad(surf, top_a, top_b, toe_b, toe_a)
+			_solid_both(faces, top_a, top_b, toe_b, toe_a)
+			# Outer face drops through the ground so the sheet cannot be walked under.
+			_fill_wall(surf, faces, toe_a, toe_b, _bury_point(toe_b, grid, origin, n, spacing), _bury_point(toe_a, grid, origin, n, spacing))
+		_fill_wall(surf, faces, top_a, top_b, _bury_point(top_b, grid, origin, n, spacing), _bury_point(top_a, grid, origin, n, spacing))
+		_fill_diaphragm(surf, faces, top_a, outward, run_a, grid, origin, n, spacing)
+		if s == steps - 1:
+			_fill_diaphragm(surf, faces, top_b, outward, run_b, grid, origin, n, spacing)
+
+
+func _slope_at(edge: Vector3, outward: Vector3, run: float) -> Vector3:
+	var p := edge + outward * run
+	p.y = edge.y - run / FILL_H_PER_V
+	return p
+
+
+## How far the 2:1 runs before it meets the ground. Where the canyon falls away
+## steeper than 2:1 the run stops at the closest approach and the outer wall
+## closes the rest.
+func _approach_toe(edge: Vector3, outward: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> float:
+	var g0 := _ground(grid, origin, n, spacing, edge.x, edge.z)
+	if g0 < -70.0 or g0 >= edge.y - PARA_DROP_M:
+		return 0.0
+	var dist := 2.0
+	var prev_d := 0.0
+	var prev_g := g0
+	var best_d := 2.0
+	var best_gap := edge.y - g0
+	while dist <= 72.0:
+		var g := _ground(grid, origin, n, spacing, edge.x + outward.x * dist, edge.z + outward.z * dist)
+		var slope_y := edge.y - dist / FILL_H_PER_V
+		if g < -70.0:
+			return prev_d
+		if g >= slope_y:
+			var slope_prev := edge.y - prev_d / FILL_H_PER_V
+			var gy := g - prev_g
+			var sy := slope_y - slope_prev
+			var den := gy - sy
+			var u := 1.0 if absf(den) < 0.0001 else clampf((slope_prev - prev_g) / den, 0.0, 1.0)
+			return lerpf(prev_d, dist, u)
+		var gap := slope_y - g
+		if gap < best_gap - 0.1:
+			best_gap = gap
+			best_d = dist
+		elif dist >= 16.0 and gap > best_gap + 0.8:
+			return best_d
+		prev_d = dist
+		prev_g = g
+		dist += 2.0
+	return best_d
+
+
+func _bury_point(p: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> Vector3:
+	var g := _ground(grid, origin, n, spacing, p.x, p.z)
+	var y := p.y - 1.0
+	if g > -70.0:
+		y = minf(g, p.y) - 1.0
+	return Vector3(p.x, y, p.z)
+
+
+func _fill_diaphragm(surf: _Surf, faces: PackedVector3Array, edge: Vector3, outward: Vector3, run: float, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> void:
+	var foot := _bury_point(edge, grid, origin, n, spacing)
+	if run < 0.4:
+		if edge.y - foot.y < 0.4:
+			return
+		var nib := edge + outward * 0.25
+		_fill_wall(surf, faces, edge, nib, _bury_point(nib, grid, origin, n, spacing), foot)
+		return
+	var nstep := maxi(int(ceil(run / 2.0)), 1)
+	var prev_top := edge
+	var prev_bot := foot
+	for i in nstep:
+		var d := run * float(i + 1) / float(nstep)
+		var top := _slope_at(edge, outward, d)
+		var bot := _bury_point(top, grid, origin, n, spacing)
+		_fill_wall(surf, faces, prev_top, top, bot, prev_bot)
+		prev_top = top
+		prev_bot = bot
+
+
+func _fill_wall(surf: _Surf, faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
+	if a.distance_squared_to(d) < 0.02 and b.distance_squared_to(c) < 0.02:
+		return
+	_earth_quad(surf, a, b, c, d)
+	_solid_both(faces, a, b, c, d)
+
+
+func _lowest(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, pts: Array) -> float:
+	var lo := 1.0e9
+	for p in pts:
+		var at: Vector3 = p
+		var g := _ground(grid, origin, n, spacing, at.x, at.z)
+		if g > -70.0:
+			lo = minf(lo, g)
+	if lo > 1.0e8:
+		var at0: Vector3 = pts[0]
+		return at0.y - 2.0
+	return lo
+
+
+## Four plan corners, extruded from floor_y up to top_y. Collision on every face.
+func _solid_prism(panel: _Surf, faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3, d: Vector3, floor_y: float, top_y: float) -> void:
+	if top_y < floor_y + 0.05:
+		return
+	var a0 := Vector3(a.x, floor_y, a.z)
+	var b0 := Vector3(b.x, floor_y, b.z)
+	var c0 := Vector3(c.x, floor_y, c.z)
+	var d0 := Vector3(d.x, floor_y, d.z)
+	var a1 := Vector3(a.x, top_y, a.z)
+	var b1 := Vector3(b.x, top_y, b.z)
+	var c1 := Vector3(c.x, top_y, c.z)
+	var d1 := Vector3(d.x, top_y, d.z)
+	_wall(panel, a1, b1, c1, d1, false, faces)
+	_solid_both(faces, a1, b1, c1, d1)
+	_solid_both(faces, a0, d0, c0, b0)
+	_wall(panel, a0, b0, b1, a1, false, faces)
+	_solid_both(faces, a0, b0, b1, a1)
+	_wall(panel, b0, c0, c1, b1, false, faces)
+	_solid_both(faces, b0, c0, c1, b1)
+	_wall(panel, c0, d0, d1, c1, false, faces)
+	_solid_both(faces, c0, d0, d1, c1)
+	_wall(panel, d0, a0, a1, d1, false, faces)
+	_solid_both(faces, d0, a0, a1, d1)
 
 
 func _fill_toe_reach(edge: Vector3, outward: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, reach: float) -> Vector2:
@@ -1303,15 +1450,48 @@ func _fill_toe_reach(edge: Vector3, outward: Vector3, grid: PackedFloat32Array, 
 	return Vector2(reach, edge.y - reach / FILL_H_PER_V)
 
 
+## The approach edge is a half-width off the bridge centreline (~7.32 m), so a
+## 2.5 m test never sees the joint and the wing stays unbuilt. Match the end
+## in road-axis coordinates: a couple of metres along, a half-width across.
 func _at_bridge_joint(p: Vector3) -> bool:
 	if not _by_id.has("us93_perrine_bridge"):
 		return false
 	var road: Dictionary = _roads[int(_by_id["us93_perrine_bridge"])]
 	var pts: PackedVector3Array = road["pts"]
-	for q in pts:
-		if Vector2(p.x - q.x, p.z - q.z).length() <= 2.5:
+	if pts.size() < 2:
+		return false
+	var half := float(road["half"]) + 1.5
+	var ends: Array[Vector3] = [pts[0], pts[pts.size() - 1]]
+	for q in ends:
+		var axis := _bridge_inward(q)
+		var rel := Vector3(p.x - q.x, 0.0, p.z - q.z)
+		if axis.length_squared() < 0.5:
+			if rel.length() <= half:
+				return true
+			continue
+		var long := rel.dot(axis)
+		var lat := (rel - axis * long).length()
+		if absf(long) <= 2.5 and lat <= half:
 			return true
 	return false
+
+
+## Unit XZ from the nearest bridge end, pointing along the span.
+func _bridge_inward(p: Vector3) -> Vector3:
+	if not _by_id.has("us93_perrine_bridge"):
+		return Vector3.ZERO
+	var road: Dictionary = _roads[int(_by_id["us93_perrine_bridge"])]
+	var pts: PackedVector3Array = road["pts"]
+	if pts.size() < 2:
+		return Vector3.ZERO
+	var south: Vector3 = pts[0]
+	var north: Vector3 = pts[pts.size() - 1]
+	var use_south := Vector2(p.x - south.x, p.z - south.z).length_squared() <= Vector2(p.x - north.x, p.z - north.z).length_squared()
+	var into := (north - south) if use_south else (south - north)
+	into.y = 0.0
+	if into.length_squared() < 0.01:
+		return Vector3.ZERO
+	return into.normalized()
 
 
 func _skirts(surf: _Surf, l0: Vector3, r0: Vector3, l1: Vector3, r1: Vector3, grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> void:
