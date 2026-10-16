@@ -66,6 +66,7 @@ Proposed CREDITS lines use the form: `<our file>: derived from "<asset>" by <aut
 | Use | Font | Source | Licence |
 |---|---|---|---|
 | Glyphs rasterised into the R2-1 speed-limit sign faces (`Models/street/speed_limit_signs/faces/*.png`) | Overpass Bold (Red Hat / The Overpass Project Authors) | https://github.com/RedHatOfficial/Overpass | SIL OFL 1.1 (`docs/licenses/OFL-1.1-Overpass.txt`); approved. Not the FHWA Series E(M) alphabet |
+| Street-name blades (`fonts/Overpass-Bold.ttf`, Label3D on the D3-1 signs) | Overpass Bold (Red Hat / The Overpass Project Authors) | https://github.com/RedHatOfficial/Overpass | SIL OFL 1.1 (`docs/licenses/OFL-1.1-Overpass.txt`). Not the FHWA Series E(M) alphabet |
 
 ### 1.5 Ambience pack and VFX pack 
 Per-file sources copied from `docs/audio/ambience-MANIFEST.md` and `vfx/README.md` (each Freesound page's licence field was checked there on 2026-10-09 and snapshotted under each pack's `licenses/freesound_pages/`). Attribution is not required for CC0; authors are listed as a courtesy.
@@ -192,6 +193,11 @@ In-house (no AI): core buildings (6-storey pair, T5 tower, school, police, fire 
 
 ## 5b. Elevation data
 Elevation data: U.S. Geological Survey 3DEP
+
+## 5c. Street names
+© OpenStreetMap contributors, ODbL
+
+Twin Falls street-name blades use the plain street names in `world/twin_falls/data/roads.json`. The lettering is Overpass Bold, SIL OFL 1.1 (`fonts/Overpass-Bold.ttf`).
 
 
 ## 6. AI-generated content disclosure (Steam) - added 2026-10-09
