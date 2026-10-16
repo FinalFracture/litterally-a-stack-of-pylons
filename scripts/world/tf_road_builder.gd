@@ -3314,6 +3314,10 @@ func _cut_joins(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: floa
 		var jx := float(pos[0])
 		var jz := float(pos[2])
 		var rad := float(item.get("radius", 8.0))
+		# The Perrine joint keeps the wide cut the seam was built against.
+		if _bridge_joint(item):
+			_cut_join_legacy(grid, origin, n, spacing, jx, jz, rad, float(item.get("flat_y", float(pos[1]))))
+			continue
 		# Corner spikes only. The road stamp owns the crowned carriageway, so this
 		# never lays a slope back into the canyon and never digs below the crown.
 		var road_y := float(item.get("flat_y", float(pos[1])))
@@ -3336,6 +3340,32 @@ func _cut_joins(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: floa
 				var idx := row + c
 				if grid[idx] > road_y:
 					grid[idx] = road_y
+
+
+func _cut_join_legacy(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, jx: float, jz: float, rad: float, flat_y: float) -> void:
+	var road_y := flat_y - CUT_CLEAR_M
+	var flat_r := rad + SHOULDER_M
+	var reach := flat_r + 36.0
+	if jx < origin.x - reach or jx > origin.x + 500.0 + reach:
+		return
+	if jz < origin.y - reach or jz > origin.y + 500.0 + reach:
+		return
+	var c0 := clampi(int(floor((jx - reach - origin.x) / spacing)), 0, n - 1)
+	var c1 := clampi(int(ceil((jx + reach - origin.x) / spacing)), 0, n - 1)
+	var r0 := clampi(int(floor((jz - reach - origin.y) / spacing)), 0, n - 1)
+	var r1 := clampi(int(ceil((jz + reach - origin.y) / spacing)), 0, n - 1)
+	for r in range(r0, r1 + 1):
+		var z := origin.y + float(r) * spacing
+		var row := r * n
+		for c in range(c0, c1 + 1):
+			var x := origin.x + float(c) * spacing
+			var dist := Vector2(x - jx, z - jz).length()
+			if dist > reach:
+				continue
+			var target := road_y if dist <= flat_r else road_y + (dist - flat_r) / CUT_H_PER_V
+			var idx := row + c
+			if grid[idx] > target:
+				grid[idx] = target
 
 
 func _major_half(item: Dictionary) -> float:
