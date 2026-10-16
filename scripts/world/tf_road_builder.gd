@@ -289,6 +289,11 @@ func _add_road(item: Dictionary, rail: bool) -> void:
 			var kind := str(seg[2])
 			for i in range(a, b):
 				kinds[i] = kind
+	var rid := str(item.get("id", ""))
+	if not rail and not _approach_road(rid) and rid != "us93_perrine_bridge":
+		var dense := _densify(pts, kinds, 4.0)
+		pts = dense[0]
+		kinds = dense[1]
 	var miters := _miters(pts, half)
 	var chain := PackedFloat32Array()
 	chain.resize(pts.size())
@@ -460,6 +465,30 @@ func _flat_span(road: Dictionary, i: int) -> bool:
 	return false
 
 
+## Keep every authored vertex and insert samples so a grade change can ease off.
+func _densify(pts: PackedVector3Array, kinds: PackedStringArray, step: float) -> Array:
+	var out := PackedVector3Array()
+	var out_k := PackedStringArray()
+	out.append(pts[0])
+	for i in pts.size() - 1:
+		var a := pts[i]
+		var b := pts[i + 1]
+		var kind := kinds[i] if i < kinds.size() else "grade"
+		var dist := Vector2(b.x - a.x, b.z - a.z).length()
+		var cuts := 0
+		if dist > step:
+			cuts = int(floor((dist - 0.01) / step))
+		for k in cuts:
+			var t := float(k + 1) * step / dist
+			if t >= 0.999:
+				break
+			out.append(a.lerp(b, t))
+			out_k.append(kind)
+		out.append(b)
+		out_k.append(kind)
+	return [out, out_k]
+
+
 func _class_cap(cls: String) -> float:
 	if cls == "us_highway":
 		return 0.05
@@ -507,7 +536,7 @@ func _cap_grade(road: Dictionary) -> void:
 			pin[i] = true
 	_enforce_passes(road, pts, pin, cap)
 	if not _hold_profile(road):
-		for _round in 4:
+		for _round in 8:
 			_smooth_kinks(road, pts, pin, cap)
 			_enforce_passes(road, pts, pin, cap)
 	road["pts"] = pts
