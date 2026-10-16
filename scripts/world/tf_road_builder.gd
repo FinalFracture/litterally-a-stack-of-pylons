@@ -2186,18 +2186,67 @@ func _bridge_extras(root: Node3D, host: Node3D) -> void:
 		if mat != null:
 			mi.material_override = mat
 		root.add_child(mi)
-	# Mesh bottoms sit near world y 54. The canyon floor is 16-24 m below.
-	# A repeated node name is rewritten to @CollisionShape3D@id, so each foot
-	# keeps its own name. The boxes stay narrow along the span: the east pier
-	# and chord are 0.8 m apart and a shared slab would catch the other ray.
-	_ground_column(root, body, host, Vector3(3351.22, 54.6, -6957.0), 1.6, 0.50, "WestPierFoot")
-	_ground_column(root, body, host, Vector3(3367.01, 54.6, -6957.47), 1.6, 0.50, "EastPierFoot")
-	_ground_column(root, body, host, Vector3(3350.99, 54.6, -6956.19), 1.6, 0.50, "WestChordFoot")
-	_ground_column(root, body, host, Vector3(3367.29, 54.6, -6956.68), 1.6, 0.50, "EastChordFoot")
+	# South pier boxes (local z -151.8, 1.6 x 2.6) and the steel shoes bottom
+	# near local y 59.6. A 0.5 m foot left most of that footprint in the air.
+	# The column covers the box and the inboard steel, and stops 5 cm outside
+	# it. North piers stay the short boxes above. Chord shoes share that z band
+	# but stop short of the pier ray at local z -151.8, so each foot ray meets
+	# its own column.
+	_ground_rect(root, body, host, -7.725, -151.8, 59.90, 2.05, 2.70, "WestPierFoot")
+	_ground_rect(root, body, host, 7.725, -151.8, 59.90, 2.05, 2.70, "EastPierFoot")
+	_ground_rect(root, body, host, -8.175, -151.0, 59.90, 1.65, 1.20, "WestChordFoot")
+	# West face stays east of the foot ray's start (local x 6.85) so the ray
+	# meets the face instead of beginning inside the column.
+	_ground_rect(root, body, host, 8.075, -151.0, 59.90, 1.95, 1.20, "EastChordFoot")
 	_ground_column(root, body, host, Vector3(3351.10, 54.6, -6956.60), 1.35, 0.16, "WestSole")
 	_ground_column(root, body, host, Vector3(3367.15, 54.6, -6957.08), 1.35, 0.16, "EastSole")
 	_sink_rail_plates(root)
 	_bury_deck_lips(root)
+
+
+## Bridge-local column down to the lowest of 25 samples on its footprint.
+## Top y is local. The bottom is buried a metre so the uphill edge stays shut.
+func _ground_rect(root: Node3D, body: StaticBody3D, host: Node, cx: float, cz: float, top_y: float, size_x: float, size_z: float, node_name: String) -> void:
+	var ground := 1.0e9
+	var hits := 0
+	var hx := size_x * 0.5
+	var hz := size_z * 0.5
+	for ix in 5:
+		for iz in 5:
+			var lx := cx + lerpf(-hx, hx, float(ix) / 4.0)
+			var lz := cz + lerpf(-hz, hz, float(iz) / 4.0)
+			var w := root.to_global(Vector3(lx, top_y, lz))
+			var h := _terrain_at(host, w.x, w.z)
+			if h < -70.0:
+				continue
+			hits += 1
+			ground = minf(ground, h)
+	if hits == 0:
+		return
+	var top_w := root.to_global(Vector3(cx, top_y, cz))
+	if ground > top_w.y - 0.4:
+		return
+	var bot_l := root.to_local(Vector3(top_w.x, ground - 1.0, top_w.z))
+	var height := top_y - bot_l.y
+	if height < 0.4:
+		return
+	var box := BoxShape3D.new()
+	box.size = Vector3(size_x, height, size_z)
+	var col := CollisionShape3D.new()
+	col.name = node_name
+	col.shape = box
+	col.position = Vector3(cx, (top_y + bot_l.y) * 0.5, cz)
+	body.add_child(col)
+	var mesh := BoxMesh.new()
+	mesh.size = box.size
+	var mi := MeshInstance3D.new()
+	mi.name = node_name
+	mi.mesh = mesh
+	mi.position = col.position
+	var mat := load("res://materials/twin_falls/bridge_deck_concrete.tres") as Material
+	if mat != null:
+		mi.material_override = mat
+	root.add_child(mi)
 
 
 ## Column from a world point down into the terrain. Used where a pier or chord
