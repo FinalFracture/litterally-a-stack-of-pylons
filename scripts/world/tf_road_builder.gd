@@ -292,8 +292,8 @@ func _add_road(item: Dictionary, rail: bool) -> void:
 	var rid := str(item.get("id", ""))
 	if not rail and not _approach_road(rid) and rid != "us93_perrine_bridge":
 		var dense := _densify(pts, kinds, 4.0)
-		pts = dense[0]
-		kinds = dense[1]
+		pts = dense[0] as PackedVector3Array
+		kinds = dense[1] as PackedStringArray
 	var miters := _miters(pts, half)
 	var chain := PackedFloat32Array()
 	chain.resize(pts.size())
