@@ -10,8 +10,10 @@ extends RefCounted
 ## cap. Ordinary segments stamp cut and fill into the heightfield: shoulder,
 ## ditch, a 0.25:1 face on basalt cliffs (soil stays 2:1), 1.5:1 fill, then a
 ## 4 m blend back to the lidar. The ribbon sits 0.02 m above that grade and
-## the heightfield is the ground collision. Skirts are not built. Deck, bridge
-## and the Perrine approaches keep their authored grade and their own earthwork.
+## the heightfield is the ground collision. Skirts are not built. Deck and bridge
+## keep their authored grade and are not stamped. Perrine approach profiles stay
+## pinned so the deck joint does not move, but their fill, cut, and grade
+## segments use this same stamp.
 
 const DATA := "res://world/twin_falls/data"
 const BUCKET := 64.0
@@ -161,7 +163,7 @@ func prepare() -> void:
 	_build_mats()
 
 
-## Stamp ordinary roads into the heightfield. Deck, bridge and approaches only lower.
+## Stamp every segment except deck, bridge, and rail. Those only lower.
 func apply_cuts(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> void:
 	if n < 2 or grid.size() != n * n or _edges.is_empty():
 		return
@@ -712,7 +714,6 @@ func _rebuild_edges() -> void:
 		road["right"] = right
 		var shoulder := float(road.get("shoulder", 1.2))
 		var ditch := float(road.get("ditch", 1.0))
-		var rid := str(road["id"])
 		for i in pts.size() - 1:
 			var kind := kinds[i]
 			var edge := {
@@ -725,7 +726,7 @@ func _rebuild_edges() -> void:
 				"rail": rail,
 				"sh": shoulder,
 				"ditch": ditch,
-				"skip": rail or kind == "deck" or kind == "bridge" or _approach_road(rid),
+				"skip": rail or kind == "deck" or kind == "bridge",
 			}
 			var ei := _edges.size()
 			_edges.append(edge)
