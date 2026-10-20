@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://fpd1uj5e8tn4"
-path="res://.godot/imported/rail_track_curve_r875_10m_r_v2_quest_rail_trim_v2_albedo_1k.png-698f72a5c2528700f6414c7c1cf0912b.ctex"
+path.s3tc="res://.godot/imported/rail_track_curve_r875_10m_r_v2_quest_rail_trim_v2_albedo_1k.png-698f72a5c2528700f6414c7c1cf0912b.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "e88b308a3e2ea4126cea645129a14618"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://Models/rail/rail_track_curve_r875_10m_r_v2_quest_rail_trim_v2_albedo_1k.png"
-dest_files=["res://.godot/imported/rail_track_curve_r875_10m_r_v2_quest_rail_trim_v2_albedo_1k.png-698f72a5c2528700f6414c7c1cf0912b.ctex"]
+dest_files=["res://.godot/imported/rail_track_curve_r875_10m_r_v2_quest_rail_trim_v2_albedo_1k.png-698f72a5c2528700f6414c7c1cf0912b.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

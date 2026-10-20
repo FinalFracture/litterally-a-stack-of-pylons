@@ -8,16 +8,27 @@ extends RefCounted
 ##
 ## One pipeline from roads.json. The profile is smoothed inside the class grade
 ## cap, then each junction gets one plane (tilt clamped) and the roads blend
-## into it. Ordinary segments, including the Perrine approach slabs, stamp cut
-## and fill into the heightfield: shoulder, ditch, a 0.25:1 face on grade and
-## rim cuts (soil stays 2:1 everywhere else), 1.5:1 fill, then a 4 m blend back
-## to the lidar. The ribbon sits 0.02 m above that grade. Collision is the same
-## plane flared past the paint so an edge ray stays on the carriageway. Skirts
-## are not built. The bridge span itself is not stamped.
+## into it. Ordinary segments, including the Perrine approach slabs, stamp the
+## strategy-11 seam: a 2 m bench at the road-edge height, then a 4 m linear
+## blend back to the lidar. A cut or fill deeper than that walkable lip keeps
+## the engineered face after it (soil 2:1, rock 0.25:1, fill 1.5:1). No ditch
+## and no junction disc. The ribbon sits 0.02 m above the carriageway. Collision
+## is the same plane flared past the paint. The bridge span itself is not stamped.
+## The terrain mesh draws the bench and the blend at about 1 m. A 4 m quad
+## cannot show that shoulder, which is why the stamp alone does not read.
+## The mesh reads that stamp. It does not search the segments again per vertex.
 
 const DATA := "res://world/twin_falls/data"
 const BUCKET := 64.0
 const BLEND_M := 4.0
+## Strategy 11. Flat ground at the road edge, then the linear blend above.
+## A lip steeper than this over those 4 m is not walkable, so the rest of a
+## deep cut or fill uses the engineered face.
+const BENCH_M := 2.0
+const SEAM_GRADE := 0.90
+## Visual carriageway sits at the pave height until this far inside the paint,
+## so the shoulder quad does not dip into the 0.5 m bed beside the ribbon.
+const VISUAL_BED_INSET_M := 1.2
 const SHAVE_M := 0.02
 const LIFT_M := 0.03
 ## Ribbon above the graded heightfield. Deck, bridge, and the last 4 m of an
@@ -39,7 +50,6 @@ const GAP_MAX_M := 24.0
 const GAP_CURV := 0.016
 ## Guard only once the drop inside 3 m would fail the report. Gentler ground stays open.
 const BARRIER_DROP_M := 2.5
-const DITCH_DROP := 0.30
 ## A cliff this steep is basalt, not walkable talus. Soil cuts stay at 2:1.
 const ROCK_DEG := 46.0
 ## Ribbon sits this far above the drawn heightfield. Deck and bridge keep their grade.
@@ -67,6 +77,9 @@ const SOIL_CUT_H := 2.0
 const ROCK_CUT_H := 0.25
 const EARTH_REACH_M := 56.0
 const CUT_CLEAR_M := 0.08
+## Keep the terrain bed below the driving surface so the asphalt owns the
+## collision and no heightfield triangle can poke through it.
+const ROAD_BED_DEPTH_M := 0.5
 ## Flat cut past the paint. A 4 m terrain quad that straddles the edge would
 ## otherwise tilt up through the asphalt. The 1.5:1 slope starts outside this.
 const SHOULDER_M := 6.5
@@ -190,7 +203,10 @@ func prepare() -> void:
 
 
 ## Stamp every segment except deck, bridge, and rail. Those only lower.
-func apply_cuts(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> void:
+## `lift` is optional. When the caller has resized it to n*n, a 1 marks a
+## winning write in the outer metre of the paint, where the mesh sits at the
+## pave height and the collision grid keeps the 0.5 m bed. Empty skips that.
+func apply_cuts(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, lift: PackedByteArray) -> void:
 	if n < 2 or grid.size() != n * n or _edges.is_empty():
 		return
 	var orig := grid.duplicate()
@@ -212,8 +228,7 @@ func apply_cuts(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: floa
 				if seen.has(ei):
 					continue
 				seen[ei] = true
-				_cut_edge(grid, orig, lock, best, origin, n, spacing, _edges[ei])
-	_cut_joins(grid, origin, n, spacing)
+				_cut_edge(grid, orig, lock, best, lift, origin, n, spacing, _edges[ei])
 
 
 ## 1 m carriageway stamp. The coarse heightfield is upsampled first; this only
@@ -249,7 +264,7 @@ func _paint_edge(grid: PackedFloat32Array, best: PackedFloat32Array, lock: Packe
 	var az := float(edge["az"])
 	var bx := float(edge["bx"])
 	var bz := float(edge["bz"])
-	var band := float(edge["half"]) + spacing * 2.0 + 0.5
+	var band := float(edge["half"]) + BENCH_M + 0.5
 	var min_x := minf(ax, bx) - band
 	var max_x := maxf(ax, bx) + band
 	var min_z := minf(az, bz) - band
@@ -265,7 +280,7 @@ func _paint_edge(grid: PackedFloat32Array, best: PackedFloat32Array, lock: Packe
 			var x := origin.x + float(c) * spacing
 			var hit := _seg_side(x, z, ax, az, bx, bz)
 			var half_w := lerpf(float(edge.get("ha", edge["half"])), float(edge.get("hb", edge["half"])), hit.y)
-			if hit.x > half_w + spacing * 2.0:
+			if hit.x > half_w + BENCH_M:
 				continue
 			var i := row + c
 			if lock[i] == 1 and hit.x >= best[i] - 0.001:
@@ -273,9 +288,195 @@ func _paint_edge(grid: PackedFloat32Array, best: PackedFloat32Array, lock: Packe
 			var y := _paint_height(edge, hit.x, hit.y, hit.z, x, z)
 			if y < -70.0:
 				continue
+			if hit.x <= half_w:
+				y -= ROAD_BED_DEPTH_M
 			best[i] = hit.x
 			grid[i] = y
 			lock[i] = 1
+
+
+## Cells whose centres sit in the bench or the blend. Includes a one-cell halo
+## so a neighbour chunk can fan the shared edge. Keys are Vector2i cell coords
+## in this chunk's 128-cell grid, from -1 to 128.
+func mark_seam_cells(origin: Vector2) -> Dictionary:
+	var out := {}
+	if _edges.is_empty():
+		return out
+	var cell := 500.0 / 128.0
+	var pad := 20.0
+	var x0 := origin.x - pad
+	var z0 := origin.y - pad
+	var x1 := origin.x + 500.0 + pad
+	var z1 := origin.y + 500.0 + pad
+	var seen := {}
+	var gz0 := int(floor(z0 / BUCKET))
+	var gz1 := int(floor(z1 / BUCKET))
+	var gx0 := int(floor(x0 / BUCKET))
+	var gx1 := int(floor(x1 / BUCKET))
+	for gz in range(gz0, gz1 + 1):
+		for gx in range(gx0, gx1 + 1):
+			var packed: PackedInt32Array = _buckets.get(Vector2i(gx, gz), PackedInt32Array())
+			for ei in packed:
+				if seen.has(ei):
+					continue
+				seen[ei] = true
+				var edge: Dictionary = _edges[ei]
+				if bool(edge.get("skip", false)):
+					continue
+				_mark_edge_cells(out, edge, origin, cell)
+	return out
+
+
+func _mark_edge_cells(out: Dictionary, edge: Dictionary, origin: Vector2, cell: float) -> void:
+	var half := maxf(float(edge.get("ha", edge["half"])), float(edge.get("hb", edge["half"])))
+	var band := half + maxf(float(edge.get("sh", 0.0)), BENCH_M) + BLEND_M + cell * 0.75
+	var ax := float(edge["ax"])
+	var az := float(edge["az"])
+	var bx := float(edge["bx"])
+	var bz := float(edge["bz"])
+	var c0 := clampi(int(floor((minf(ax, bx) - band - origin.x) / cell)), -1, 128)
+	var c1 := clampi(int(floor((maxf(ax, bx) + band - origin.x) / cell)), -1, 128)
+	var r0 := clampi(int(floor((minf(az, bz) - band - origin.y) / cell)), -1, 128)
+	var r1 := clampi(int(floor((maxf(az, bz) + band - origin.y) / cell)), -1, 128)
+	for r in range(r0, r1 + 1):
+		var z := origin.y + (float(r) + 0.5) * cell
+		for c in range(c0, c1 + 1):
+			var x := origin.x + (float(c) + 0.5) * cell
+			var hit := _seg_side(x, z, ax, az, bx, bz)
+			if hit.x <= band:
+				out[Vector2i(c, r)] = true
+
+
+## One pass of the bench and the blend onto a 1 m grid the caller already sized.
+## `heights` stores the visual surface: the outer metre of the paint stays at
+## the pave height, and the rest of the carriageway keeps the 0.5 m bed.
+## `wrote` is 1 where a stamp claimed the cell. `lift` is 1 only in that outer
+## metre, so collision can subtract the bed without dipping the shoulder quad.
+## Reach stays on the shoulder. The 56 m earthwork is already in the coarse grid.
+## Lock rules match _cut_edge: paint nearest-wins, then the shoulder, then a
+## cut lowers and a fill raises only ground that has not been cut.
+func stamp_seam_band(heights: PackedFloat32Array, wrote: PackedByteArray, lift: PackedByteArray, origin: Vector2, n: int, spacing: float) -> void:
+	if n < 2 or heights.size() != n * n or wrote.size() != n * n or lift.size() != n * n or _edges.is_empty():
+		return
+	var lock := PackedByteArray()
+	lock.resize(n * n)
+	var best := PackedFloat32Array()
+	best.resize(n * n)
+	best.fill(100000.0)
+	var known := PackedByteArray()
+	known.resize(n * n)
+	var origs := PackedFloat32Array()
+	origs.resize(n * n)
+	var seen := {}
+	var pad := 24.0
+	var gz0 := int(floor((origin.y - pad) / BUCKET))
+	var gz1 := int(floor((origin.y + 500.0 + pad) / BUCKET))
+	var gx0 := int(floor((origin.x - pad) / BUCKET))
+	var gx1 := int(floor((origin.x + 500.0 + pad) / BUCKET))
+	for gz in range(gz0, gz1 + 1):
+		for gx in range(gx0, gx1 + 1):
+			var packed: PackedInt32Array = _buckets.get(Vector2i(gx, gz), PackedInt32Array())
+			for ei in packed:
+				if seen.has(ei):
+					continue
+				seen[ei] = true
+				_stamp_band_edge(heights, wrote, lift, lock, best, known, origs, origin, n, spacing, _edges[ei])
+
+
+func _stamp_band_edge(heights: PackedFloat32Array, wrote: PackedByteArray, lift: PackedByteArray, lock: PackedByteArray, best: PackedFloat32Array, known: PackedByteArray, origs: PackedFloat32Array, origin: Vector2, n: int, spacing: float, edge: Dictionary) -> void:
+	if bool(edge.get("skip", false)):
+		return
+	var ax := float(edge["ax"])
+	var az := float(edge["az"])
+	var bx := float(edge["bx"])
+	var bz := float(edge["bz"])
+	var half_max := maxf(float(edge.get("ha", edge["half"])), float(edge.get("hb", edge["half"])))
+	var band := half_max + maxf(float(edge.get("sh", 0.0)), BENCH_M) + BLEND_M + spacing
+	var c0 := clampi(int(floor((minf(ax, bx) - band - origin.x) / spacing)), 0, n - 1)
+	var c1 := clampi(int(ceil((maxf(ax, bx) + band - origin.x) / spacing)), 0, n - 1)
+	var r0 := clampi(int(floor((minf(az, bz) - band - origin.y) / spacing)), 0, n - 1)
+	var r1 := clampi(int(ceil((maxf(az, bz) + band - origin.y) / spacing)), 0, n - 1)
+	var rock := bool(edge.get("rock", false))
+	for r in range(r0, r1 + 1):
+		var z := origin.y + float(r) * spacing
+		var row := r * n
+		for c in range(c0, c1 + 1):
+			var x := origin.x + float(c) * spacing
+			var hit := _seg_side(x, z, ax, az, bx, bz)
+			var half_w := lerpf(float(edge.get("ha", edge["half"])), float(edge.get("hb", edge["half"])), hit.y)
+			var reach := half_w + maxf(float(edge.get("sh", 0.0)), BENCH_M) + BLEND_M + spacing
+			if hit.x > reach:
+				continue
+			if _past_bridge_end(x, z, ax, az, bx, bz):
+				continue
+			var i := row + c
+			var orig := _band_orig(known, origs, i, x, z)
+			if orig < -70.0:
+				continue
+			var stamp := _stamp_at(edge, hit.x, hit.y, hit.z, orig, rock, spacing, x, z)
+			if stamp.z < 0.5:
+				continue
+			var shown := _shown_y(stamp.x, hit.x, half_w)
+			if stamp.y > 0.5:
+				var on_paint := hit.x <= half_w + maxf(spacing, 1.0)
+				if on_paint:
+					if lock[i] != 2 or hit.x < best[i] - 0.001:
+						best[i] = hit.x
+						heights[i] = shown
+						lock[i] = 2
+						wrote[i] = 1
+						lift[i] = _inset_lift(hit.x, half_w)
+					continue
+				if lock[i] == 2:
+					continue
+				if hit.x < best[i] - 0.001:
+					if lock[i] == 1 and shown < heights[i] - 0.05:
+						continue
+					best[i] = hit.x
+					heights[i] = shown
+					lock[i] = 1
+					wrote[i] = 1
+					lift[i] = _inset_lift(hit.x, half_w)
+				continue
+			if lock[i] != 0:
+				continue
+			var cur := orig
+			if wrote[i] == 1:
+				cur = heights[i]
+			if shown < orig - 0.001:
+				if wrote[i] == 0 or heights[i] > shown:
+					heights[i] = shown
+					wrote[i] = 1
+					lift[i] = 0
+			elif shown > orig + 0.001 and cur >= orig - 0.001 and cur < shown:
+				heights[i] = shown
+				wrote[i] = 1
+				lift[i] = 0
+
+
+func _band_orig(known: PackedByteArray, origs: PackedFloat32Array, i: int, x: float, z: float) -> float:
+	if known[i] == 1:
+		return origs[i]
+	var y := -80.0
+	if _dem.is_valid():
+		y = float(_dem.call(x, z))
+	known[i] = 1
+	origs[i] = y
+	return y
+
+
+## Visual carriageway. The bed is kept only inside the paint, past the inset,
+## so the quad beside the ribbon stays at the road-edge height.
+func _shown_y(raw: float, dist: float, half_w: float) -> float:
+	if dist <= half_w - VISUAL_BED_INSET_M:
+		return raw - ROAD_BED_DEPTH_M
+	return raw
+
+
+func _inset_lift(dist: float, half_w: float) -> int:
+	if dist <= half_w and dist > half_w - VISUAL_BED_INSET_M:
+		return 1
+	return 0
 
 
 ## Crowned surface, or the junction plane where the carriageways share one.
@@ -292,11 +493,20 @@ func _paint_height(edge: Dictionary, dist: float, t: float, side: float, x: floa
 		var pos: Array = item.get("pos", [])
 		if pos.size() < 3:
 			continue
-		var rad := float(item.get("radius", 8.0))
-		if Vector2(px - float(pos[0]), pz - float(pos[2])).length() > rad + 0.4:
+		var rad := float(item.get("radius", 8.0)) + half + 0.4
+		if Vector2(px - float(pos[0]), pz - float(pos[2])).length() > rad:
 			continue
-		if Vector2(x - float(pos[0]), z - float(pos[2])).length() > rad + 0.4:
+		if Vector2(x - float(pos[0]), z - float(pos[2])).length() > rad:
 			continue
+		if dist <= half:
+			return _plane_at(item, x, z)
+		var dx := bx - ax
+		var dz := bz - az
+		var length := Vector2(dx, dz).length()
+		if length > 0.001:
+			var edge_x := px - dz / length * side * half
+			var edge_z := pz + dx / length * side * half
+			return _plane_at(item, edge_x, edge_z)
 		return _plane_at(item, x, z)
 	var bank := lerpf(float(edge.get("ba", 0.0)), float(edge.get("bb", 0.0)), t)
 	var drop := lerpf(float(edge.get("ca", 0.0)), float(edge.get("cb", 0.0)), t)
@@ -449,6 +659,7 @@ func _add_road(item: Dictionary, rail: bool) -> void:
 		_name_of[rec["id"]] = nm
 	for i in pts.size() - 1:
 		var edge := {
+			"road": str(rec["id"]),
 			"ax": pts[i].x, "ay": pts[i].y, "az": pts[i].z,
 			"bx": pts[i + 1].x, "by": pts[i + 1].y, "bz": pts[i + 1].z,
 			"half": half,
@@ -1528,7 +1739,10 @@ func _cap_grade(road: Dictionary) -> void:
 		if _vertex_locked(road, i):
 			pin[i] = true
 	_enforce_passes(road, pts, pin, cap)
-	if not _hold_profile(road):
+	# Approach profiles still need the same kink cleanup as ordinary roads.
+	# Locked bridge-joint vertices remain pinned, so smoothing cannot move the
+	# asset interface itself.
+	if not _hold_profile(road) or _approach_road(str(road["id"])):
 		for _round in 8:
 			_smooth_kinks(road, pts, pin, cap)
 			_enforce_passes(road, pts, pin, cap)
@@ -1712,6 +1926,7 @@ func _rebuild_edges() -> void:
 			var ha := _half_at(road, i)
 			var hb := _half_at(road, i + 1)
 			var edge := {
+				"road": str(road["id"]),
 				"ax": pts[i].x, "ay": pts[i].y, "az": pts[i].z,
 				"bx": pts[i + 1].x, "by": pts[i + 1].y, "bz": pts[i + 1].z,
 				"half": maxf(ha, hb),
@@ -2052,7 +2267,13 @@ func _seg_hits_rect(ax: float, az: float, bx: float, bz: float, min_x: float, mi
 	return span.x <= span.y
 
 
-func _cut_edge(grid: PackedFloat32Array, orig: PackedFloat32Array, lock: PackedByteArray, best: PackedFloat32Array, origin: Vector2, n: int, spacing: float, edge: Dictionary) -> void:
+func _mark_bed_lift(lift: PackedByteArray, i: int, dist: float, half_w: float) -> void:
+	if i < 0 or i >= lift.size():
+		return
+	lift[i] = _inset_lift(dist, half_w)
+
+
+func _cut_edge(grid: PackedFloat32Array, orig: PackedFloat32Array, lock: PackedByteArray, best: PackedFloat32Array, lift: PackedByteArray, origin: Vector2, n: int, spacing: float, edge: Dictionary) -> void:
 	if bool(edge.get("skip", false)):
 		return
 	var ax := float(edge["ax"])
@@ -2087,11 +2308,13 @@ func _cut_edge(grid: PackedFloat32Array, orig: PackedFloat32Array, lock: PackedB
 				# only lowered, and its reach dug out the fill on the next segment.
 				continue
 			var rock := bool(edge.get("rock", false)) or _steep_cell(orig, n, c, r, spacing)
-			var stamp := _stamp_at(edge, hit.x, hit.y, hit.z, orig[i], rock, spacing)
+			var stamp := _stamp_at(edge, hit.x, hit.y, hit.z, orig[i], rock, spacing, x, z)
 			if stamp.z < 0.5:
 				continue
+			var half_w := lerpf(float(edge.get("ha", edge["half"])), float(edge.get("hb", edge["half"])), hit.y)
+			if hit.x <= half_w:
+				stamp.x -= ROAD_BED_DEPTH_M
 			if stamp.y > 0.5:
-				var half_w := lerpf(float(edge.get("ha", edge["half"])), float(edge.get("hb", edge["half"])), hit.y)
 				# One cell past the paint still bilinear-blends into the lane.
 				# That sample belongs to the carriageway, not to a nearer shoulder.
 				var on_paint := hit.x <= half_w + maxf(spacing, 1.0)
@@ -2100,6 +2323,7 @@ func _cut_edge(grid: PackedFloat32Array, orig: PackedFloat32Array, lock: PackedB
 						best[i] = hit.x
 						grid[i] = stamp.x
 						lock[i] = 2
+						_mark_bed_lift(lift, i, hit.x, half_w)
 					continue
 				if lock[i] == 2:
 					continue
@@ -2109,6 +2333,7 @@ func _cut_edge(grid: PackedFloat32Array, orig: PackedFloat32Array, lock: PackedB
 					best[i] = hit.x
 					grid[i] = stamp.x
 					lock[i] = 1
+					_mark_bed_lift(lift, i, hit.x, half_w)
 				continue
 			if lock[i] != 0:
 				continue
@@ -2117,8 +2342,10 @@ func _cut_edge(grid: PackedFloat32Array, orig: PackedFloat32Array, lock: PackedB
 			if target < o - 0.001:
 				if grid[i] > target:
 					grid[i] = target
+					_mark_bed_lift(lift, i, hit.x, half_w)
 			elif target > o + 0.001 and grid[i] >= o - 0.001 and grid[i] < target:
 				grid[i] = target
+				_mark_bed_lift(lift, i, hit.x, half_w)
 
 
 func _steep_cell(orig: PackedFloat32Array, n: int, c: int, r: int, spacing: float) -> bool:
@@ -2134,14 +2361,12 @@ func _steep_cell(orig: PackedFloat32Array, n: int, c: int, r: int, spacing: floa
 
 ## y, lock (1 = pavement/shoulder/ditch), active (1 = write this cell).
 ## Terrain matches the crowned surface. The ribbon adds SURFACE_LIFT on top.
-func _stamp_at(edge: Dictionary, dist: float, t: float, side: float, orig: float, rock: bool, spacing: float) -> Vector3:
+func _stamp_at(edge: Dictionary, dist: float, t: float, side: float, orig: float, rock: bool, _spacing: float, x: float, z: float) -> Vector3:
 	var half := lerpf(float(edge.get("ha", edge["half"])), float(edge.get("hb", edge["half"])), t)
 	var shoulder := float(edge.get("sh", 0.0))
-	# A coarse cell that holds both the paint and the ditch pulls the road down.
-	if spacing > 2.0:
-		shoulder = maxf(shoulder, spacing)
-	var ditch_w := float(edge.get("ditch", 1.0))
 	var cy := lerpf(float(edge["ay"]), float(edge["by"]), t)
+	var px := lerpf(float(edge["ax"]), float(edge["bx"]), t)
+	var pz := lerpf(float(edge["az"]), float(edge["bz"]), t)
 	var bank := lerpf(float(edge.get("ba", 0.0)), float(edge.get("bb", 0.0)), t)
 	var drop := lerpf(float(edge.get("ca", 0.0)), float(edge.get("cb", 0.0)), t)
 	var sec := _section(cy, bank, drop, half)
@@ -2149,20 +2374,41 @@ func _stamp_at(edge: Dictionary, dist: float, t: float, side: float, orig: float
 	var pave := edge_y
 	if dist <= half and half > 0.01:
 		pave = lerpf(sec.y, edge_y, dist / half)
-	var flat := half + shoulder
+	var junction := _junction_at(str(edge.get("road", "")), Vector3(x, cy, z))
+	if not junction.is_empty():
+		var pos: Array = junction.get("pos", [])
+		if pos.size() >= 3:
+			var centre_dist := Vector2(px - float(pos[0]), pz - float(pos[2])).length()
+			if centre_dist <= float(junction.get("radius", 8.0)) + half:
+				var dx := float(edge["bx"]) - float(edge["ax"])
+				var dz := float(edge["bz"]) - float(edge["az"])
+				var length := Vector2(dx, dz).length()
+				var edge_x := px - dz / maxf(length, 0.001) * side * half
+				var edge_z := pz + dx / maxf(length, 0.001) * side * half
+				edge_y = _plane_at(junction, edge_x, edge_z)
+				if dist <= half:
+					pave = _plane_at(junction, x, z)
+				elif dist <= half + maxf(shoulder, BENCH_M):
+					pave = edge_y
+	# 2 m bench at the road edge, then 4 m linear blend. Deeper earthwork
+	# continues on the engineered face so a canyon cut does not become a wall.
+	var bench := maxf(shoulder, BENCH_M)
+	var flat := half + bench
 	if dist <= flat:
 		return Vector3(pave, 1.0, 1.0)
 	var outer := dist - flat
-	var cut := orig > edge_y + 0.05
-	if not cut:
-		return _fill_stamp(edge_y, outer, orig)
-	var ditch_run := DITCH_DROP * STAMP_FILL_H
-	var bottom := edge_y - DITCH_DROP
-	if outer <= ditch_run:
-		return Vector3(lerpf(edge_y, bottom, outer / maxf(ditch_run, 0.001)), 1.0, 1.0)
-	if outer <= ditch_run + ditch_w:
-		return Vector3(bottom, 1.0, 1.0)
-	return _cut_stamp(bottom, outer - ditch_run - ditch_w, orig, rock)
+	var delta := edge_y - orig
+	var seam := SEAM_GRADE * BLEND_M
+	if absf(delta) <= seam + 0.05:
+		if outer >= BLEND_M:
+			return Vector3(orig, 0.0, 0.0)
+		return Vector3(lerpf(edge_y, orig, clampf(outer / BLEND_M, 0.0, 1.0)), 0.0, 1.0)
+	var lip: float = edge_y - seam if delta > 0.0 else edge_y + seam
+	if outer <= BLEND_M:
+		return Vector3(lerpf(edge_y, lip, clampf(outer / BLEND_M, 0.0, 1.0)), 0.0, 1.0)
+	if delta > 0.0:
+		return _fill_stamp(lip, outer - BLEND_M, orig)
+	return _cut_stamp(lip, outer - BLEND_M, orig, rock)
 
 
 func _fill_stamp(edge_y: float, outer: float, orig: float) -> Vector3:
@@ -2390,10 +2636,14 @@ func _emit_span(road_id: String, kind: String, rail: bool, lanes: int, lane_w: f
 	var cr0 := lerpf(crown_a, crown_b, t0)
 	var cr1 := lerpf(crown_a, crown_b, t1)
 	_paint_lines(road_id, surfs, l0, r0, l1, r1, half_m, use_lanes, lane_w, c0, c1, cr0, cr1)
-	# Approach slabs keep parapets for the whole span. Other edges get one only
-	# while the graded ground is still a fall. The embankment is the heightfield.
+	# Grade raised approach edges into the surrounding terrain with a continuous
+	# earth slope. Threshold-triggered parapet segments looked like stray blocks
+	# and left gaps between spans. Keep structural parapets only at the bridge.
 	if _approach_road(road_id) and kind != "bridge":
-		_approach_structure(surfs["panel"], l0, r0, l1, r1, grid, origin, n, spacing, faces, kind == "deck")
+		var left_out := Vector3(l0.x - m0.x, 0.0, l0.z - m0.z).normalized()
+		var right_out := Vector3(r0.x - m0.x, 0.0, r0.z - m0.z).normalized()
+		_approach_fill(surfs["panel"], l0, l1, left_out, grid, origin, n, spacing, faces)
+		_approach_fill(surfs["panel"], r0, r1, right_out, grid, origin, n, spacing, faces)
 	if kind != "bridge":
 		var rim := road_id == "rim_road_south"
 		_guard_edge(surfs["guard"], l0, l1, r0, grid, origin, n, spacing, faces, rim)
@@ -2408,8 +2658,11 @@ func _on_plane(road_id: String, p: Vector3, fallback: float) -> float:
 	var pos: Array = item.get("pos", [])
 	if pos.size() < 3:
 		return fallback
-	var rad := float(item.get("radius", 8.0))
-	if Vector2(p.x - float(pos[0]), p.z - float(pos[2])).length() > rad + 0.4:
+	var half := 0.0
+	if _by_id.has(road_id):
+		half = float(_roads[int(_by_id[road_id])].get("half", 0.0))
+	var rad := float(item.get("radius", 8.0)) + half + 0.4
+	if Vector2(p.x - float(pos[0]), p.z - float(pos[2])).length() > rad:
 		return fallback
 	return _plane_at(item, p.x, p.z) + SURFACE_LIFT
 
@@ -3064,6 +3317,11 @@ func _emit_exit(road: Dictionary, index: int, rect: Rect2, faces: PackedVector3A
 
 func _emit_junctions(coord: Vector2i, surf: _Surf, faces: PackedVector3Array, _grid: PackedFloat32Array, _n: int, _spacing: float) -> void:
 	for item in _junctions:
+		# Ordinary junctions are formed by the union of their approach ribbons.
+		# A circular overlay rounds off the road footprint and creates a paved
+		# blob at T and cross intersections. Keep a patch only at a bridge asset.
+		if not _bridge_joint(item):
+			continue
 		var pos: Array = item.get("pos", [])
 		if pos.size() < 3:
 			continue
@@ -4548,43 +4806,6 @@ func _join_dist(p: Vector3, road_id: String) -> float:
 		var dz := p.z - float(pos[2])
 		best = minf(best, sqrt(dx * dx + dz * dz))
 	return best
-
-
-func _cut_joins(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> void:
-	if n < 2 or grid.size() != n * n:
-		return
-	for item in _junctions:
-		var pos: Array = item.get("pos", [])
-		if pos.size() < 3:
-			continue
-		var jx := float(pos[0])
-		var jz := float(pos[2])
-		var rad := float(item.get("radius", 8.0))
-		# Corner spikes only. The road stamp owns the crowned carriageway and the
-		# embankment, including beside an approach slab. Hi-res across the seam
-		# still comes from _join_breaks, which did not change.
-		var flat_r := rad
-		if jx < origin.x - flat_r or jx > origin.x + 500.0 + flat_r:
-			continue
-		if jz < origin.y - flat_r or jz > origin.y + 500.0 + flat_r:
-			continue
-		var c0 := clampi(int(floor((jx - flat_r - origin.x) / spacing)), 0, n - 1)
-		var c1 := clampi(int(ceil((jx + flat_r - origin.x) / spacing)), 0, n - 1)
-		var r0 := clampi(int(floor((jz - flat_r - origin.y) / spacing)), 0, n - 1)
-		var r1 := clampi(int(ceil((jz + flat_r - origin.y) / spacing)), 0, n - 1)
-		for r in range(r0, r1 + 1):
-			var z := origin.y + float(r) * spacing
-			var row := r * n
-			for c in range(c0, c1 + 1):
-				var x := origin.x + float(c) * spacing
-				if Vector2(x - jx, z - jz).length() > flat_r:
-					continue
-				var idx := row + c
-				var road_y := _plane_at(item, x, z)
-				if grid[idx] > road_y:
-					grid[idx] = road_y
-				elif not _bridge_joint(item) and grid[idx] < road_y - 0.04:
-					grid[idx] = road_y
 
 
 func _cut_join_legacy(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, jx: float, jz: float, rad: float, flat_y: float) -> void:
