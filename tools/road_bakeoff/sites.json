@@ -1,6 +1,6 @@
 {
   "seed": 20261008,
-  "note": "One site is one harness run. Synthetic sites use RoadLab (no lidar). Map sites build only the 500 m chunks the rect touches, plus a neighbour chunk where a sample is within 40 m of a chunk edge. They do not build the rest of the Twin Falls map. A 400 m cell is usually 4 to 9 chunks. Cell A also instances the Perrine bridge model.",
+  "note": "One site is one harness run. Synthetic sites use RoadLab and read no lidar. Map sites build only the 500 m chunks the rect touches, plus a neighbour chunk where a sample is within 40 m of a chunk edge. They do not build the rest of the Twin Falls map. The strategy-0 baseline built 4 chunks for cell A and 2 chunks for cell C. Cell A also instances the Perrine bridge model.",
   "unsupported_by_strategy_0": [
     "downtown curbs, 2.4 m sidewalks, continental crosswalks, ADA ramps",
     "bus pullout shelter pad",
@@ -70,7 +70,7 @@
       "kind": "map",
       "centre": [3370, -6480],
       "size": [400, 400],
-      "notes": "Bridge approach and visitor lot. Real lidar. Usually chunks x 6..7, z -14..-13, some of them hi-res, plus the Perrine bridge model. Not the whole map."
+      "notes": "Bridge approach and visitor lot. Real lidar. The strategy-0 run built chunks (6,-13), (6,-14), (7,-13) and (7,-14), and instanced the Perrine bridge model. Not the whole map.",
     },
     {
       "id": "B",
@@ -84,7 +84,7 @@
       "kind": "map",
       "centre": [2350, -1750],
       "size": [400, 400],
-      "notes": "Downtown junctions. Real lidar, low-res tiles with the 1 m paint corridor. Usually about 6 chunks. Not the whole map."
+      "notes": "Downtown junctions. Real lidar, low-res tiles with the 1 m paint corridor. The 400 m square sits in one z-row, so the strategy-0 run built only chunks (4,-4) and (5,-4). Chunk (4,-4) is the slow one. Not the whole map.",
     },
     {
       "id": "D",

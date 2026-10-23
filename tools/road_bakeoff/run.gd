@@ -54,6 +54,15 @@ func _bakeoff() -> void:
 			return
 	_strategy_id = RoadStrategyRegistry.current_id()
 	_spec = RoadStrategyRegistry.spec_for(_strategy_id)
+	if _strategy_id != 0:
+		var strategy := RoadStrategyRegistry.create()
+		strategy.fail_unimplemented()
+		bakeoff_gap_max = float(_spec.get("gap_max", 0.05))
+		for item in queue:
+			_site = item
+			_write_result({}, "", "", 0.0, 0.0, true)
+		quit(1)
+		return
 	for item in queue:
 		await _one(item)
 	quit(0)
@@ -70,9 +79,6 @@ func _one(site: Dictionary) -> void:
 	bakeoff_rect = _rect_of(site)
 	bakeoff_pins = PINS
 	print("BAKEOFF strategy=%d site=%s lab=%s" % [_strategy_id, site.get("id", ""), _lab])
-	if _strategy_id != 0:
-		_write_result({}, "", "", 0.0, 0.0, true)
-		return
 	var t0 := Time.get_ticks_msec()
 	await _boot_world()
 	if _builder == null:

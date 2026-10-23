@@ -42,7 +42,6 @@ var water_edge := "bank"
 var spawn_yaw := 0.0
 var water_pts: Array[Vector3] = []
 
-const _RoadBuilder := preload("res://scripts/world/tf_road_builder.gd")
 const _RoadStrategies := preload("res://scripts/world/road_strategies/road_strategy_registry.gd")
 var _roads
 ## Empty keeps world/twin_falls/data/roads.json. Set before prepare() for RoadLab.
@@ -105,16 +104,15 @@ func material() -> ShaderMaterial:
 
 func prepare() -> void:
 	_load_meta()
+	# Strategy 0's make_builder() returns a new TfRoadBuilder. Stubs return null
+	# after push_error("strategy N not implemented").
 	var strategy: RoadStrategy = _RoadStrategies.create()
-	if strategy.id == 0:
-		_roads = _RoadBuilder.new()
+	_roads = strategy.make_builder()
+	if _roads != null:
 		if roads_path != "":
 			_roads.roads_path = roads_path
 		_roads.prepare()
 		_roads._dem = Callable(self, "_dem_at")
-	else:
-		strategy.fail_unimplemented()
-		_roads = null
 	_mat = ShaderMaterial.new()
 	var shader := load("res://shaders/twin_falls_terrain.gdshader") as Shader
 	if shader == null:
