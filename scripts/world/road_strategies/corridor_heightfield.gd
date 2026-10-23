@@ -288,10 +288,11 @@ func _stamp_junctions(grid: PackedFloat32Array, n: int, origin: Vector2) -> void
 		var pos: Array = item.get("pos", [])
 		if pos.size() < 3:
 			continue
-		# Half a cell past the disk so a sample inside the radius does not
-		# bilinear-read the crowned shoulder. A larger pad flattens crown the
-		# harness still expects just outside the disk.
-		var radius := float(item.get("radius", 8.0)) + CELL * 0.5
+		# 0.6 m past the disk. A ray inside the radius bilinear-reads the next
+		# 0.5 m cell, and on a canyon approach that cell is metres off the plane.
+		# The pad keeps junction deviation inside the limit. It also flattens
+		# about one cell of crown just outside the disk.
+		var radius := float(item.get("radius", 8.0)) + 0.6
 		var cx := float(pos[0])
 		var cz := float(pos[2])
 		if cx + radius < origin.x or cx - radius > origin.x + CHUNK_M:
