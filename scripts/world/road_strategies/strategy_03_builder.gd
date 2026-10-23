@@ -27,8 +27,8 @@ const SOIL_RUN := 2.0
 const BENCH_EVERY_M := 6.0
 const BENCH_WIDTH_M := 3.0
 const ROCK_PLAIN_M := 8.0
-const CELL_PAD_M := 1.25
-const MESH_EXTRA_M := 0.4
+const CELL_PAD_M := 2.5
+const MESH_EXTRA_M := 0.8
 const DROP_BARRIER_M := 3.0
 const APRON_M := 6.0
 
@@ -692,8 +692,8 @@ func _solve_planes() -> void:
 				have_deck = true
 				elevated_y = (near["p"] as Vector3).y
 		var fit := _fit_plane(pts, float(item["pos"][0]), float(item["pos"][2]), float(item["pos"][1]))
-		# Cross-slope gate is 2.5% with crown removed, so the plane stays at 2%.
-		var limit := 0.02
+		# Cross-slope gate is 2.5%. Keep the plane under 2% so float error still passes.
+		var limit := 0.019
 		if have_deck:
 			fit = {"y": elevated_y, "sx": 0.0, "sz": 0.0}
 			limit = 0.02
