@@ -22,9 +22,6 @@ const VERGE_MARGIN_M := 0.8
 ## does not meet the box. The edge probe still reaches it (it starts at the
 ## paint edge and walks 3.2 m).
 const BARRIER_PAST_M := 1.05
-## Two carriageways more than this far apart in height are a grade separation.
-## A heightfield keeps the lower one. The upper road has no deck of its own.
-const STACK_M := 1.0
 
 var _barrier_pending: Array = []
 var _mu := Mutex.new()
@@ -261,23 +258,14 @@ func _stamp_road(road: Dictionary, road_i: int, grid: PackedFloat32Array, orig: 
 					var blend_u := clampf((dist - (CORRIDOR_M - BLEND_M)) / BLEND_M, 0.0, 1.0)
 					var w := 0.5 - 0.5 * cos(PI * blend_u)
 					y = lerpf(y, orig[idx], w)
-				# 3 paint, 2 verge, 1 slope. Paint beats a closer verge. An upper
-				# deck does not bury a lower road. Two paints more than STACK_M
-				# apart keep the lower surface.
+				# 3 paint, 2 verge, 1 slope. A carriageway beats a closer verge.
+				# The same tier keeps the nearer centreline. Two roads that
+				# cross at different heights still share the nearer cell:
+				# a heightfield has only one height there.
 				var prev := int(tier[idx])
-				var other := prev > 0 and int(owner[idx]) != road_i
-				var take := prev == 0
-				if not take and here >= 2 and other and y + STACK_M < grid[idx]:
-					take = true
-				elif not take and other and y > grid[idx] + STACK_M:
-					take = false
-				elif not take and here > prev:
-					take = true
-				elif not take and here == prev:
-					if here == 3 and other and absf(y - grid[idx]) > STACK_M:
-						take = y < grid[idx]
-					else:
-						take = dist < near[idx]
+				var take := prev == 0 or here > prev
+				if not take and here == prev:
+					take = dist < near[idx]
 				if not take:
 					continue
 				tier[idx] = here
