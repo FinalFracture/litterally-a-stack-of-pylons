@@ -1108,11 +1108,16 @@ func _project_line(road: Dictionary, ax: float, az: float, bx: float, bz: float,
 	var t := clampf(((x - ax) * abx + (z - az) * abz) / len2, 0.0, 1.0)
 	var length := sqrt(len2)
 	var geo := -((abx * (z - az) - abz * (x - ax)) / length)
+	var cx := ax + abx * t
+	var cz := az + abz * t
+	# Distance to the finite segment. The infinite-line offset stays in geo so a
+	# straight road's first span cannot claim the cells under a later span.
+	var seg_dist := Vector2(x - cx, z - cz).length()
 	var half := float(road["half"])
 	var lat := geo
 	if absf(geo) > half:
 		lat = signf(geo) * (half + (absf(geo) - half))
-	return {"t": t, "geo": geo, "lat": lat, "dist": absf(geo)}
+	return {"t": t, "geo": geo, "lat": lat, "dist": absf(geo), "seg": seg_dist}
 
 
 func _project(road: Dictionary, i: int, x: float, z: float) -> Dictionary:
@@ -1219,7 +1224,7 @@ func _stamp_seg(grid: PackedFloat32Array, mask: PackedByteArray, near: PackedFlo
 					mask[i] = 2
 				continue
 			# The nearer carriageway keeps the cell. A lower road must not punch through a higher one.
-			if mask[i] != 1 or res.z < near[i] - 0.05:
+			if mask[i] != 1 or res.z < near[i] - 0.001:
 				grid[i] = res.x
 				mask[i] = 1
 				near[i] = res.z
@@ -1230,7 +1235,8 @@ func _terrain_y(x: float, z: float, prefer: Dictionary, seg: Dictionary) -> Vect
 	var proj := _project_line(prefer, float(seg["ax"]), float(seg["az"]), float(seg["bx"]), float(seg["bz"]), x, z)
 	if proj.is_empty():
 		return Vector3(-999.0, 0.0, 0.0)
-	if float(proj["dist"]) > float(prefer["half"]) + float(prefer["shoulder"]) + float(prefer["ditch"]) + 16.0:
+	var seg_dist := float(proj["seg"])
+	if seg_dist > float(prefer["half"]) + float(prefer["shoulder"]) + float(prefer["ditch"]) + 16.0:
 		return Vector3(-999.0, 0.0, 0.0)
 	var lat := float(proj["lat"])
 	var t_h := float(proj["t"])
@@ -1240,7 +1246,7 @@ func _terrain_y(x: float, z: float, prefer: Dictionary, seg: Dictionary) -> Vect
 	var edge := _height_at(prefer, seg_i, t_h, signf(lat) * float(prefer["half"]), x, z)
 	var orig := _orig_y(x, z, surf)
 	var bench := _reach_of(prefer)
-	var geo := float(proj["dist"])
+	var geo := seg_dist
 	var kind := "grade"
 	var kinds: PackedStringArray = prefer["kind"]
 	if seg_i < kinds.size():
@@ -1527,7 +1533,7 @@ func _stamped_y(x: float, z: float, fallback: float) -> float:
 		var res := _terrain_y(x, z, road, seg)
 		if res.y < 0.5 or res.x < -500.0:
 			continue
-		if res.z < best_d - 0.05:
+		if res.z < best_d - 0.001:
 			best_d = res.z
 			y = res.x
 			have = true
