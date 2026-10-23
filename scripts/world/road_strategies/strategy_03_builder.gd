@@ -11,9 +11,9 @@ extends TfRoadBuilder
 ## Edge policy, taper length, crown and grade caps come from RoadRules.
 ## Strategy 0 is not modified. This type only runs when strategy 3 is selected.
 
-const ALONG_M := 2.0
+const STEP_M := 2.0
 const STAMP_M := 0.10
-const CROWN_RATE := 0.02
+const CROWN_FRAC := 0.02
 const BLEND_MIN_M := 10.0
 const TAPER_MIN_M := 30.0
 const BREAK_MAX := 0.015
@@ -26,7 +26,7 @@ const BENCH_EVERY_M := 6.0
 const BENCH_WIDTH_M := 3.0
 const ROCK_PLAIN_M := 8.0
 const CELL_PAD_M := 4.0
-const BARRIER_DROP_M := 3.0
+const DROP_BARRIER_M := 3.0
 const APRON_M := 6.0
 
 var strategy_id := 3
@@ -126,7 +126,7 @@ func build_chunk(coord: Vector2i, _grid: PackedFloat32Array, _n: int, _spacing: 
 	for road in _roads:
 		if bool(road["rail"]):
 			continue
-		_emit_road(road, rect, faces, coord)
+		_emit_ribbon(road, rect, faces, coord)
 	for item in _junctions:
 		_emit_junction(item, rect, faces)
 	var marks: Array = []
@@ -294,9 +294,9 @@ func _resample(src: PackedVector3Array, kinds: PackedStringArray) -> Array:
 		var horiz := Vector2(b.x - a.x, b.z - a.z).length()
 		if horiz < 0.05:
 			continue
-		var steps := int(floor(horiz / ALONG_M))
+		var steps := int(floor(horiz / STEP_M))
 		for s in steps:
-			var dist := float(s + 1) * ALONG_M
+			var dist := float(s + 1) * STEP_M
 			if dist >= horiz - 0.04:
 				break
 			out.append(a.lerp(b, dist / horiz))
@@ -506,7 +506,7 @@ func _build_crown(road: Dictionary) -> void:
 	var bank := PackedFloat32Array()
 	crown.resize(pts.size())
 	bank.resize(pts.size())
-	var full := CROWN_RATE * float(road["half"])
+	var full := CROWN_FRAC * float(road["half"])
 	for i in pts.size():
 		bank[i] = 0.0
 		if bool(road["rail"]) or _vertex_elevated(road, i):
@@ -1017,7 +1017,7 @@ func _terrain_y(x: float, z: float, prefer: Dictionary, seg: Dictionary) -> Vect
 		return Vector2(surf - STAMP_M, 1.0)
 	var past := geo - (bench + CELL_PAD_M)
 	if orig >= edge - 0.15:
-		var rise := _cut_rise(past, bool(prefer["rock"]))
+		var rise := _bench_rise(past, bool(prefer["rock"]))
 		var cut_y := edge + rise
 		if orig > cut_y:
 			return Vector2(cut_y, 0.0)
@@ -1034,7 +1034,7 @@ func _terrain_y(x: float, z: float, prefer: Dictionary, seg: Dictionary) -> Vect
 	return Vector2(fill, 0.0)
 
 
-func _cut_rise(past: float, rock: bool) -> float:
+func _bench_rise(past: float, rock: bool) -> float:
 	if past <= 0.0:
 		return 0.0
 	if not rock:
@@ -1044,14 +1044,14 @@ func _cut_rise(past: float, rock: bool) -> float:
 	var hi := past / ROCK_RUN + 2.0
 	for _i in 14:
 		var mid := (lo + hi) * 0.5
-		if _cut_run(mid) < past:
+		if _bench_run(mid) < past:
 			lo = mid
 		else:
 			hi = mid
 	return lo
 
 
-func _cut_run(v: float) -> float:
+func _bench_run(v: float) -> float:
 	if v <= 0.0:
 		return 0.0
 	if v <= ROCK_PLAIN_M:
@@ -1100,7 +1100,7 @@ func _nearest_geo(road: Dictionary, x: float, z: float) -> Dictionary:
 # --- mesh --------------------------------------------------------------------
 
 
-func _emit_road(road: Dictionary, rect: Rect2, faces: PackedVector3Array, coord: Vector2i) -> void:
+func _emit_ribbon(road: Dictionary, rect: Rect2, faces: PackedVector3Array, coord: Vector2i) -> void:
 	var pts: PackedVector3Array = road["pts"]
 	var reach := _reach_of(road)
 	var lats := _lats(float(road["half"]), reach)
@@ -1110,13 +1110,13 @@ func _emit_road(road: Dictionary, rect: Rect2, faces: PackedVector3Array, coord:
 			continue
 		var a := pts[i]
 		var b := pts[i + 1]
-		if not _seg_hits_rect(a.x, a.z, b.x, b.z, rect, reach + 2.0):
+		if not _span_hits(a.x, a.z, b.x, b.z, rect, reach + 2.0):
 			continue
 		var row0 := _row(road, i, 0.0, lats)
 		var row1 := _row(road, i, 1.0, lats)
 		for k in range(lats.size() - 1):
-			_tri(faces, row0[k], row1[k], row1[k + 1])
-			_tri(faces, row0[k], row1[k + 1], row0[k + 1])
+			_add_tri(faces, row0[k], row1[k], row1[k + 1])
+			_add_tri(faces, row0[k], row1[k + 1], row0[k + 1])
 		_bar_span(road, i, 0.0, bars)
 		_bar_span(road, i, 1.0, bars)
 	_emit_aprons(road, rect, faces, lats)
@@ -1148,8 +1148,8 @@ func _emit_aprons(road: Dictionary, rect: Rect2, faces: PackedVector3Array, lats
 			var p0: Vector3 = row0[k]
 			row1[k] = Vector3(p0.x + dir.x * APRON_M, p0.y, p0.z + dir.z * APRON_M)
 		for k in range(lats.size() - 1):
-			_tri(faces, row0[k], row1[k], row1[k + 1])
-			_tri(faces, row0[k], row1[k + 1], row0[k + 1])
+			_add_tri(faces, row0[k], row1[k], row1[k + 1])
+			_add_tri(faces, row0[k], row1[k + 1], row0[k + 1])
 
 
 func _emit_junction(item: Dictionary, rect: Rect2, faces: PackedVector3Array) -> void:
@@ -1167,7 +1167,7 @@ func _emit_junction(item: Dictionary, rect: Rect2, faces: PackedVector3Array) ->
 		var z := cz + sin(ang) * radius
 		var p := Vector3(x, _plane_y(item, x, z), z)
 		if s > 0:
-			_tri(faces, centre, prev, p)
+			_add_tri(faces, centre, prev, p)
 		prev = p
 
 
@@ -1246,7 +1246,7 @@ func _bar_side(road: Dictionary, edge: Vector3, outward: Vector3, edge_y: float,
 		if ground > -70.0:
 			worst = maxf(worst, edge_y - ground)
 		dist += 0.5
-	if worst <= BARRIER_DROP_M - 0.05:
+	if worst <= DROP_BARRIER_M - 0.05:
 		return
 	var seat := Vector3(edge.x, 0.0, edge.z) + outward * 0.22
 	var foot := _probe_ground(road, i, seat.x, seat.z)
@@ -1294,7 +1294,7 @@ func _inside_disc(road: Dictionary, p: Vector3) -> bool:
 	return d + _reach_of(road) < float(junc["radius"]) - 0.3
 
 
-func _tri(faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3) -> void:
+func _add_tri(faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3) -> void:
 	var ab := b - a
 	var ac := c - a
 	var n := ab.cross(ac)
@@ -1529,7 +1529,7 @@ func _outward_end(pts: PackedVector3Array, index: int) -> Vector3:
 	return dir.normalized()
 
 
-func _seg_hits_rect(ax: float, az: float, bx: float, bz: float, rect: Rect2, pad: float) -> bool:
+func _span_hits(ax: float, az: float, bx: float, bz: float, rect: Rect2, pad: float) -> bool:
 	var grown := rect.grow(pad)
 	if grown.has_point(Vector2(ax, az)) or grown.has_point(Vector2(bx, bz)):
 		return true
