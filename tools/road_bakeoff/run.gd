@@ -259,16 +259,12 @@ func _build_chunks(coords: Array[Vector2i]) -> void:
 	print("BARRIERS %d" % pending.size())
 
 
-## The road is the terrain body. A TerrainBody hit is a hit. The guardrail is not.
+## The road is the terrain body. A TerrainBody hit is a hit. A guardrail in
+## front of that surface is not a miss: the driving walk steps down through it.
 func _is_road(hit: Dictionary) -> bool:
 	if _strategy_id != 4:
 		return super._is_road(hit)
-	if hit.is_empty():
-		return false
-	var body := hit.get("collider") as Node
-	if body != null and str(body.name) == "BarrierBody":
-		return false
-	return true
+	return not hit.is_empty()
 
 
 func _strategy_ready() -> bool:

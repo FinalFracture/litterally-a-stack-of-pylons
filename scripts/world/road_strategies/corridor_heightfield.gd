@@ -18,7 +18,13 @@ const CORRIDOR_M := 25.0
 ## ground, not the first slope cell. The slope still starts at the verge.
 ## The 4 m blend and the 46° rock test are the parent's BLEND_M and ROCK_DEG.
 const VERGE_MARGIN_M := 0.8
-const BARRIER_PAST_M := 0.45
+## Past the shoulder and ditch, far enough that a vertical ray on the verge
+## does not meet the box. The edge probe still reaches it (it starts at the
+## paint edge and walks 3.2 m).
+const BARRIER_PAST_M := 1.05
+## Two carriageways more than this far apart in height are a grade separation.
+## A heightfield keeps the lower one. The upper road has no deck of its own.
+const STACK_M := 1.0
 
 var _barrier_pending: Array = []
 var _mu := Mutex.new()
@@ -91,10 +97,16 @@ func refine_corridor(base: PackedFloat32Array, bn: int, bsp: float, origin: Vect
 	var near := PackedFloat32Array()
 	near.resize(n * n)
 	near.fill(100000.0)
+	var tier := PackedByteArray()
+	tier.resize(n * n)
+	var owner := PackedInt32Array()
+	owner.resize(n * n)
+	owner.fill(-1)
+	var road_i := 0
 	for road in _roads:
-		if bool(road.get("rail", false)):
-			continue
-		_stamp_road(road, grid, orig, near, n, origin)
+		if not bool(road.get("rail", false)):
+			_stamp_road(road, road_i, grid, orig, near, tier, owner, n, origin)
+		road_i += 1
 	_stamp_junctions(grid, n, origin)
 	var stats := _measure_steep(grid, orig, n)
 	_place_barriers(grid, orig, n, origin)
@@ -141,7 +153,7 @@ func _upsample(base: PackedFloat32Array, bn: int, dn: int) -> PackedFloat32Array
 	return out
 
 
-func _stamp_road(road: Dictionary, grid: PackedFloat32Array, orig: PackedFloat32Array, near: PackedFloat32Array, n: int, origin: Vector2) -> void:
+func _stamp_road(road: Dictionary, road_i: int, grid: PackedFloat32Array, orig: PackedFloat32Array, near: PackedFloat32Array, tier: PackedByteArray, owner: PackedInt32Array, n: int, origin: Vector2) -> void:
 	var pts: PackedVector3Array = road["pts"]
 	var left: PackedVector3Array = road["left"]
 	var right: PackedVector3Array = road["right"]
@@ -201,8 +213,6 @@ func _stamp_road(road: Dictionary, grid: PackedFloat32Array, orig: PackedFloat32
 				if dist > CORRIDOR_M:
 					continue
 				var idx := row + c
-				if dist >= near[idx]:
-					continue
 				var t := hit.y
 				var cy := lerpf(ay, by, t)
 				var bk := lerpf(ba, bb, t)
@@ -219,20 +229,21 @@ func _stamp_road(road: Dictionary, grid: PackedFloat32Array, orig: PackedFloat32
 				var edge_y := sec.x if u < 0.5 else sec.z
 				var y := edge_y
 				var outer := 0.0
-				if u >= 0.0 and u <= 1.0:
-					if u < 0.5:
-						y = lerpf(sec.y, sec.x, (0.5 - u) / 0.5)
-					else:
-						y = lerpf(sec.y, sec.z, (u - 0.5) / 0.5)
-				else:
+				var here := 3
+				if u < 0.0 or u > 1.0:
 					var ex := lp.x if u < 0.0 else rp.x
 					var ez := lp.z if u < 0.0 else rp.z
 					var dx := x - ex
 					var dz := z - ez
 					outer = sqrt(dx * dx + dz * dz)
 					if outer <= flat_reach:
+						here = 2
 						y = edge_y
 					else:
+						here = 1
+						var prev_s := int(tier[idx])
+						if prev_s >= 2 or (prev_s == 1 and dist >= near[idx]):
+							continue
 						var past := outer - flat_reach
 						var ground := orig[idx]
 						var rock := rock_cls or _steep_orig(orig, n, origin, x, z)
@@ -242,10 +253,35 @@ func _stamp_road(road: Dictionary, grid: PackedFloat32Array, orig: PackedFloat32
 						else:
 							var fill: Vector3 = _fill_stamp(edge_y, past, ground)
 							y = fill.x if fill.z >= 0.5 else ground
+				elif u < 0.5:
+					y = lerpf(sec.y, sec.x, (0.5 - u) / 0.5)
+				else:
+					y = lerpf(sec.y, sec.z, (u - 0.5) / 0.5)
 				if dist > CORRIDOR_M - BLEND_M and outer > flat_reach:
 					var blend_u := clampf((dist - (CORRIDOR_M - BLEND_M)) / BLEND_M, 0.0, 1.0)
 					var w := 0.5 - 0.5 * cos(PI * blend_u)
 					y = lerpf(y, orig[idx], w)
+				# 3 paint, 2 verge, 1 slope. Paint beats a closer verge. An upper
+				# deck does not bury a lower road. Two paints more than STACK_M
+				# apart keep the lower surface.
+				var prev := int(tier[idx])
+				var other := prev > 0 and int(owner[idx]) != road_i
+				var take := prev == 0
+				if not take and here >= 2 and other and y + STACK_M < grid[idx]:
+					take = true
+				elif not take and other and y > grid[idx] + STACK_M:
+					take = false
+				elif not take and here > prev:
+					take = true
+				elif not take and here == prev:
+					if here == 3 and other and absf(y - grid[idx]) > STACK_M:
+						take = y < grid[idx]
+					else:
+						take = dist < near[idx]
+				if not take:
+					continue
+				tier[idx] = here
+				owner[idx] = road_i
 				near[idx] = dist
 				grid[idx] = y
 
