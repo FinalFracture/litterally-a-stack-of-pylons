@@ -54,15 +54,19 @@ func _bakeoff() -> void:
 			return
 	_strategy_id = RoadStrategyRegistry.current_id()
 	_spec = RoadStrategyRegistry.spec_for(_strategy_id)
+	# The harness used to treat every id except 0 as a stub and exit before
+	# the world was built. A strategy that returns a builder now runs.
+	# A stub still returns null from make_builder() and fails here.
 	if _strategy_id != 0:
 		var strategy := RoadStrategyRegistry.create()
-		strategy.fail_unimplemented()
-		bakeoff_gap_max = float(_spec.get("gap_max", 0.05))
-		for item in queue:
-			_site = item
-			_write_result({}, "", "", 0.0, 0.0, true)
-		quit(1)
-		return
+		var probe = strategy.make_builder()
+		if probe == null:
+			bakeoff_gap_max = float(_spec.get("gap_max", 0.05))
+			for item in queue:
+				_site = item
+				_write_result({}, "", "", 0.0, 0.0, true)
+			quit(1)
+			return
 	for item in queue:
 		await _one(item)
 	quit(0)

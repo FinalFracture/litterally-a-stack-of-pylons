@@ -8,6 +8,7 @@ extends RefCounted
 
 const _Current := preload("res://scripts/world/road_strategies/strategy_00_current.gd")
 const _Stub := preload("res://scripts/world/road_strategies/strategy_stub.gd")
+const _Tin := preload("res://scripts/world/road_strategies/strategy_06_tin.gd")
 
 const SPECS: Array[Dictionary] = [
 	{"id": 0, "name": "current_builder", "gap_max": 0.050, "summary": "Measured builder. Behaviour unchanged."},
@@ -52,6 +53,8 @@ static func create() -> RoadStrategy:
 	var strategy: RoadStrategy
 	if strategy_id == 0:
 		strategy = _Current.new()
+	elif strategy_id == 6:
+		strategy = _Tin.new()
 	else:
 		strategy = _Stub.new()
 		strategy.id = strategy_id
