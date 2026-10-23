@@ -19,7 +19,7 @@ const DENSE := 2.0
 const APRON := 12.0
 const VERGE_SLACK := 1.70
 const END_CAP := 1.20
-const PUFF := 0.04
+const PUFF := 0.0
 const LIP := 0.012
 const BLEND_MIN := 10.0
 const HOLD_EXTRA := 2.5
@@ -529,6 +529,10 @@ func _cap_lip(ri: int) -> void:
 		_clamp_dir(pts, pin, cap, 1)
 		_clamp_dir(pts, pin, cap, -1)
 		_lip_pass(pts, pin, cap)
+	# The lip step can walk an unpinned point away from a junction pin.
+	# Clamp again so that point stays inside the class grade.
+	_clamp_dir(pts, pin, cap, 1)
+	_clamp_dir(pts, pin, cap, -1)
 	road["pts"] = pts
 	road["chain"] = _chain_of(pts)
 	_roads[ri] = road
