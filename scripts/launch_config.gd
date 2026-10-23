@@ -13,8 +13,10 @@ extends Node
 ##   PYLONS_CHUNK=x,z      --chunk=x,z       start (teleport) in chunk x,z (500 m grid; default 0,0)
 ##   PYLONS_WORLD_HALF_M=N --world-half-m=N  world edge at +-N metres (default 2000; fall-off beyond)
 ##   PYLONS_PEDS=N         --peds=N          pedestrians kept near the player (default 16)
+##   PYLONS_ROAD_STRATEGY=N --road_strategy=N  bake-off strategy 0..10 (default 0)
 ##
 ## At boot the game prints one PYLONS_LAUNCH line that replays the same run.
+## With no road strategy flag the line and the roads match the measured builder.
 
 ## Fixed default world seed. Chosen once for Milestone 1 (2026-10-08) so every
 ## plain run builds the same city. Change it only on purpose, and say so in STATUS.md.
@@ -49,6 +51,9 @@ var world_half_m := 2000.0
 var peds := 16
 ## Playtest map (M). On unless --map=0 or PYLONS_MAP=0.
 var map_enabled := true
+## Bake-off road strategy. 0 is the measured builder. Parsed with --map.
+var road_strategy := 0
+var road_strategy_source := "default"
 var _announced := false
 ## Chunk the player was actually placed in. The launch line prints this, not the raw flag.
 var placed_chunk := Vector2i.ZERO
@@ -113,6 +118,8 @@ func _parse() -> void:
 	if raw_map != "":
 		var map_flag := raw_map.to_lower()
 		map_enabled = map_flag == "1" or map_flag == "true" or map_flag == "yes" or map_flag == "on"
+	road_strategy = RoadStrategyRegistry.current_id()
+	road_strategy_source = RoadStrategyRegistry.source()
 	keymouse = _flag(args, "keymouse", "PYLONS_KEYMOUSE") or _keymouse_before_separator()
 	logs = _flag(args, "logs", "PYLONS_LOGS")
 
@@ -202,6 +209,8 @@ func launch_line() -> String:
 		flags.append("--world-half-m=%.0f" % world_half_m)
 	if peds != 16:
 		flags.append("--peds=%d" % peds)
+	if road_strategy != 0:
+		flags.append("--road_strategy=%d" % road_strategy)
 	var tail := ""
 	if not flags.is_empty():
 		tail = " " + " ".join(flags)

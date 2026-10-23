@@ -106,6 +106,8 @@ const GUARD_ROADS := {
 	"rim_road_south": true,
 }
 
+## Empty uses world/twin_falls/data/roads.json. RoadLab sets this before prepare().
+var roads_path := ""
 var _roads: Array = []
 ## Unstamped ground outside the chunk being built. Guards need the neighbour
 ## canyon, which this chunk's grid clamps away.
@@ -136,7 +138,8 @@ func prepare() -> void:
 	_crossings.clear()
 	_grade_end = -1.0
 	_gauge_half = RAIL_GAUGE
-	var roads: Variant = JSON.parse_string(FileAccess.get_file_as_string(DATA + "/roads.json"))
+	var road_file := roads_path if roads_path != "" else DATA + "/roads.json"
+	var roads: Variant = JSON.parse_string(FileAccess.get_file_as_string(road_file))
 	if roads is Dictionary:
 		for item in roads.get("roads", []):
 			if item is Dictionary:
@@ -148,6 +151,15 @@ func prepare() -> void:
 		for item in roads.get("intersections", []):
 			if item is Dictionary:
 				_junctions.append(item)
+	# An alternate roads file is a lab network. It does not load the Twin Falls landmarks.
+	if roads_path == "":
+		_load_landmarks()
+	_collect_plates()
+	_finish_profiles()
+	_build_mats()
+
+
+func _load_landmarks() -> void:
 	var marks: Variant = JSON.parse_string(FileAccess.get_file_as_string(DATA + "/landmarks.json"))
 	if marks is Dictionary:
 		for item in marks.get("landmarks", []):
@@ -184,9 +196,6 @@ func prepare() -> void:
 				"fp": fp,
 				"seat": seat,
 			})
-	_collect_plates()
-	_finish_profiles()
-	_build_mats()
 
 
 ## Stamp every segment except deck, bridge, and rail. Those only lower.
