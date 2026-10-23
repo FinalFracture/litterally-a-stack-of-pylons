@@ -4,3 +4,6 @@
 
 # Scratch diagnostics (probes, screenshots, logs). Never commit.
 _diag/
+
+# Bake-off runs. One example baseline lives in tools/road_bakeoff/baseline/.
+bakeoff_out/

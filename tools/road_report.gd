@@ -70,6 +70,28 @@ var _fill_ends: Array[Dictionary] = []
 var _components := 1
 var _cone_tests := 0
 var _cone_fails := 0
+## Bake-off hooks. Left off, the network report is the measured one.
+var bakeoff_mode := false
+var bakeoff_gap_max := GAP_MAX
+var bakeoff_rect_on := false
+var bakeoff_rect := Rect2()
+var bakeoff_force_low := false
+var bakeoff_load_bridge := true
+var bakeoff_pins: Array[Dictionary] = []
+var _bakeoff_faces := PackedVector3Array()
+var _mesh_tris := 0
+var _vertical_faces := 0
+var _grade_max := 0.0
+var _grade_over := 0
+var _cross_max := 0.0
+var _cross_over := 0
+var _verge_abs := 0.0
+var _verge_over := 0
+var _seat_max := 0.0
+var _seat_over := 0
+var _seat_n := 0
+var _feature_missing := 0
+var _last_grade: Dictionary = {}
 
 
 func _initialize() -> void:
@@ -78,30 +100,8 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var t0 := Time.get_ticks_msec()
-	_gen = load("res://scripts/world/twin_falls_terrain_generator.gd").new()
-	_gen.prepare()
-	_builder = _gen._roads
-	_host = Node3D.new()
-	_host.name = "RoadReport"
-	root.add_child(_host)
-	_index_roads()
-	var coords := _chunks()
-	print("ROAD_REPORT roads=%d chunks=%d" % [_order.size(), coords.size()])
-	_build_chunks(coords)
-	_load_bridge()
-	await physics_frame
-	await physics_frame
-	_space = _host.get_world_3d().direct_space_state
-	for id in _order:
-		_measure_road(id)
-		_grade_road(id)
-	_measure_junctions()
-	_measure_ends()
-	_components = _components_of()
-	_geometric_regressions()
-	await _cones()
-	_apply_junctions()
-	_finish_status()
+	await _boot_world()
+	await _measure_all()
 	var payload := _payload()
 	var paths := _write(payload)
 	_print_lines(payload)
@@ -109,9 +109,101 @@ func _run() -> void:
 	quit(0)
 
 
+func _make_generator():
+	return load("res://scripts/world/twin_falls_terrain_generator.gd").new()
+
+
+func _gap_limit() -> float:
+	if bakeoff_mode:
+		return bakeoff_gap_max
+	return GAP_MAX
+
+
+func _in_site(x: float, z: float) -> bool:
+	if not bakeoff_rect_on:
+		return true
+	return bakeoff_rect.has_point(Vector2(x, z))
+
+
+func _reset_scores() -> void:
+	_stats.clear()
+	_order.clear()
+	_failures.clear()
+	_fail_n.clear()
+	_worst.clear()
+	_junctions.clear()
+	_regressions.clear()
+	_pushes.clear()
+	_fill_ends.clear()
+	_components = 1
+	_cone_tests = 0
+	_cone_fails = 0
+	_bakeoff_faces = PackedVector3Array()
+	_mesh_tris = 0
+	_vertical_faces = 0
+	_grade_max = 0.0
+	_grade_over = 0
+	_cross_max = 0.0
+	_cross_over = 0
+	_verge_abs = 0.0
+	_verge_over = 0
+	_seat_max = 0.0
+	_seat_over = 0
+	_seat_n = 0
+	_feature_missing = 0
+	_last_grade.clear()
+
+
+func _boot_world() -> void:
+	_reset_scores()
+	if _host != null:
+		root.remove_child(_host)
+		_host.free()
+		_host = null
+		await physics_frame
+	_gen = _make_generator()
+	_gen.prepare()
+	_builder = _gen._roads
+	if _builder == null:
+		push_error("strategy %d not implemented" % RoadStrategyRegistry.current_id())
+		return
+	_host = Node3D.new()
+	_host.name = "RoadReport"
+	root.add_child(_host)
+	_index_roads()
+	var coords := _chunks()
+	print("ROAD_REPORT roads=%d chunks=%d" % [_order.size(), coords.size()])
+	_build_chunks(coords)
+	if bakeoff_load_bridge:
+		_load_bridge()
+	await physics_frame
+	await physics_frame
+	_space = _host.get_world_3d().direct_space_state
+
+
+func _measure_all() -> void:
+	for id in _order:
+		_measure_road(id)
+		_grade_road(id)
+	_measure_junctions()
+	_measure_ends()
+	_components = _components_of()
+	if bakeoff_mode:
+		_queue_pin_cones()
+		_count_vertical_faces()
+		_junction_features()
+	else:
+		_geometric_regressions()
+	await _cones()
+	_apply_junctions()
+	_finish_status()
+
+
 func _index_roads() -> void:
 	for road in _builder._roads:
 		if bool(road["rail"]):
+			continue
+		if bakeoff_rect_on and not _hits_site(road):
 			continue
 		var id := str(road["id"])
 		var chain: PackedFloat32Array = road["chain"]
@@ -165,16 +257,18 @@ func _chunks() -> Array[Vector2i]:
 		var s := 0.0
 		while s <= length + 0.01:
 			var pose := _pose(road, s)
-			_pad_chunk(bag, pose["x"], pose["z"])
-			_pad_chunk(bag, pose["lx"], pose["lz"])
-			_pad_chunk(bag, pose["rx"], pose["rz"])
+			if _in_site(float(pose["x"]), float(pose["z"])):
+				_pad_chunk(bag, pose["x"], pose["z"])
+				_pad_chunk(bag, pose["lx"], pose["lz"])
+				_pad_chunk(bag, pose["rx"], pose["rz"])
 			s += 25.0
 	for item in _builder._junctions:
 		var pos: Array = item.get("pos", [])
-		if pos.size() >= 3:
+		if pos.size() >= 3 and _in_site(float(pos[0]), float(pos[2])):
 			_pad_chunk(bag, float(pos[0]), float(pos[2]))
-	for spot in REGRESSIONS:
-		_pad_chunk(bag, float(spot["x"]), float(spot["z"]))
+	if not bakeoff_mode:
+		for spot in REGRESSIONS:
+			_pad_chunk(bag, float(spot["x"]), float(spot["z"]))
 	var out: Array[Vector2i] = []
 	for key in bag.keys():
 		out.append(key)
@@ -198,11 +292,18 @@ func _pad_chunk(bag: Dictionary, x: float, z: float) -> void:
 func _build_chunks(coords: Array[Vector2i]) -> void:
 	var n := 0
 	for coord in coords:
-		var dc := _gen._data_of(coord)
-		if dc.x < 0:
-			continue
+		var dc: Vector2i
+		var hi: bool
+		if bakeoff_force_low:
+			dc = Vector2i(coord.x, -coord.y - 1)
+			hi = false
+		else:
+			dc = _gen._data_of(coord)
+			if dc.x < 0:
+				continue
+			hi = _gen._is_hi(dc.x, dc.y)
 		var t0 := Time.get_ticks_msec()
-		var pay = _gen._build(coord, dc, _gen._is_hi(dc.x, dc.y))
+		var pay = _gen._build(coord, dc, hi)
 		var chunk := Node3D.new()
 		chunk.name = "C_%d_%d" % [coord.x, coord.y]
 		_host.add_child(chunk)
@@ -212,6 +313,10 @@ func _build_chunks(coords: Array[Vector2i]) -> void:
 			var face_v: Variant = pack.get("faces", null)
 			if face_v is PackedVector3Array and (face_v as PackedVector3Array).size() >= 9:
 				_builder._job_body(chunk, face_v)
+				if bakeoff_mode:
+					_bakeoff_faces.append_array(face_v)
+		if bakeoff_mode:
+			_mesh_tris += int(pay.tris)
 		pay.parts = []
 		n += 1
 		print("CHUNK %s %d ms" % [coord, Time.get_ticks_msec() - t0])
@@ -239,6 +344,15 @@ func _measure_road(id: String) -> void:
 	var have_prev := false
 	while true:
 		var pose := _pose(road, minf(s, length))
+		if not _in_site(float(pose["x"]), float(pose["z"])):
+			var skipped: Dictionary = _stats[id]
+			skipped["_y0"] = -99999.0
+			skipped["_y1"] = -99999.0
+			have_prev = false
+			if s >= length - 0.001:
+				break
+			s = minf(s + SAMPLE_M, length)
+			continue
 		_sample_station(road, pose, s)
 		# Cone stations every 50 m, including the start. The pose already has barrier flags.
 		if s <= 0.01 or is_equal_approx(fmod(s, CONE_M), 0.0):
@@ -259,20 +373,23 @@ func _sample_station(road: Dictionary, pose: Dictionary, s: float) -> void:
 	var id := str(road["id"])
 	var st: Dictionary = _stats[id]
 	var half := float(pose["half"])
+	var reach := half
+	if bakeoff_mode and not bool(pose["elevated"]):
+		reach = half + float(road.get("shoulder", 0.0)) + float(road.get("ditch", 0.0))
 	var lats: Array[float] = []
-	var lat := -half
-	while lat <= half + 0.001:
+	var lat := -reach
+	while lat <= reach + 0.001:
 		lats.append(lat)
 		lat += ACROSS_M
-	if lats.is_empty() or absf(lats[lats.size() - 1] - half) > 0.02:
-		lats.append(half)
+	if lats.is_empty() or absf(lats[lats.size() - 1] - reach) > 0.02:
+		lats.append(reach)
 	var prev_y := 0.0
 	var prev_e := 0.0
 	var have := false
 	var cy := float(pose["y"])
 	var cy_dist := 1.0e9
 	for offset in lats:
-		var at := _at_lat(pose, offset)
+		var at := _at_lat(pose, offset) if absf(offset) <= half + 0.001 else _beyond_edge(pose, offset)
 		var expected := float(at["ey"])
 		var hit := _ray(Vector3(at["x"], expected + 2.0, at["z"]), Vector3(at["x"], expected - 80.0, at["z"]))
 		st["samples"] = int(st["samples"]) + 1
@@ -296,8 +413,8 @@ func _sample_station(road: Dictionary, pose: Dictionary, s: float) -> void:
 					st["max_gap"] = maxf(float(st["max_gap"]), gap)
 					st["min_gap"] = minf(float(st["min_gap"]), gap)
 				st["gap_n"] = int(st["gap_n"]) + 1
-				if gap < -0.001 or gap > GAP_MAX + 0.0001:
-					_blame(id, "gap", at["x"], at["z"], gap, GAP_MAX if gap > 0.0 else 0.0)
+				if gap < -0.001 or gap > _gap_limit() + 0.0001:
+					_blame(id, "gap", at["x"], at["z"], gap, _gap_limit() if gap > 0.0 else 0.0)
 		if have:
 			var residual := absf((hit_y - prev_y) - (expected - prev_e))
 			if residual > float(st["max_step_across"]):
@@ -322,6 +439,8 @@ func _sample_station(road: Dictionary, pose: Dictionary, s: float) -> void:
 	st["_y1"] = cy
 	_sample_edge(id, pose, true)
 	_sample_edge(id, pose, false)
+	if bakeoff_mode:
+		_bakeoff_station(road, pose, s)
 	pose["s"] = s
 
 
@@ -339,6 +458,8 @@ func _sample_edge(id: String, pose: Dictionary, left: bool, blame: bool = true) 
 		dist += 0.5
 	pose["gap_l" if left else "gap_r"] = edge.y - _gen.drawn_height_at(edge.x, edge.z)
 	pose["bar_l" if left else "bar_r"] = barrier
+	if bakeoff_mode and barrier:
+		_seat_at(id, edge, outward)
 	if barrier or not blame:
 		return
 	var st: Dictionary = _stats[id]
@@ -656,6 +777,8 @@ func _measure_junctions() -> void:
 		var radius := float(item.get("radius", 8.0))
 		var cx := float(pos[0])
 		var cz := float(pos[2])
+		if not _in_site(cx, cz):
+			continue
 		var pts: Array[Vector3] = []
 		var x := -radius
 		while x <= radius + 0.01:
@@ -802,6 +925,8 @@ func _measure_ends() -> void:
 			continue
 		for end_i in [0, pts.size() - 1]:
 			var p := pts[end_i]
+			if not _in_site(p.x, p.z):
+				continue
 			var kind := _end_kind(road, end_i)
 			var tangent := _end_tangent(pts, end_i)
 			var ahead := p + tangent * 1.0
@@ -1472,7 +1597,7 @@ func _grade_road(id: String) -> void:
 	if int(st["gap_n"]) == 0:
 		st["gap_pass"] = true
 	else:
-		st["gap_pass"] = float(st["min_gap"]) >= -0.001 and float(st["max_gap"]) <= GAP_MAX + 0.0001
+		st["gap_pass"] = float(st["min_gap"]) >= -0.001 and float(st["max_gap"]) <= _gap_limit() + 0.0001
 	st["drop_pass"] = float(st["max_drop"]) <= DROP_MAX + 0.001
 
 
@@ -1698,3 +1823,261 @@ func _print_lines(payload: Dictionary) -> void:
 		str(net["status"]), int(net["roads"]), int(net["roads_pass"]), int(net["roads_fail"]),
 		100.0 * float(net["hit_rate"]), int(net["components"]),
 	])
+
+
+func _hits_site(road: Dictionary) -> bool:
+	var pts: PackedVector3Array = road["pts"]
+	if pts.size() < 2:
+		return false
+	var grown := bakeoff_rect.grow(25.0)
+	for i in pts.size() - 1:
+		var a := Vector2(pts[i].x, pts[i].z)
+		var b := Vector2(pts[i + 1].x, pts[i + 1].z)
+		if grown.has_point(a) or grown.has_point(b):
+			return true
+		if maxf(a.x, b.x) < grown.position.x or minf(a.x, b.x) > grown.end.x:
+			continue
+		if maxf(a.y, b.y) < grown.position.y or minf(a.y, b.y) > grown.end.y:
+			continue
+		return true
+	return false
+
+
+func _beyond_edge(pose: Dictionary, lat: float) -> Dictionary:
+	var half := maxf(float(pose["half"]), 0.001)
+	var sign := 1.0 if lat > 0.0 else -1.0
+	var edge := _at_lat(pose, sign * half)
+	var outward: Vector3 = pose["out_r"] if lat > 0.0 else pose["out_l"]
+	var extra := absf(lat) - half
+	return {
+		"x": float(edge["x"]) + outward.x * extra,
+		"z": float(edge["z"]) + outward.z * extra,
+		"ey": float(edge["ey"]),
+	}
+
+
+func _surface_y(at: Vector3, expected: float) -> float:
+	var hit := _ray(at + Vector3(0, 2, 0), at + Vector3(0, -80, 0))
+	if hit.is_empty() or not _is_road(hit):
+		return expected
+	return _driving_y(at, expected, hit)
+
+
+func _bakeoff_station(road: Dictionary, pose: Dictionary, s: float) -> void:
+	var id := str(road["id"])
+	var half := maxf(float(pose["half"]), 0.5)
+	var ly := _surface_y(Vector3(float(pose["lx"]), float(pose["ly"]), float(pose["lz"])), float(pose["ly"]))
+	var ry := _surface_y(Vector3(float(pose["rx"]), float(pose["ry"]), float(pose["rz"])), float(pose["ry"]))
+	var width := half * 2.0
+	var measured := (ry - ly) / width
+	var sec: Vector3 = pose["sec"]
+	var design := (sec.z - sec.x) / width
+	var residual := absf(measured - design)
+	var limit := 0.025
+	var bad := absf(measured) > 0.025 + 0.0001
+	var shown := absf(measured)
+	if absf(design) > 0.025:
+		limit = 0.005
+		bad = residual > 0.005 + 0.0001
+		shown = residual
+	if shown > _cross_max:
+		_cross_max = shown
+	if bad:
+		_cross_over += 1
+		_blame(id, "cross_slope", float(pose["x"]), float(pose["z"]), shown, limit)
+	if not bool(pose["elevated"]):
+		var outer := float(road.get("shoulder", 0.0)) + float(road.get("ditch", 0.0))
+		if outer > 0.05:
+			_verge_at(id, pose, true, outer)
+			_verge_at(id, pose, false, outer)
+	var mark := s <= 0.01 or s >= float(road["chain"][road["chain"].size() - 1]) - 0.05 or fmod(s, 10.0) < 0.05
+	if not mark:
+		return
+	var cy := _surface_y(Vector3(float(pose["x"]), float(pose["y"]), float(pose["z"])), float(pose["y"]))
+	if _last_grade.has(id):
+		var prev: Dictionary = _last_grade[id]
+		var ds := s - float(prev["s"])
+		if ds >= 5.0:
+			var grade := absf(cy - float(prev["y"])) / ds
+			if grade > _grade_max:
+				_grade_max = grade
+			var cap := float(road.get("cap", 0.06)) + 0.005
+			if grade > cap + 0.000001:
+				_grade_over += 1
+				_blame(id, "grade", float(pose["x"]), float(pose["z"]), grade, cap)
+	_last_grade[id] = {"s": s, "y": cy}
+
+
+func _verge_at(id: String, pose: Dictionary, left: bool, outer: float) -> void:
+	var edge := Vector3(float(pose["lx" if left else "rx"]), float(pose["ly" if left else "ry"]), float(pose["lz" if left else "rz"]))
+	var outward: Vector3 = pose["out_l"] if left else pose["out_r"]
+	var p := edge + outward * outer
+	var hit := _ray(p + Vector3(0, 2, 0), p + Vector3(0, -80, 0))
+	var ground := _gen.drawn_height_at(p.x, p.z)
+	if hit.is_empty() or ground < -70.0:
+		return
+	var top := float((hit["position"] as Vector3).y)
+	var gap := top - ground
+	if absf(gap) > _verge_abs:
+		_verge_abs = absf(gap)
+	if absf(gap) > 0.10 + 0.0001:
+		_verge_over += 1
+		_blame(id, "verge", p.x, p.z, gap, 0.10)
+
+
+func _seat_at(id: String, edge: Vector3, outward: Vector3) -> void:
+	var p := edge + outward * 0.25
+	var y := edge.y + 1.2
+	var lowest := y
+	var saw := false
+	for _i in 28:
+		var hit := _ray(Vector3(p.x, y, p.z), Vector3(p.x, y - 0.1, p.z))
+		if hit.is_empty() or _is_ground(hit):
+			break
+		saw = true
+		lowest = float((hit["position"] as Vector3).y)
+		y = lowest - 0.05
+		if y < edge.y - 1.5:
+			break
+	if not saw:
+		return
+	var ground := _gen.drawn_height_at(p.x, p.z)
+	if ground < -70.0:
+		return
+	var gap := absf(lowest - ground)
+	_seat_n += 1
+	if gap > _seat_max:
+		_seat_max = gap
+	if gap > 0.05 + 0.0001:
+		_seat_over += 1
+		_blame(id, "barrier_seat", p.x, p.z, gap, 0.05)
+
+
+func _count_vertical_faces() -> void:
+	var faces := _bakeoff_faces
+	var i := 0
+	while i + 2 < faces.size():
+		var a := faces[i]
+		var b := faces[i + 1]
+		var c := faces[i + 2]
+		var n := (b - a).cross(c - a)
+		if n.length_squared() > 0.0000001 and absf(n.normalized().y) < 0.5:
+			_vertical_faces += 1
+		i += 3
+
+
+func _junction_features() -> void:
+	_feature_missing = 0
+	for rec in _junctions:
+		if _feature_near(float(rec["x"]), float(rec["z"])):
+			continue
+		_feature_missing += 1
+		_blame(str(rec["id"]), "junction_features", float(rec["x"]), float(rec["z"]), 1.0, 0.0)
+
+
+func _feature_near(x: float, z: float) -> bool:
+	return _feature_walk(_host, x, z)
+
+
+func _feature_walk(node: Node, x: float, z: float) -> bool:
+	var name := str(node.name).to_lower()
+	if node is Node3D and (name.contains("stop") or name.contains("signal") or name.contains("crosswalk") or name.contains("curb") or name.contains("ramp") or name.contains("arc")):
+		var at := (node as Node3D).global_position
+		if Vector2(at.x - x, at.z - z).length() <= 25.0:
+			return true
+	for child in node.get_children():
+		if _feature_walk(child, x, z):
+			return true
+	return false
+
+
+func _queue_pin_cones() -> void:
+	for pin in bakeoff_pins:
+		var x := float(pin["x"])
+		var z := float(pin["z"])
+		if not _in_site(x, z):
+			continue
+		var best_id := ""
+		var best_s := 0.0
+		var best_d := 1.0e9
+		for id in _order:
+			var candidate: Dictionary = _builder._roads[int(_builder._by_id[id])]
+			var chain: PackedFloat32Array = candidate["chain"]
+			if chain.size() < 2:
+				continue
+			var length := float(chain[chain.size() - 1])
+			var s := 0.0
+			while s <= length + 0.01:
+				var pose := _pose(candidate, minf(s, length))
+				var d := Vector2(float(pose["x"]) - x, float(pose["z"]) - z).length()
+				if d < best_d:
+					best_d = d
+					best_id = id
+					best_s = s
+				s += 4.0
+		if best_id == "" or best_d > 40.0:
+			_blame("pin", "cone_pin", x, z, best_d, 40.0)
+			continue
+		var road: Dictionary = _builder._roads[int(_builder._by_id[best_id])]
+		var pose := _pose(road, best_s)
+		_sample_edge(best_id, pose, true, false)
+		_sample_edge(best_id, pose, false, false)
+		_pushes.append(_push_job(best_id, pose, float(pose["lane"]), pose["out_r"], "pin_right"))
+		_pushes.append(_push_job(best_id, pose, -float(pose["lane"]), pose["out_l"], "pin_left"))
+
+
+func collision_hash() -> String:
+	var ctx := HashingContext.new()
+	ctx.start(HashingContext.HASH_SHA256)
+	if _host != null:
+		_hash_node(ctx, _host)
+	return ctx.finish().hex_encode()
+
+
+func _hash_node(ctx: HashingContext, node: Node) -> void:
+	for child in node.get_children():
+		if child is CollisionShape3D:
+			var shape := (child as CollisionShape3D).shape
+			if shape is ConcavePolygonShape3D:
+				var pts := (shape as ConcavePolygonShape3D).data
+				_hash_count(ctx, pts.size())
+				var batch := PackedFloat32Array()
+				batch.resize(pts.size() * 3)
+				for i in pts.size():
+					batch[i * 3] = pts[i].x
+					batch[i * 3 + 1] = pts[i].y
+					batch[i * 3 + 2] = pts[i].z
+				_hash_floats(ctx, batch)
+			elif shape is HeightMapShape3D:
+				var map := (shape as HeightMapShape3D).map_data
+				_hash_count(ctx, map.size())
+				_hash_floats(ctx, map)
+		_hash_node(ctx, child)
+
+
+func _hash_count(ctx: HashingContext, n: int) -> void:
+	var buf := PackedByteArray()
+	buf.resize(4)
+	buf.encode_s32(0, n)
+	ctx.update(buf)
+
+
+func _hash_floats(ctx: HashingContext, vals: PackedFloat32Array) -> void:
+	var batch := PackedByteArray()
+	var filled := 0
+	batch.resize(256 * 4)
+	for v in vals:
+		batch.encode_s32(filled * 4, int(round(v * 1000.0)))
+		filled += 1
+		if filled == 256:
+			ctx.update(batch)
+			filled = 0
+	if filled > 0:
+		ctx.update(batch.slice(0, filled * 4))
+
+
+func count_nodes(node: Node) -> int:
+	var n := 1
+	for child in node.get_children():
+		n += count_nodes(child)
+	return n
