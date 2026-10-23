@@ -8,9 +8,6 @@ extends ChunkGenerator
 ## (SKIP_HI) stay on the coarse grid. The visual mesh simplifies flats, but a
 ## floor block stays a 4 m quad. Subdividing flats to hold a 0.3 m error
 ## lost more than 5% fps, so FLAT_ERR_M stays open and that pass is idle.
-## Road corridors are the exception: the bench and the blend are 1 m quads.
-## Those heights come from the stamp already written. Plain chunks copy that
-## band into the heightmap in one pass.
 ## The heightmap is then resampled from those drawn triangles, so the ground
 ## you stand on is the ground you see. The river bed is carved under the ribbon.
 
@@ -26,9 +23,6 @@ const RIVER_HALF_M := 20.0
 const STAND_CLEAR_M := 36.0
 ## Open on purpose. 0.3 m forced 2 m floor cells and lost more than 5% fps.
 const FLAT_ERR_M := 10000.0
-## Road shoulder quads. Four splits of a 4 m cell is about 1 m, enough to show
-## a 2 m bench and a 4 m blend. The rest of the floor stays coarse.
-const SEAM_DIV := 4
 ## Carved depth at the water.json centreline. Banks rise at BANK_DEG back to the DEM.
 const BED_DEPTH_M := 1.5
 const BANK_DEG := 17.0
@@ -96,18 +90,6 @@ class Build:
 	var water_empty := true
 	var talus: PackedFloat32Array
 	var road_break: Dictionary = {}
-	## Vector2i cell -> true where the road bench and blend must be 1 m quads.
-	var seam: Dictionary = {}
-	## Welded off-grid shoulder vertices, keyed by 2 cm world xz.
-	var fine_at: Dictionary = {}
-	## 1 on HI grid cells whose visual sits ROAD_BED_DEPTH above the bedded grid.
-	## Sized by the caller before apply_cuts. Empty on a plain chunk.
-	var bed_lift := PackedByteArray()
-	## Plain-chunk 1 m shoulder. Visual height, claimed cells, and the inset flag.
-	## Sized before stamp_seam_band. A canyon chunk leaves them empty.
-	var seam_fine := PackedFloat32Array()
-	var seam_wrote := PackedByteArray()
-	var seam_lift := PackedByteArray()
 
 
 func _init() -> void:
@@ -330,23 +312,12 @@ func _build(coord: Vector2i, dc: Vector2i, hi: bool, floor_box: Dictionary = {})
 		stage["carve"] = (Time.get_ticks_usec() - t_mesh) / 1000
 		t_mesh = Time.get_ticks_usec()
 		if _roads != null:
-			if hi:
-				b.bed_lift.resize(b.n * b.n)
-			_roads.apply_cuts(b.grid, b.origin, b.n, b.spacing, b.bed_lift)
-			b.seam = _roads.mark_seam_cells(b.origin) as Dictionary
+			_roads.apply_cuts(b.grid, b.origin, b.n, b.spacing)
 		stage["cuts"] = (Time.get_ticks_usec() - t_mesh) / 1000
 		t_mesh = Time.get_ticks_usec()
 		# Coarse carved ground, so the spawn view is not empty while the 2 m mesh builds.
 		_publish_visual(floor_box, _preview_parts(b), true)
 		stage["preview"] = (Time.get_ticks_usec() - t_mesh) / 1000
-		t_mesh = Time.get_ticks_usec()
-		if not hi and _roads != null and not b.seam.is_empty():
-			var cells := HI_N * HI_N
-			b.seam_fine.resize(cells)
-			b.seam_wrote.resize(cells)
-			b.seam_lift.resize(cells)
-			_roads.stamp_seam_band(b.seam_fine, b.seam_wrote, b.seam_lift, b.origin, HI_N, HI_SP)
-		stage["seam"] = (Time.get_ticks_usec() - t_mesh) / 1000
 		t_mesh = Time.get_ticks_usec()
 		if hi:
 			_emit_hi(b)
@@ -459,7 +430,7 @@ func _emit_blocks(b: Build, step: int) -> void:
 	for r in range(0, CELLS, 4):
 		for c in range(0, CELLS, 4):
 			var t0 := Time.get_ticks_usec()
-			var merged := _merge_ok(b, c, r) and not _block_seam(b, c, r)
+			var merged := _merge_ok(b, c, r)
 			_us_merge += Time.get_ticks_usec() - t0
 			if merged:
 				var t1 := Time.get_ticks_usec()
@@ -475,12 +446,6 @@ func _emit_blocks(b: Build, step: int) -> void:
 
 
 func _emit_cell(b: Build, c: int, r: int, step: int) -> void:
-	if _seam_at(b, c, r):
-		_emit_seam_cell(b, c, r, step)
-		return
-	if _beside_seam(b, c, r):
-		_fan_beside_seam(b, c, r, step)
-		return
 	if step == 4 and (_level_at(b.dc.x, b.dc.y, c, r) >= 2 or _cell_on_bank(b, c, r)):
 		var c0 := c * 4
 		var r0 := r * 4
@@ -507,307 +472,27 @@ func _emit_coarse(b: Build, c: int, r: int, step: int) -> void:
 	var c0 := c * step
 	var r0 := r * step
 	var span := 4 * step
-	var north := not _block_mergeable(b, c, r - 4)
-	var south := not _block_mergeable(b, c, r + 4)
-	var west := not _block_mergeable(b, c - 4, r)
-	var east := not _block_mergeable(b, c + 4, r)
+	var north := not _merge_ok(b, c, r - 4)
+	var south := not _merge_ok(b, c, r + 4)
+	var west := not _merge_ok(b, c - 4, r)
+	var east := not _merge_ok(b, c + 4, r)
 	if not north and not south and not west and not east:
 		_quad(b, c0, r0, c0 + span, r0 + span)
 		return
 	var pts: Array[int] = []
-	_coarse_run(b, pts, c0, r0, step, 0, c, r - 1, 1, 0, north)
-	_coarse_run(b, pts, c0 + span, r0, 0, step, c + 4, r, 0, 1, east)
-	_coarse_run(b, pts, c0 + span, r0 + span, -step, 0, c + 3, r + 4, -1, 0, south)
-	_coarse_run(b, pts, c0, r0 + span, 0, -step, c - 1, r + 3, 0, -1, west)
+	_coarse_edge(b, pts, c0, r0, step, 0, north)
+	_coarse_edge(b, pts, c0 + span, r0, 0, step, east)
+	_coarse_edge(b, pts, c0 + span, r0 + span, -step, 0, south)
+	_coarse_edge(b, pts, c0, r0 + span, 0, -step, west)
 	_fan(b, pts, _vert(b, c0 + span / 2, r0 + span / 2))
 
 
-func _block_mergeable(b: Build, c: int, r: int) -> bool:
-	return _merge_ok(b, c, r) and not _block_seam(b, c, r)
-
-
-func _block_seam(b: Build, c: int, r: int) -> bool:
-	for dy in 4:
-		for dx in 4:
-			if _seam_at(b, c + dx, r + dy):
-				return true
-	return false
-
-
-func _seam_at(b: Build, c: int, r: int) -> bool:
-	return b.seam.has(Vector2i(c, r))
-
-
-func _beside_seam(b: Build, c: int, r: int) -> bool:
-	return _seam_at(b, c, r - 1) or _seam_at(b, c + 1, r) or _seam_at(b, c, r + 1) or _seam_at(b, c - 1, r)
-
-
-## 1 m quads over the bench and the blend. Corners stay on the coarse grid so
-## the next cell still welds. The outer edge, where it meets a coarse cell or a
-## chunk border, lies on that coarse edge. Interior samples use the seam.
-func _emit_seam_cell(b: Build, c: int, r: int, step: int) -> void:
-	var c0 := c * step
-	var r0 := r * step
-	var x0 := _x(b, c0)
-	var z0 := _z(b, r0)
-	var x1 := _x(b, c0 + step)
-	var z1 := _z(b, r0 + step)
-	var nside := SEAM_DIV + 1
-	var hs := PackedFloat32Array()
-	hs.resize(nside * nside)
-	var modes := PackedByteArray()
-	modes.resize(nside * nside)
-	for j in nside:
-		for i in nside:
-			var mode := _seam_point_mode(b, c, r, i, j)
-			var h := 0.0
-			if mode == 0:
-				h = _seam_height_at(b, c, r, step, i, j)
-			elif mode == 2:
-				h = _edge_lerp_h(b, c0, r0, step, i, j)
-			else:
-				var gc := c0 + int(float(i * step) / float(SEAM_DIV))
-				var gr := r0 + int(float(j * step) / float(SEAM_DIV))
-				h = _h(b, gc, gr)
-			var idx := j * nside + i
-			hs[idx] = h
-			modes[idx] = mode
-	var ids := PackedInt32Array()
-	ids.resize(nside * nside)
-	var du := (x1 - x0) / float(SEAM_DIV)
-	var dv := (z1 - z0) / float(SEAM_DIV)
-	for j in nside:
-		var tz2 := float(j) / float(SEAM_DIV)
-		for i in nside:
-			var idx2 := j * nside + i
-			var tx2 := float(i) / float(SEAM_DIV)
-			var x2 := lerpf(x0, x1, tx2)
-			var z2 := lerpf(z0, z1, tz2)
-			var mode2 := int(modes[idx2])
-			if mode2 == 1:
-				var gc2 := c0 + int(float(i * step) / float(SEAM_DIV))
-				var gr2 := r0 + int(float(j * step) / float(SEAM_DIV))
-				ids[idx2] = _vert(b, gc2, gr2)
-			elif mode2 == 2:
-				var nrm2 := _edge_lerp_normal(b, c0, r0, step, i, j)
-				ids[idx2] = _fine_vert(b, x2, z2, hs[idx2], nrm2, false)
-			else:
-				var il := maxi(i - 1, 0)
-				var ir := mini(i + 1, SEAM_DIV)
-				var jl := maxi(j - 1, 0)
-				var jr := mini(j + 1, SEAM_DIV)
-				var dx := (hs[j * nside + ir] - hs[j * nside + il]) / maxf(float(ir - il) * du, 0.001)
-				var dz := (hs[jr * nside + i] - hs[jl * nside + i]) / maxf(float(jr - jl) * dv, 0.001)
-				var nrm := Vector3(-dx, 1.0, -dz).normalized()
-				if nrm.length_squared() < 0.1:
-					nrm = Vector3.UP
-				ids[idx2] = _fine_vert(b, x2, z2, hs[idx2], nrm, true)
-	for j2 in SEAM_DIV:
-		for i2 in SEAM_DIV:
-			var nw := ids[j2 * nside + i2]
-			var ne := ids[j2 * nside + i2 + 1]
-			var sw := ids[(j2 + 1) * nside + i2]
-			var se := ids[(j2 + 1) * nside + i2 + 1]
-			b.indices.append(nw)
-			b.indices.append(ne)
-			b.indices.append(se)
-			b.indices.append(nw)
-			b.indices.append(se)
-			b.indices.append(sw)
-
-
-## 0 = seam sample, 1 = coarse grid vertex, 2 = lerp along a coarse edge.
-func _seam_point_mode(b: Build, c: int, r: int, i: int, j: int) -> int:
-	var on_i := i == 0 or i == SEAM_DIV
-	var on_j := j == 0 or j == SEAM_DIV
-	if on_i and on_j:
-		# A corner shared with a coarse cell keeps that cell's vertex. A corner
-		# buried in the seam uses the 1 m profile, so the carriageway bed does
-		# not notch the shoulder every 4 m.
-		if _corner_locked(b, c, r, i, j):
-			return 1
-		return 0
-	if not on_i and not on_j:
-		return 0
-	var plain := false
-	if j == 0 and (r == 0 or not _seam_at(b, c, r - 1)):
-		plain = true
-	if j == SEAM_DIV and (r == CELLS - 1 or not _seam_at(b, c, r + 1)):
-		plain = true
-	if i == 0 and (c == 0 or not _seam_at(b, c - 1, r)):
-		plain = true
-	if i == SEAM_DIV and (c == CELLS - 1 or not _seam_at(b, c + 1, r)):
-		plain = true
-	if not plain:
-		return 0
-	if b.hi:
-		return 1
-	return 2
-
-
-func _corner_locked(b: Build, c: int, r: int, i: int, j: int) -> bool:
-	var dc := -1 if i == 0 else 1
-	var dr := -1 if j == 0 else 1
-	if _corner_cell_locks(b, c + dc, r):
-		return true
-	if _corner_cell_locks(b, c, r + dr):
-		return true
-	return _corner_cell_locks(b, c + dc, r + dr)
-
-
-func _corner_cell_locks(b: Build, c: int, r: int) -> bool:
-	if c < 0 or r < 0 or c >= CELLS or r >= CELLS:
-		return true
-	return not _seam_at(b, c, r)
-
-
-## Mode-0 shoulder height. Canyon cells land on the stamped 1 m grid. The outer
-## metre of the paint is lifted back to the pave height; collision keeps the bed.
-## Plain cells read the one-pass band. Unclaimed cells keep the carved ground.
-func _seam_height_at(b: Build, c: int, r: int, step: int, i: int, j: int) -> float:
-	if b.hi:
-		var gc := c * step + int(float(i * step) / float(SEAM_DIV))
-		var gr := r * step + int(float(j * step) / float(SEAM_DIV))
-		gc = clampi(gc, 0, b.n - 1)
-		gr = clampi(gr, 0, b.n - 1)
-		var idx := gr * b.n + gc
-		var h := b.grid[idx]
-		if idx < b.bed_lift.size() and b.bed_lift[idx] == 1:
-			var bed: float = _RoadBuilder.ROAD_BED_DEPTH_M
-			h += bed
-		return h
-	var hc := c * SEAM_DIV + i
-	var hr := r * SEAM_DIV + j
-	if hc < 0 or hr < 0 or hc >= HI_N or hr >= HI_N:
-		return _sample_world(b, _x(b, c * step), _z(b, r * step))
-	var idx2 := hr * HI_N + hc
-	if idx2 < b.seam_wrote.size() and b.seam_wrote[idx2] == 1:
-		return b.seam_fine[idx2]
-	return _sample_world(b, b.origin.x + float(hc) * HI_SP, b.origin.y + float(hr) * HI_SP)
-
-
-func _edge_lerp_h(b: Build, c0: int, r0: int, step: int, i: int, j: int) -> float:
-	var t := 0.0
-	var h0 := 0.0
-	var h1 := 0.0
-	if j == 0 or j == SEAM_DIV:
-		t = float(i) / float(SEAM_DIV)
-		var gr := r0 if j == 0 else r0 + step
-		h0 = _h(b, c0, gr)
-		h1 = _h(b, c0 + step, gr)
-	else:
-		t = float(j) / float(SEAM_DIV)
-		var gc := c0 if i == 0 else c0 + step
-		h0 = _h(b, gc, r0)
-		h1 = _h(b, gc, r0 + step)
-	return lerpf(h0, h1, t)
-
-
-func _edge_lerp_normal(b: Build, c0: int, r0: int, step: int, i: int, j: int) -> Vector3:
-	var n0 := Vector3.UP
-	var n1 := Vector3.UP
-	if j == 0 or j == SEAM_DIV:
-		var gr := r0 if j == 0 else r0 + step
-		n0 = _normal_at(b, c0, gr)
-		n1 = _normal_at(b, c0 + step, gr)
-	else:
-		var gc := c0 if i == 0 else c0 + step
-		n0 = _normal_at(b, gc, r0)
-		n1 = _normal_at(b, gc, r0 + step)
-	var nrm := (n0 + n1).normalized()
-	if nrm.length_squared() < 0.1:
-		return Vector3.UP
-	return nrm
-
-
-func _fan_beside_seam(b: Build, c: int, r: int, step: int) -> void:
-	var c0 := c * step
-	var r0 := r * step
-	var pts: Array[int] = []
-	if _seam_at(b, c, r - 1):
-		_seam_edge(b, pts, c0, r0, c0 + step, r0)
-	elif step == 4:
-		_hi_edge(b, pts, c0, r0, 1, 0, _edge_fine(b, c, r - 1, step))
-	else:
-		_low_edge(b, pts, c, r, 1, 0, _edge_fine(b, c, r - 1, step), b.dc.x, b.dc.y + 1, c * 4, 512, 1, 0)
-	if _seam_at(b, c + 1, r):
-		_seam_edge(b, pts, c0 + step, r0, c0 + step, r0 + step)
-	elif step == 4:
-		_hi_edge(b, pts, c0 + step, r0, 0, 1, _edge_fine(b, c + 1, r, step))
-	else:
-		_low_edge(b, pts, c + 1, r, 0, 1, _edge_fine(b, c + 1, r, step), b.dc.x + 1, b.dc.y, 0, r * 4, 0, 1)
-	if _seam_at(b, c, r + 1):
-		_seam_edge(b, pts, c0 + step, r0 + step, c0, r0 + step)
-	elif step == 4:
-		_hi_edge(b, pts, c0 + step, r0 + step, -1, 0, _edge_fine(b, c, r + 1, step))
-	else:
-		_low_edge(b, pts, c + 1, r + 1, -1, 0, _edge_fine(b, c, r + 1, step), b.dc.x, b.dc.y - 1, (c + 1) * 4, 0, -1, 0)
-	if _seam_at(b, c - 1, r):
-		_seam_edge(b, pts, c0, r0 + step, c0, r0)
-	elif step == 4:
-		_hi_edge(b, pts, c0, r0 + step, 0, -1, _edge_fine(b, c - 1, r, step))
-	else:
-		_low_edge(b, pts, c, r + 1, 0, -1, _edge_fine(b, c - 1, r, step), b.dc.x - 1, b.dc.y, 512, (r + 1) * 4, 0, -1)
-	var center := _center_vert(b, c0, r0, c0 + step, r0 + step)
-	if b.hi:
-		center = _vert(b, c0 + int(step / 2), r0 + int(step / 2))
-	_fan(b, pts, center)
-
-
-func _seam_edge(b: Build, pts: Array[int], gc0: int, gr0: int, gc1: int, gr1: int) -> void:
-	pts.append(_vert(b, gc0, gr0))
-	_append_seam_mids(b, pts, gc0, gr0, gc1, gr1)
-
-
-## face_c/face_r is the cell just outside the first segment. face_dc/face_dr
-## steps to the next outside cell. The far corner belongs to the next edge.
-func _coarse_run(b: Build, pts: Array[int], gc: int, gr: int, dgc: int, dgr: int, face_c: int, face_r: int, face_dc: int, face_dr: int, detailed: bool) -> void:
-	pts.append(_vert(b, gc, gr))
+func _coarse_edge(b: Build, pts: Array[int], c: int, r: int, dc: int, dr: int, detailed: bool) -> void:
+	pts.append(_vert(b, c, r))
 	if not detailed:
 		return
-	for k in 4:
-		var gs_c := gc + dgc * k
-		var gs_r := gr + dgr * k
-		var ge_c := gc + dgc * (k + 1)
-		var ge_r := gr + dgr * (k + 1)
-		if _seam_at(b, face_c + face_dc * k, face_r + face_dr * k):
-			_append_seam_mids(b, pts, gs_c, gs_r, ge_c, ge_r)
-		if k < 3:
-			pts.append(_vert(b, ge_c, ge_r))
-
-
-func _append_seam_mids(b: Build, pts: Array[int], gc0: int, gr0: int, gc1: int, gr1: int) -> void:
-	for s in range(1, SEAM_DIV):
-		var t := float(s) / float(SEAM_DIV)
-		if b.hi:
-			var gcx := int(round(lerpf(float(gc0), float(gc1), t)))
-			var grx := int(round(lerpf(float(gr0), float(gr1), t)))
-			pts.append(_vert(b, gcx, grx))
-		else:
-			var x := lerpf(_x(b, gc0), _x(b, gc1), t)
-			var z := lerpf(_z(b, gr0), _z(b, gr1), t)
-			var h := lerpf(_h(b, gc0, gr0), _h(b, gc1, gr1), t)
-			var nrm := (_normal_at(b, gc0, gr0) + _normal_at(b, gc1, gr1)).normalized()
-			if nrm.length_squared() < 0.1:
-				nrm = Vector3.UP
-			pts.append(_fine_vert(b, x, z, h, nrm, false))
-
-
-func _fine_vert(b: Build, x: float, z: float, h: float, nrm: Vector3, dry: bool) -> int:
-	var key := Vector2i(int(round(x * 50.0)), int(round(z * 50.0)))
-	if b.fine_at.has(key):
-		return int(b.fine_at[key])
-	var col := Color(1.0, 0.0, 0.0, 0.0)
-	if not dry:
-		var slope := rad_to_deg(acos(clampf(nrm.y, 0.0, 1.0)))
-		var wy := _water_sample(b, x, z)
-		col = _masks(slope, _talus_at(b, x, z), wy.x, h - wy.y)
-	var id := b.verts.size()
-	b.verts.append(WorldConfig.to_local(Vector3(x, h, z)))
-	b.norms.append(nrm)
-	b.cols.append(col)
-	b.fine_at[key] = id
-	return id
+	for k in range(1, 4):
+		pts.append(_vert(b, c + dc * k, r + dr * k))
 
 
 func _fan_low(b: Build, c: int, r: int, north: bool, east: bool, south: bool, west: bool) -> void:
@@ -1914,24 +1599,13 @@ func _bilinear(grid: PackedFloat32Array, n: int, col: float, row: float) -> floa
 	return lerpf(lerpf(h00, h10, tx), lerpf(h01, h11, tx), tz)
 
 
-## Upsample the drawn ground, then lay the stamped bench and blend onto it.
-## The inset cells drop by the bed so the cone stands under the ribbon.
-## Cells the stamp did not claim keep the resampled mesh.
+## Upsample the drawn ground and restamp only the carriageway at 1 m.
 func _fine_corridor(b: Build, drawn: PackedFloat32Array) -> PackedFloat32Array:
 	if drawn.size() != b.n * b.n or b.n < 2:
 		return PackedFloat32Array()
 	var fine := _upsample_grid(drawn, b.n, HI_N)
-	var cells := HI_N * HI_N
-	if b.seam_wrote.size() != cells or b.seam_fine.size() != cells:
-		return fine
-	var bed: float = _RoadBuilder.ROAD_BED_DEPTH_M
-	for i in cells:
-		if b.seam_wrote[i] == 0:
-			continue
-		var y := b.seam_fine[i]
-		if i < b.seam_lift.size() and b.seam_lift[i] == 1:
-			y -= bed
-		fine[i] = y
+	if _roads != null:
+		_roads.apply_paint(fine, b.origin, HI_N, HI_SP)
 	return fine
 
 
