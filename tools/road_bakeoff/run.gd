@@ -54,9 +54,11 @@ func _bakeoff() -> void:
 			return
 	_strategy_id = RoadStrategyRegistry.current_id()
 	_spec = RoadStrategyRegistry.spec_for(_strategy_id)
-	if _strategy_id != 0:
-		var strategy := RoadStrategyRegistry.create()
-		strategy.fail_unimplemented()
+	# Step 0 stubbed every id but 0 before make_builder() ran, so an implemented
+	# strategy could not be measured. Unimplemented ids still write the stub and exit 1.
+	var probe := RoadStrategyRegistry.create()
+	var built = probe.make_builder()
+	if built == null:
 		bakeoff_gap_max = float(_spec.get("gap_max", 0.05))
 		for item in queue:
 			_site = item
