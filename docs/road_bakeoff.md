@@ -137,6 +137,30 @@ Civil's Rev 2 rulings. These apply when `bakeoff_mode` is on. `tools/road_report
 
 `cone_starts` rows are `{x, z, edge, kind, lane_offset, angle, barrier, built}`. `kind` is `every50`, `pin`, or `diagnostic`. `angle` is degrees from the forward tangent. `barrier` is the edge's barrier flag. `built` is whether the start sits in a chunk this run built.
 
+### Site A, revised gates
+
+Strategy 0, site A only, plus the determinism rebuild. Commit `9f198519d75635d00f7d5a6f5c396e0dcaf07f79`. Godot 4.7.2. Wall clock 3 min 0 s (12:41:57Z to 12:44:57Z). First build 62.5 s, second build 61.0 s, fine step sweep 38.6 s. The previous site A wall was 2 min 45 s, so this run is about 1.1 times that. The 0.05 m spacing was kept.
+
+Both builds hashed to `7dcfbfb64477db5ebf8e825cfbd4d3e329fd3f0623077c9804aaa7be3d1be8d1`, the same collision hash as the previous site A run. The builder was not changed. Determinism passed.
+
+Gates that moved, previous value then this run:
+
+| Gate | Previous (`8ea9a10`) | This run |
+|---|---|---|
+| step_along_m | FAIL 0.026 | FAIL 1.013 |
+| step_across_m | FAIL 1.990 | FAIL 0.911 |
+| cone_fails | FAIL 33 | FAIL 25 |
+| unclassified_ends | PASS 0 | FAIL 9 |
+| cross_slope | PASS 0.0200 | PASS 0.0195 |
+
+The 1 m pre-screen is unchanged: along 0.026 m, across 1.990 m. `step_across_at_0_02_fails` is 27. `cross_slope_junction_excluded` is 142. `cone_skipped_outside_built_chunks` is 0. Five junction patches were written (`n028`, `n030`, `n031`, `n032`, `n033`). `cone_starts` has 50 `every50` rows, 6 `pin` rows, and 800 `diagnostic` rows. The diagnostic rows were not simulated.
+
+Hit rate 0.709, both gaps (−0.724 / 0.149), grade 0.126, verge 0.257, edge drop 2.371, vertical faces 2192, junction deviation 0.019, junction tilt 0.020, junction features 5, barrier seating 0 (0 samples), components 1, triangles 127912, and determinism matched the previous site A numbers. Memory moved from 250.2 MB to 250.8 MB and still passes.
+
+The sustained right-edge push failed at (3359.6, −6626.7), 6.6 m from (3353.0, −6626.4), on the Perrine deck. `perrine_escape_fail` is true. The older off-edge launch's end coordinate did not recur; the cone now starts at the lane centre. The deck still fails containment. `lane_grade_max` (diagnostic) is 0.133.
+
+Dev, cell C, the other sites, and the full-map report were not re-run. The three-site table below is the previous gate definition.
+
 ## 4. Adding a strategy
 
 Contract: `scripts/world/road_strategies/road_strategy.gd`. Inputs are the same for every id: a roads JSON, the terrain or lidar tiles (or the RoadLab height field), `RoadRules` (cross-sections, grade caps, junction, barrier, and road-end constants, seed `20261008`), and the gap limit on the strategy. Output is a drivable road plus the ground under it and beside it, with collision the harness can ray and cone.
