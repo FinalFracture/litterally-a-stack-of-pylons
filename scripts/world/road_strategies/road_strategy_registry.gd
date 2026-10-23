@@ -7,6 +7,7 @@ extends RefCounted
 ## User arguments win over the environment variable.
 
 const _Current := preload("res://scripts/world/road_strategies/strategy_00_current.gd")
+const _Corridor := preload("res://scripts/world/road_strategies/strategy_04_corridor.gd")
 const _Stub := preload("res://scripts/world/road_strategies/strategy_stub.gd")
 
 const SPECS: Array[Dictionary] = [
@@ -52,6 +53,8 @@ static func create() -> RoadStrategy:
 	var strategy: RoadStrategy
 	if strategy_id == 0:
 		strategy = _Current.new()
+	elif strategy_id == 4:
+		strategy = _Corridor.new()
 	else:
 		strategy = _Stub.new()
 		strategy.id = strategy_id
