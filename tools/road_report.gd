@@ -92,6 +92,8 @@ var _seat_over := 0
 var _seat_n := 0
 var _feature_missing := 0
 var _last_grade: Dictionary = {}
+## Chunks this bake-off run actually built. Empty for the network report.
+var _built_chunk_ids: Array[Vector2i] = []
 
 
 func _initialize() -> void:
@@ -152,6 +154,7 @@ func _reset_scores() -> void:
 	_seat_n = 0
 	_feature_missing = 0
 	_last_grade.clear()
+	_built_chunk_ids.clear()
 
 
 func _boot_world() -> void:
@@ -317,6 +320,7 @@ func _build_chunks(coords: Array[Vector2i]) -> void:
 					_bakeoff_faces.append_array(face_v)
 		if bakeoff_mode:
 			_mesh_tris += int(pay.tris)
+			_built_chunk_ids.append(coord)
 		pay.parts = []
 		n += 1
 		print("CHUNK %s %d ms" % [coord, Time.get_ticks_msec() - t0])
@@ -394,10 +398,13 @@ func _sample_station(road: Dictionary, pose: Dictionary, s: float) -> void:
 		var hit := _ray(Vector3(at["x"], expected + 2.0, at["z"]), Vector3(at["x"], expected - 80.0, at["z"]))
 		st["samples"] = int(st["samples"]) + 1
 		var hit_y := expected
-		var road_hit := _is_road(hit)
+		var road_hit := _counts_as_hit(hit, expected)
 		if road_hit:
 			st["hits"] = int(st["hits"]) + 1
-			hit_y = _driving_y(Vector3(at["x"], expected, at["z"]), expected, hit)
+			if _road_surface_is_terrain():
+				hit_y = float((hit["position"] as Vector3).y)
+			else:
+				hit_y = _driving_y(Vector3(at["x"], expected, at["z"]), expected, hit)
 		else:
 			st["misses"] = int(st["misses"]) + 1
 			_blame(id, "hit", at["x"], at["z"], 0.0, 1.0)
@@ -417,10 +424,15 @@ func _sample_station(road: Dictionary, pose: Dictionary, s: float) -> void:
 					_blame(id, "gap", at["x"], at["z"], gap, _gap_limit() if gap > 0.0 else 0.0)
 		if have:
 			var residual := absf((hit_y - prev_y) - (expected - prev_e))
-			if residual > float(st["max_step_across"]):
-				st["max_step_across"] = residual
-			if residual > STEP_ACROSS + 0.0001:
-				_blame(id, "step_across", at["x"], at["z"], residual, STEP_ACROSS)
+			if bakeoff_mode:
+				# 0.5 m across residual on the 1 m grid. Pre-screen only.
+				if residual > float(st.get("prescreen_across", 0.0)):
+					st["prescreen_across"] = residual
+			else:
+				if residual > float(st["max_step_across"]):
+					st["max_step_across"] = residual
+				if residual > STEP_ACROSS + 0.0001:
+					_blame(id, "step_across", at["x"], at["z"], residual, STEP_ACROSS)
 		if absf(offset) < cy_dist:
 			cy_dist = absf(offset)
 			cy = hit_y
@@ -431,10 +443,15 @@ func _sample_station(road: Dictionary, pose: Dictionary, s: float) -> void:
 	var y1 := float(st["_y1"])
 	if y0 > -9000.0 and y1 > -9000.0:
 		var lip := absf((cy - y1) - (y1 - y0))
-		if lip > float(st["max_step_along"]):
-			st["max_step_along"] = lip
-		if lip > STEP_ALONG + 0.0001:
-			_blame(id, "step_along", pose["x"], pose["z"], lip, STEP_ALONG)
+		if bakeoff_mode:
+			# Centreline second difference at 1 m. Pre-screen only.
+			if lip > float(st.get("prescreen_along", 0.0)):
+				st["prescreen_along"] = lip
+		else:
+			if lip > float(st["max_step_along"]):
+				st["max_step_along"] = lip
+			if lip > STEP_ALONG + 0.0001:
+				_blame(id, "step_along", pose["x"], pose["z"], lip, STEP_ALONG)
 	st["_y0"] = y1
 	st["_y1"] = cy
 	_sample_edge(id, pose, true)
@@ -589,7 +606,17 @@ func _under(base: Vector3) -> bool:
 	return at.y - base.y < 1.05
 
 
-func _cones() -> void:
+func _counts_as_hit(hit: Dictionary, _expected: float) -> bool:
+	return _is_road(hit)
+
+
+## Road-is-terrain strategies count a topmost hit within 0.05 m of design.
+## The network report and the ribbon strategies leave this false.
+func _road_surface_is_terrain() -> bool:
+	return false
+
+
+func _cones_extra() -> void:
 	for end in _fill_ends:
 		var tangent: Vector3 = end["tangent"]
 		var outward: Vector3 = end["out"]
@@ -606,6 +633,11 @@ func _cones() -> void:
 		_sample_edge(str(road["id"]), pose, true, false)
 		_sample_edge(str(road["id"]), pose, false, false)
 		_queue_pushes(road, pose)
+
+
+func _cones() -> void:
+	if not bakeoff_mode:
+		_cones_extra()
 	if _pushes.is_empty():
 		return
 	var pool: Array[RigidBody3D] = []

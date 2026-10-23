@@ -67,7 +67,7 @@ What a site builds:
 godot --headless --path <project> -s res://tools/road_bakeoff/run.gd -- --road_strategy=N --site=ID
 ```
 
-`ID` is a catalogue id, or `all`. Omitting `--site` runs `dev`. The tool extends `tools/road_report.gd`. Samples are every 1 m along each centreline and every 0.5 m across the footprint, shoulder, and verge. Rays and cones hit the live `RoadBody` and `TerrainBody`. Gap and verge read `drawn_height_at` on the stamped grid, which is the surface the terrain mesh is built from. The strategy's own arrays are not the score.
+`ID` is a catalogue id, or `all`. Omitting `--site` runs `dev`. The tool extends `tools/road_report.gd`. Rays start at design y + 2 m and hit the live `RoadBody` and `TerrainBody` for the road being measured. Gap and verge read `drawn_height_at` on the stamped grid, which is the surface the terrain mesh is built from. The strategy's own arrays are not the score. The gate sample grids are in Gate definitions below. The 1 m centreline walk remains a pre-screen field (`stats.prescreen_step_along_m`, `stats.prescreen_step_across_m`).
 
 One run writes `bakeoff_out/<strategy>/<site>.json` and a short `.md` beside it. `bakeoff_out/` is gitignored. A gate failure still exits 0: a measured fail is a finished run. An unknown site, or a strategy other than 0, pushes `strategy N not implemented` when that applies, writes a stub JSON whose `gates.implemented` fails, and exits 1. No world is built.
 
@@ -121,6 +121,22 @@ The committed example is `tools/road_bakeoff/baseline/strategy0_dev.json` (the d
 
 The `failures` array keeps the first 14 rows per road per gate (`FAIL_CAP` in `tools/road_report.gd`), so it is a sample. `failure_counts` holds the totals. `junction_dev_m` and `junction_tilt` share one pass flag: a junction fails when its deviation exceeds 0.03 m or its tilt exceeds 2% (3% when an approach grade is at least 6%). The value fields are the separate maxima, which is why dev tilt 0.030 can still pass. Grade and cross-slope pass from a count of over-limit samples; the value is the worst sample. The grade limit string is `class_cap+0.005`.
 
+## Gate definitions
+
+Civil's Rev 2 rulings. These apply when `bakeoff_mode` is on. `tools/road_report.gd` with the flag off still scores the 1 m centreline second-difference and still defaults an untagged end to `dead_end`.
+
+1. **Step.** Along-step is every lane line and every 0.5 m stripe across the footprint, shoulder, and verge, at 0.05 m along the road, net of the design grade and crown (measured Δy minus design Δy), limit 0.02 m. The crown crease (`|offset| <= 0.05 m`) and, on a road with 4 or more lanes, the median band (`|offset| <= 0.30 m`, half of the 0.6 m median) are left out of the along-step. Across-step is 0.05 m spacing on lines every 1 m along the road, net of design cross-slope, limit 0.03 m. `step_across_at_0_02_fails` counts across samples over 0.02 m, including those that also exceed 0.03 m. It is advisory and is not a gate. Step and gap are not dropped inside junction patches. A deck or bridge stripe stays on the carriageway. The 1 m centreline second-difference and the 0.5 m across residual stay in `stats` as `prescreen_step_along_m` and `prescreen_step_across_m`. QA's own every-lane-line figure, if they publish one separately, is advisory on their side. The harness gate is the 0.05 m sweep above. Spacing is not coarsened when a site runs long.
+
+2. **Cone gate.** One cone is pushed from the lane centre across each edge, both edges, every 50 m, plus the four regression pins `(3153,-6143)`, `(3218,-6368)`, `(3320,-6511)`, `(3365,-6510)` when the pin lies in the site. The push is re-applied at 5 m/s for up to 160 physics frames. A start or an end outside a chunk this run built is not a fail. The count is `cone_skipped_outside_built_chunks`. Where the segment has no barrier, the cone must come to rest on ground, the drop from the road height must be at most 3 m, and the cone must not be buried, stuck, or below the road surface. On a barrier segment (deck, bridge parapet, `rim_local` / `rim_road_south`, or a guard the horizontal ray finds on that edge) the cone must stay on the carriageway. The Perrine deck escape at `(3353.0, -6626.4)` is a fail when a scored cone ends there and breaks that rule. `stats.perrine_nearest_cone_m` is the nearest scored cone end, and `stats.perrine_escape_fail` is true when a fail landed within 8 m of that point. The single-launch set (lane centre, each lane centre, 0.4 m inside each edge, at 60°, 90°, and 120° from the forward tangent, positive toward the right edge) is recorded as `kind: "diagnostic"` and is not simulated. `stats.cone_diagnostic` is `not_simulated`. Those rows never enter `cone_fails`.
+
+3. **Junction zone and cross-slope.** `junction_patches` is `{id, polygon: [[x,z], ...]}`, the convex hull of each junction's carriageway inside its radius, expanded 1 m. Inside that polygon the junction flatness gate applies (0.03 m deviation, 2% tilt, 3% when an approach grade is at least 6%) and cross-slope is not scored. `cross_slope_junction_excluded` is the number of centreline stations inside a patch. For 10 m outside the polygon the cross-slope limit is 4%. Farther out it is 2.5%, or the superelevation target ± 0.5% when the design slope exceeds 2.5%. There is no 15 m circle and no exclusion for a crossing road. Each road is measured on its own surface.
+
+4. **Hit rate.** The 1 m by 0.5 m grid covers lanes, shoulder, and verge (carriageway only on a deck or bridge). A ribbon strategy needs a road-body hit. Strategies 1, 4, 5, 6, and 10 are road-is-terrain: the topmost hit within 0.05 m of design y counts. The ray origin is design y + 2 m.
+
+5. **Grade and ends.** Grade is the centreline, about every 10 m, against the class cap + 0.5%. `stats.lane_grade_max` is the steepest 10 m grade on a lane line and is not a gate. An end counts as unclassified when the road record has no `start_kind` or `end_kind`. The harness does not fill that in as `dead_end`. The builder does not store an end class, and `roads.json` has none, so every in-site end fails this gate until a classification is written on the road record.
+
+`cone_starts` rows are `{x, z, edge, kind, lane_offset, angle, barrier, built}`. `kind` is `every50`, `pin`, or `diagnostic`. `angle` is degrees from the forward tangent. `barrier` is the edge's barrier flag. `built` is whether the start sits in a chunk this run built.
+
 ## 4. Adding a strategy
 
 Contract: `scripts/world/road_strategies/road_strategy.gd`. Inputs are the same for every id: a roads JSON, the terrain or lidar tiles (or the RoadLab height field), `RoadRules` (cross-sections, grade caps, junction, barrier, and road-end constants, seed `20261008`), and the gap limit on the strategy. Output is a drivable road plus the ground under it and beside it, with collision the harness can ray and cone.
@@ -152,6 +168,8 @@ Until that script exists, `strategy_stub.gd` pushes `strategy N not implemented`
 - Quality Assurance's scorecard, realism score, heat maps, and blind A-to-J labels are out of this tree. The JSON above is the input that scorecard reads.
 
 ## Strategy 0 baseline
+
+The table in this section is the measurement from before the Gate definitions above. Dev and cell C were not re-run under the revised rules. The revised site A run is recorded under "Site A, revised gates" once that process has finished.
 
 Godot `4.7.2.stable.official.ed1daf0bf`. Commit measured: `8ea9a10ee09fc406fc45bc068e64a256c801cbb4`. Each run builds the world, hashes collision, frees it, builds it again, hashes again, then measures the second world. `build_seconds` is the first build. The second build is `stats.determinism_build_seconds`. All three hashes matched.
 
