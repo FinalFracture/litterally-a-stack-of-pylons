@@ -223,7 +223,7 @@ func _add_road(item: Dictionary, rail: bool) -> void:
 			for i in range(a, b):
 				kinds[i] = kind
 	if not rail:
-		var dense: Array = _densify(pts, kinds)
+		var dense: Array = _densify_pts(pts, kinds)
 		pts = dense[0]
 		kinds = dense[1]
 	if pts.size() < 2:
@@ -266,7 +266,7 @@ func _add_road(item: Dictionary, rail: bool) -> void:
 		_name_of[rid] = str(nm)
 
 
-func _densify(pts: PackedVector3Array, kinds: PackedStringArray) -> Array:
+func _densify_pts(pts: PackedVector3Array, kinds: PackedStringArray) -> Array:
 	var out := PackedVector3Array()
 	var ok := PackedStringArray()
 	out.append(pts[0])
@@ -763,19 +763,19 @@ func _build_mesh() -> void:
 		for i in range(pts.size() - 1):
 			var kind := kinds[i] if i < kinds.size() else "grade"
 			_stamp_on = kind != "bridge"
-			_quad(left[i], pts[i], pts[i + 1], left[i + 1])
-			_quad(pts[i], right[i], right[i + 1], pts[i + 1])
-			_quad(ol[i], left[i], left[i + 1], ol[i + 1])
-			_quad(right[i], orr[i], orr[i + 1], right[i + 1])
+			_drive_quad(left[i], pts[i], pts[i + 1], left[i + 1])
+			_drive_quad(pts[i], right[i], right[i + 1], pts[i + 1])
+			_drive_quad(ol[i], left[i], left[i + 1], ol[i + 1])
+			_drive_quad(right[i], orr[i], orr[i + 1], right[i + 1])
 			_stamp_on = false
-			_quad(al[i], ol[i], ol[i + 1], al[i + 1])
-			_quad(orr[i], ar[i], ar[i + 1], orr[i + 1])
+			_drive_quad(al[i], ol[i], ol[i + 1], al[i + 1])
+			_drive_quad(orr[i], ar[i], ar[i + 1], orr[i + 1])
 			_stamp_on = true
 	for item in _junctions:
 		_emit_disk(item)
 
 
-func _quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
+func _drive_quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
 	if _delaunay_flip(a, b, c, d):
 		_emit_tri(a, b, d)
 		_emit_tri(b, c, d)
@@ -923,7 +923,7 @@ func _raster(grid: PackedFloat32Array, mask: PackedByteArray, origin: Vector2, n
 			var row := r * n
 			for c in range(c0, c1 + 1):
 				var x := origin.x + float(c) * spacing
-				var y := _bary_y(x, z, a, b, p2)
+				var y := _tri_y(x, z, a, b, p2)
 				if is_nan(y):
 					continue
 				var idx := row + c
@@ -1200,11 +1200,11 @@ func _parapets(rect: Rect2) -> void:
 				p1.y = pts[i + 1].y
 				var q0 := p0 + s0 * sign * 0.28
 				var q1 := p1 + s1 * sign * 0.28
-				_wall(p0, p1, 0.80)
-				_wall(q1, q0, 0.80)
+				_guard_wall(p0, p1, 0.80)
+				_guard_wall(q1, q0, 0.80)
 
 
-func _wall(a: Vector3, b: Vector3, h: float) -> void:
+func _guard_wall(a: Vector3, b: Vector3, h: float) -> void:
 	var a2 := a
 	var b2 := b
 	a2.y += h
@@ -1424,7 +1424,7 @@ func _outward(edge: Dictionary, t: float, left: bool) -> Vector2:
 	return v.normalized()
 
 
-func _bary_y(px: float, pz: float, a: Vector3, b: Vector3, c: Vector3) -> float:
+func _tri_y(px: float, pz: float, a: Vector3, b: Vector3, c: Vector3) -> float:
 	var v0x := b.x - a.x
 	var v0z := b.z - a.z
 	var v1x := c.x - a.x
@@ -1466,8 +1466,8 @@ func _dem_y(x: float, z: float) -> float:
 
 
 func _snap_seam(p: Vector3) -> Vector3:
-	var x := round(p.x / LOW_SP) * LOW_SP
-	var z := round(p.z / LOW_SP) * LOW_SP
+	var x := roundf(p.x / LOW_SP) * LOW_SP
+	var z := roundf(p.z / LOW_SP) * LOW_SP
 	if Vector2(x - p.x, z - p.z).length() > LOW_SP * 1.25:
 		return p
 	var y := _dem_y(x, z)
