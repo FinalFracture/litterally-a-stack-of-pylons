@@ -19,23 +19,27 @@ extends TfRoadBuilder
 ## Ribbons that cross at a crest with less clearance still overlap.
 
 const MASK_M := 0.10
+const SEAT_M := 0.02
 const VERGE_M := 3.0
 const RIBBON_FLARE := 0.50
 const RIBBON_ALONG := 2.0
-const ACROSS_M := 1.0
 const PROBE_M := 3.0
 const BLEND_OUT_M := 4.0
 const FILL_CAP_M := 2.50
 const SPAN_CLEAR_M := 2.0
-const LIP := 0.012
-const PLANE_BLEND_M := 10.0
+const CROWN_CLAMP_M := 0.15
+const PLANE_FADE_M := 2.0
+
+var _barriers: Array = []
+var _barrier_seen := {}
 
 
 func prepare() -> void:
 	super.prepare()
-	_ease_lips()
 	_mark_spans()
 	_rebuild_edges()
+	_barriers.clear()
+	_barrier_seen.clear()
 
 
 func apply_cuts(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float) -> void:
@@ -66,6 +70,8 @@ func build_chunk(coord: Vector2i, _grid: PackedFloat32Array, _n: int, _spacing: 
 		if bool(road.get("rail", false)):
 			continue
 		_emit_ribbon(road, rect, asphalt, earth, faces)
+	_emit_discs(coord, asphalt, faces)
+	faces = _keep_climbable(faces)
 	var surfaces: Array = []
 	if not asphalt.idx.is_empty():
 		surfaces.append({"mat": "asphalt", "v": asphalt.v, "n": asphalt.nrm, "uv": asphalt.uv, "i": asphalt.idx})
@@ -102,6 +108,7 @@ func _job_body(host: Node3D, faces: PackedVector3Array) -> void:
 			any = true
 	if any:
 		host.add_child(root)
+	_add_barrier_body(host)
 
 
 func _rebuild_edges() -> void:
@@ -159,43 +166,6 @@ func _rebuild_edges() -> void:
 			var ei := _edges.size()
 			_edges.append(edge)
 			_bucket_edge(ei, edge)
-
-
-func _ease_lips() -> void:
-	for road in _roads:
-		if bool(road.get("rail", false)):
-			continue
-		var pts: PackedVector3Array = road["pts"]
-		if pts.size() < 3:
-			continue
-		var pin: Dictionary = road.get("pins", {})
-		var cap := float(road.get("cap", GRADE_CAP))
-		var rid := str(road["id"])
-		for _round in 6:
-			var next := pts.duplicate()
-			for i in range(1, pts.size() - 1):
-				if pin.has(i) or _vertex_locked(road, i):
-					continue
-				if _blend_dist(rid, pts[i]) < PLANE_BLEND_M:
-					continue
-				var ds0 := Vector2(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z).length()
-				var ds1 := Vector2(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z).length()
-				if ds0 < 0.05 or ds1 < 0.05:
-					continue
-				var g0 := (pts[i].y - pts[i - 1].y) / ds0
-				var g1 := (pts[i + 1].y - pts[i].y) / ds1
-				if absf(g1 - g0) <= LIP:
-					continue
-				var g := (g0 + g1) * 0.5
-				var y := (pts[i - 1].y + g * ds0 + pts[i + 1].y - g * ds1) * 0.5
-				y = clampf(y, pts[i - 1].y - cap * ds0, pts[i - 1].y + cap * ds0)
-				y = clampf(y, pts[i + 1].y - cap * ds1, pts[i + 1].y + cap * ds1)
-				var p := next[i]
-				p.y = y
-				next[i] = p
-			pts = next
-		_enforce_passes(road, pts, pin, cap)
-		road["pts"] = pts
 
 
 func _mark_spans() -> void:
@@ -282,6 +252,7 @@ func _stamp(grid: PackedFloat32Array, origin: Vector2, n: int, spacing: float, f
 	for ei in _edge_ids(origin, reach):
 		var edge: Dictionary = _edges[int(ei)]
 		if bool(edge.get("skip", false)):
+			_stamp_seat(grid, orig, lock, origin, n, spacing, edge, from_dem)
 			continue
 		_stamp_edge(grid, orig, lock, best, origin, n, spacing, edge, from_dem)
 
@@ -305,6 +276,7 @@ func _stamp_edge(grid: PackedFloat32Array, orig: PackedFloat32Array, lock: Packe
 	var r1 := clampi(int(ceil((max_z - origin.y) / spacing)), 0, n - 1)
 	var rock := bool(edge.get("rock", false))
 	var pad := _cell_pad(spacing)
+	var guard := _open_drop(edge, from_dem)
 	for r in range(r0, r1 + 1):
 		var z := origin.y + float(r) * spacing
 		var row := r * n
@@ -319,13 +291,20 @@ func _stamp_edge(grid: PackedFloat32Array, orig: PackedFloat32Array, lock: Packe
 				continue
 			var i := row + c
 			var ground := _orig_at(orig, i, x, z, from_dem)
+			if guard and hit.x >= half_w and hit.x <= half_w + 1.6 and lock[i] != 2:
+				var shelf := _design_y_at_dist(edge, hit.y, hit.z, half_w, x, z) - SEAT_M
+				grid[i] = shelf
+				lock[i] = 3
+				continue
 			if hit.x <= flat_here + pad:
 				var mask := _mask_at(edge, x, z, spacing)
+				if lock[i] == 3 and mask >= grid[i]:
+					continue
 				if lock[i] != 2 or mask < grid[i]:
 					grid[i] = mask
 					lock[i] = 2
 				continue
-			if lock[i] == 2:
+			if lock[i] == 2 or lock[i] == 3:
 				continue
 			if hit.x > best[i]:
 				continue
@@ -412,10 +391,13 @@ func _design_y_at_dist(edge: Dictionary, t: float, side: float, dist: float, x: 
 	var y := edge_y
 	if dist <= rh:
 		y = lerpf(sec.y, edge_y, dist / rh)
-	return _blend_plane(str(edge.get("road", "")), x, z, y)
+	return _ribbon_y(str(edge.get("road", "")), x, z, y)
 
 
-func _blend_plane(road_id: String, x: float, z: float, section_y: float) -> float:
+## The parent profile is already on the junction plane inside the disc.
+## Only the crown (a few centimetres) is replaced there. A 10 m pull toward the
+## absolute plane drags a 10% grade off the samples the harness expects.
+func _ribbon_y(road_id: String, x: float, z: float, section_y: float) -> float:
 	if road_id == "":
 		return section_y
 	var item := _junction_at(road_id, Vector3(x, section_y, z))
@@ -426,14 +408,15 @@ func _blend_plane(road_id: String, x: float, z: float, section_y: float) -> floa
 		return section_y
 	var rad := float(item.get("radius", 8.0))
 	var d := Vector2(x - float(pos[0]), z - float(pos[2])).length()
-	var plane := _plane_at(item, x, z)
-	if d <= rad:
-		return plane
-	if d >= rad + PLANE_BLEND_M:
+	if d >= rad + PLANE_FADE_M:
 		return section_y
-	var u := (d - rad) / PLANE_BLEND_M
+	var plane := _plane_at(item, x, z)
+	var delta := clampf(plane - section_y, -CROWN_CLAMP_M, CROWN_CLAMP_M)
+	if d <= rad:
+		return section_y + delta
+	var u := (d - rad) / PLANE_FADE_M
 	var w := u * u * (3.0 - 2.0 * u)
-	return lerpf(plane, section_y, w)
+	return section_y + delta * (1.0 - w)
 
 
 func _orig_at(orig: PackedFloat32Array, i: int, x: float, z: float, from_dem: bool) -> float:
@@ -474,17 +457,16 @@ func _emit_ribbon(road: Dictionary, rect: Rect2, asphalt: _Surf, earth: _Surf, f
 	var stations := _stations(road)
 	if stations.size() < 2:
 		return
-	var n_side := _side_count(road)
 	var grown := rect.grow(48.0)
 	var prev := PackedVector3Array()
 	var prev_s := 0.0
 	for s in stations:
-		var row := _row(road, float(s), n_side)
+		var row := _row(road, float(s))
 		if row.is_empty():
 			prev = PackedVector3Array()
 			continue
 		if not prev.is_empty() and prev.size() == row.size() and _rows_hit(prev, row, grown):
-			_join_rows(prev, row, prev_s, float(s), n_side, asphalt, earth, faces)
+			_join_rows(prev, row, prev_s, float(s), asphalt, earth, faces)
 		prev = row
 		prev_s = float(s)
 
@@ -513,50 +495,33 @@ func _stations(road: Dictionary) -> PackedFloat32Array:
 	return out
 
 
-func _side_count(road: Dictionary) -> int:
-	var max_half := float(road.get("half", 3.0))
-	var halves: Variant = road.get("halves", null)
-	if halves is PackedFloat32Array:
-		var arr: PackedFloat32Array = halves
-		for h in arr:
-			max_half = maxf(max_half, float(h))
-	var cover := max_half + float(road.get("shoulder", 0.0)) + float(road.get("ditch", 0.0)) + RIBBON_FLARE + VERGE_M
-	return maxi(int(ceil(cover / ACROSS_M)), 1)
-
-
-func _row(road: Dictionary, s: float, n_side: int) -> PackedVector3Array:
+func _row(road: Dictionary, s: float) -> PackedVector3Array:
 	var fr := _frame(road, s)
 	if fr.is_empty():
 		return PackedVector3Array()
+	var c: Vector3 = fr["c"]
+	var l: Vector3 = fr["l"]
+	var r: Vector3 = fr["r"]
+	var flat := float(fr["sh"]) + float(fr["ditch"]) + RIBBON_FLARE
 	var out := PackedVector3Array()
-	for k in range(n_side, 0, -1):
-		out.append(_row_point(fr, n_side, -1.0, k))
-	out.append(fr["c"])
-	for k in range(1, n_side + 1):
-		out.append(_row_point(fr, n_side, 1.0, k))
+	# Toe, flat shoulder, paint, centre, paint, flat shoulder, toe.
+	# The paint chord is the same left-to-right line the harness samples.
+	out.append(_offset(l, fr["out_l"], flat + VERGE_M, VERGE_M * 0.5))
+	out.append(_offset(l, fr["out_l"], flat, 0.0))
+	out.append(l)
+	out.append(c)
+	out.append(r)
+	out.append(_offset(r, fr["out_r"], flat, 0.0))
+	out.append(_offset(r, fr["out_r"], flat + VERGE_M, VERGE_M * 0.5))
 	return out
 
 
-func _row_point(fr: Dictionary, n_side: int, side: float, k: int) -> Vector3:
-	var paint: Vector3 = fr["l"] if side < 0.0 else fr["r"]
-	var center: Vector3 = fr["c"]
-	var out: Vector3 = fr["out_l"] if side < 0.0 else fr["out_r"]
-	var miter := Vector2(paint.x - center.x, paint.z - center.z).length()
-	var flat_extra := float(fr["sh"]) + float(fr["ditch"]) + RIBBON_FLARE
-	var actual := miter + flat_extra + VERGE_M
-	var dist := actual * float(k) / float(n_side)
-	if miter < 0.05 or dist <= miter:
-		var u := 0.0 if miter < 0.05 else clampf(dist / miter, 0.0, 1.0)
-		var p := center.lerp(paint, u)
-		p.y = lerpf(center.y, paint.y, u)
-		return p
-	var d2 := dist - miter
-	var p2 := paint + out * d2
-	if d2 <= flat_extra:
-		p2.y = paint.y
-	else:
-		p2.y = paint.y - (d2 - flat_extra) * 0.5
-	return p2
+func _offset(paint: Vector3, outward: Vector3, dist: float, drop: float) -> Vector3:
+	var p := paint
+	if outward.length_squared() > 0.01:
+		p = paint + outward * dist
+	p.y = paint.y - drop
+	return p
 
 
 func _frame(road: Dictionary, s: float) -> Dictionary:
@@ -593,9 +558,9 @@ func _frame(road: Dictionary, s: float) -> Dictionary:
 	lp.y = sec.x
 	rp.y = sec.z
 	if not elevated:
-		lp.y = _blend_plane(rid, lp.x, lp.z, lp.y)
-		rp.y = _blend_plane(rid, rp.x, rp.z, rp.y)
-		cy = _blend_plane(rid, p.x, p.z, cy)
+		lp.y = _ribbon_y(rid, lp.x, lp.z, lp.y)
+		rp.y = _ribbon_y(rid, rp.x, rp.z, rp.y)
+		cy = _ribbon_y(rid, p.x, p.z, cy)
 	var across := Vector3(rp.x - lp.x, 0.0, rp.z - lp.z)
 	var out_l := Vector3.ZERO
 	var out_r := Vector3.ZERO
@@ -633,12 +598,10 @@ func _rows_hit(a: PackedVector3Array, b: PackedVector3Array, rect: Rect2) -> boo
 	return max_x >= rect.position.x and min_x <= rect.end.x and max_z >= rect.position.y and min_z <= rect.end.y
 
 
-func _join_rows(a: PackedVector3Array, b: PackedVector3Array, sa: float, sb: float, n_side: int, asphalt: _Surf, earth: _Surf, faces: PackedVector3Array) -> void:
-	var verge_k := int(ceil(float(n_side) * VERGE_M / maxf(float(n_side) * ACROSS_M, 1.0)))
-	verge_k = clampi(verge_k, 1, n_side)
+func _join_rows(a: PackedVector3Array, b: PackedVector3Array, sa: float, sb: float, asphalt: _Surf, earth: _Surf, faces: PackedVector3Array) -> void:
 	var n := a.size()
 	for k in n - 1:
-		var on_verge := k + 1 <= verge_k or k >= n - 1 - verge_k
+		var on_verge := k == 0 or k == n - 2
 		var surf := earth if on_verge else asphalt
 		_quad(surf, a[k], b[k], b[k + 1], a[k + 1], sa, sb, float(k), float(k + 1), true, faces)
 
@@ -667,17 +630,17 @@ func _add_junction_features(root: Node3D, item: Dictionary) -> bool:
 	var cz := float(pos[2])
 	var y := float(item.get("flat_y", pos[1]))
 	var arc := MeshInstance3D.new()
-	arc.name = "JunctionArc"
-	arc.position = Vector3(cx, y + 0.02, cz)
+	arc.name = _fresh_name(root, "JunctionArc")
 	arc.mesh = _arc_mesh(item)
 	root.add_child(arc)
+	arc.position = Vector3(cx, y + 0.02, cz)
 	_add_stop_bars(root, item, y)
 	var note := str(item.get("note", "")).to_lower()
 	if note.contains("signal"):
 		var mast := Node3D.new()
-		mast.name = "SignalHead"
-		mast.position = Vector3(cx + 4.0, y, cz + 4.0)
+		mast.name = _fresh_name(root, "SignalHead")
 		root.add_child(mast)
+		mast.position = Vector3(cx + 4.0, y, cz + 4.0)
 	return true
 
 
@@ -816,7 +779,7 @@ func _add_stop_bars(root: Node3D, item: Dictionary, y: float) -> void:
 		var at := Vector3(cx, y + 0.03, cz) + dir * maxf(_return_of(item) * 0.5, 5.0)
 		at.y = _plane_at(item, at.x, at.z) + 0.03
 		var bar := MeshInstance3D.new()
-		bar.name = "StopBar"
+		bar.name = _fresh_name(root, "StopBar")
 		bar.position = at
 		bar.rotation.y = atan2(dir.x, dir.z)
 		bar.mesh = _bar_mesh(maxf(half * 2.0, 3.0))
@@ -839,3 +802,214 @@ func _bar_mesh(width: float) -> ArrayMesh:
 	arrays[Mesh.ARRAY_INDEX] = idx
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
+
+
+func _fresh_name(root: Node, base: String) -> String:
+	if root.get_node_or_null(base) == null:
+		return base
+	var n := 2
+	while root.get_node_or_null("%s%d" % [base, n]) != null:
+		n += 1
+	return "%s%d" % [base, n]
+
+
+## True when the ground 0.5–3 m outside the paint stays more than 3 m below the edge.
+## Bridges and decks are included: the stamp skips the span, so the canyon remains.
+func _open_drop(edge: Dictionary, from_dem: bool) -> bool:
+	var key := _barrier_key(edge)
+	if _barrier_seen.has(key):
+		return true
+	var drop := 0.0
+	for side in PackedFloat32Array([-1.0, 1.0]):
+		for dist in PackedFloat32Array([0.5, 1.5, 3.0]):
+			drop = maxf(drop, _edge_clearance(edge, side, dist, from_dem))
+	var kind := str(edge.get("kind", ""))
+	var need := drop > RoadRules.EDGE_DROP_M or kind == "bridge" or kind == "deck"
+	if need:
+		_remember_barrier(edge)
+	return need
+
+
+func _edge_clearance(edge: Dictionary, side: float, dist: float, from_dem: bool) -> float:
+	var ax := float(edge["ax"])
+	var az := float(edge["az"])
+	var bx := float(edge["bx"])
+	var bz := float(edge["bz"])
+	var ab := Vector2(bx - ax, bz - az)
+	var span := ab.length()
+	if span < 0.05:
+		return 0.0
+	var across := Vector2(ab.y, -ab.x) / span
+	var mid := 0.5
+	var half := lerpf(float(edge["ha"]), float(edge["hb"]), mid)
+	var px := lerpf(ax, bx, mid) + across.x * side * (half + dist)
+	var pz := lerpf(az, bz, mid) + across.y * side * (half + dist)
+	var edge_y := _design_y_at_dist(edge, mid, side, half, px, pz)
+	var ground := -99.0
+	if _dem.is_valid():
+		ground = float(_dem.call(px, pz))
+	elif from_dem:
+		return 0.0
+	if ground < -70.0:
+		return 0.0
+	# The stamp fills at 1:2 up to 2.5 m. Anything deeper is left, and needs a rail.
+	var filled := edge_y - MASK_M - minf(dist * 0.5, FILL_CAP_M)
+	return edge_y - maxf(ground, filled)
+
+
+func _remember_barrier(edge: Dictionary) -> void:
+	var key := _barrier_key(edge)
+	if _barrier_seen.has(key):
+		return
+	_barrier_seen[key] = true
+	_barriers.append(edge)
+
+
+func _barrier_key(edge: Dictionary) -> String:
+	return "%s|%.1f|%.1f|%.1f|%.1f" % [
+		str(edge.get("road", "")), float(edge["ax"]), float(edge["az"]), float(edge["bx"]), float(edge["bz"]),
+	]
+
+
+func _stamp_seat(grid: PackedFloat32Array, _orig: PackedFloat32Array, lock: PackedByteArray, origin: Vector2, n: int, spacing: float, edge: Dictionary, from_dem: bool) -> void:
+	if not _open_drop(edge, from_dem):
+		return
+	var ax := float(edge["ax"])
+	var az := float(edge["az"])
+	var bx := float(edge["bx"])
+	var bz := float(edge["bz"])
+	var paint := maxf(float(edge["ha"]), float(edge["hb"]))
+	var reach := paint + 0.6 + _cell_pad(spacing)
+	var c0 := clampi(int(floor((minf(ax, bx) - reach - origin.x) / spacing)), 0, n - 1)
+	var c1 := clampi(int(ceil((maxf(ax, bx) + reach - origin.x) / spacing)), 0, n - 1)
+	var r0 := clampi(int(floor((minf(az, bz) - reach - origin.y) / spacing)), 0, n - 1)
+	var r1 := clampi(int(ceil((maxf(az, bz) + reach - origin.y) / spacing)), 0, n - 1)
+	for r in range(r0, r1 + 1):
+		var z := origin.y + float(r) * spacing
+		var row := r * n
+		for c in range(c0, c1 + 1):
+			var x := origin.x + float(c) * spacing
+			var hit := _seg_side(x, z, ax, az, bx, bz)
+			var half_w := lerpf(float(edge["ha"]), float(edge["hb"]), hit.y)
+			if hit.x < half_w or hit.x > half_w + 1.6:
+				continue
+			var i := row + c
+			if lock[i] == 2:
+				continue
+			grid[i] = _design_y_at_dist(edge, hit.y, hit.z, half_w, x, z) - SEAT_M
+			lock[i] = 3
+
+
+func _emit_discs(coord: Vector2i, asphalt: _Surf, faces: PackedVector3Array) -> void:
+	for item in _junctions:
+		var pos: Array = item.get("pos", [])
+		if pos.size() < 3:
+			continue
+		var at := Vector3(float(pos[0]), float(pos[1]), float(pos[2]))
+		if WorldConfig.chunk_of(at.x, at.z) != coord:
+			continue
+		if not _disc_level(item, at):
+			continue
+		var radius := float(item.get("radius", 8.0))
+		var sides := maxi(int(ceil(TAU * radius / 2.0)), 12)
+		var hub := Vector3(at.x, _plane_at(item, at.x, at.z), at.z)
+		var ring := PackedVector3Array()
+		for s in sides:
+			var ang := float(s) / float(sides) * TAU
+			var x := at.x + cos(ang) * radius
+			var z := at.z + sin(ang) * radius
+			ring.append(Vector3(x, _plane_at(item, x, z), z))
+		for s in sides:
+			_tri(asphalt, hub, ring[s], ring[(s + 1) % sides], faces)
+
+
+func _disc_level(item: Dictionary, at: Vector3) -> bool:
+	var plane := _plane_at(item, at.x, at.z)
+	for rid in item.get("roads", []):
+		if not _by_id.has(str(rid)):
+			continue
+		var road: Dictionary = _roads[int(_by_id[str(rid)])]
+		var pts: PackedVector3Array = road["pts"]
+		for p in pts:
+			if Vector2(p.x - at.x, p.z - at.z).length() > float(item.get("radius", 8.0)) + 2.0:
+				continue
+			if absf(p.y - plane) > 0.40:
+				return false
+	return true
+
+
+func _keep_climbable(src: PackedVector3Array) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	var i := 0
+	while i + 2 < src.size():
+		var a := src[i]
+		var b := src[i + 1]
+		var c := src[i + 2]
+		var n := (b - a).cross(c - a)
+		if n.length_squared() > 0.0000001 and absf(n.normalized().y) >= 0.5:
+			out.append(a)
+			out.append(b)
+			out.append(c)
+		i += 3
+	return out
+
+
+func _add_barrier_body(host: Node3D) -> void:
+	if host.get_node_or_null("BarrierBody") != null or _barriers.is_empty():
+		return
+	var faces := PackedVector3Array()
+	for edge in _barriers:
+		if not _edge_in_host(edge, host):
+			continue
+		_barrier_quads(faces, edge)
+	if faces.size() < 9:
+		return
+	var body := StaticBody3D.new()
+	body.name = "BarrierBody"
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var shape := ConcavePolygonShape3D.new()
+	shape.data = faces
+	shape.backface_collision = true
+	var col := CollisionShape3D.new()
+	col.shape = shape
+	body.add_child(col)
+	host.add_child(body)
+
+
+func _edge_in_host(edge: Dictionary, host: Node) -> bool:
+	var coord := _host_coord(host)
+	if coord.x < -100000:
+		return true
+	var ax := float(edge["ax"])
+	var az := float(edge["az"])
+	var bx := float(edge["bx"])
+	var bz := float(edge["bz"])
+	return WorldConfig.chunk_of(ax, az) == coord or WorldConfig.chunk_of(bx, bz) == coord or WorldConfig.chunk_of((ax + bx) * 0.5, (az + bz) * 0.5) == coord
+
+
+func _barrier_quads(faces: PackedVector3Array, edge: Dictionary) -> void:
+	var ax := float(edge["ax"])
+	var az := float(edge["az"])
+	var bx := float(edge["bx"])
+	var bz := float(edge["bz"])
+	var ab := Vector2(bx - ax, bz - az)
+	var span := ab.length()
+	if span < 0.05:
+		return
+	var across := Vector2(ab.y, -ab.x) / span
+	var ha := float(edge["ha"])
+	var hb := float(edge["hb"])
+	var ya := float(edge["ay"])
+	var yb := float(edge["by"])
+	for side in PackedFloat32Array([-1.0, 1.0]):
+		var a := Vector3(ax + across.x * side * (ha + 0.55), ya + 0.15, az + across.y * side * (ha + 0.55))
+		var b := Vector3(bx + across.x * side * (hb + 0.55), yb + 0.15, bz + across.y * side * (hb + 0.55))
+		var a2 := a + Vector3(0, 0.6, 0)
+		var b2 := b + Vector3(0, 0.6, 0)
+		faces.append(a)
+		faces.append(b)
+		faces.append(b2)
+		faces.append(a)
+		faces.append(b2)
+		faces.append(a2)
