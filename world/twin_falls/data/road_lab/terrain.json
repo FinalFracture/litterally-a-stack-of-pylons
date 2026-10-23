@@ -1,0 +1,63 @@
+{
+ "seed": 20261008,
+ "base_y": 120.0,
+ "note": "Synthetic lidar for RoadLab. Ops apply in order. z0 is the north edge (more negative).",
+ "ops": [
+  {
+   "op": "plane",
+   "x0": 110.0,
+   "z0": -1850.0,
+   "x1": 360.0,
+   "z1": -1640.0,
+   "y_at_z0": 145.0,
+   "y_at_z1": 128.0,
+   "note": "SW hillside, about 8% across the block. The road is authored at 10%."
+  },
+  {
+   "op": "add",
+   "x0": 110.0,
+   "z0": -1835.0,
+   "x1": 200.0,
+   "z1": -1700.0,
+   "dy": 25.0,
+   "note": "Benched-rock mass, about 25 m of relief. Strategy 0 does not cut 3 m benches."
+  },
+  {
+   "op": "add",
+   "x0": 230.0,
+   "z0": -1800.0,
+   "x1": 340.0,
+   "z1": -1680.0,
+   "dy": -8.0,
+   "note": "Fill side of the grade."
+  },
+  {
+   "op": "flat",
+   "x0": 130.0,
+   "z0": -1700.0,
+   "x1": 200.0,
+   "z1": -1655.0,
+   "y": 109.832,
+   "note": "Level pad. The road's authored end sets the real pad height; this is the ground."
+  },
+  {
+   "op": "slot",
+   "x0": 500.0,
+   "z0": -1765.0,
+   "x1": 660.0,
+   "z1": -1705.0,
+   "floor_y": 86.0,
+   "lip_m": 6.0,
+   "note": "Bridge gorge, 34 m below the deck."
+  },
+  {
+   "op": "drop_north",
+   "z_line": -1782.0,
+   "x0": 430.0,
+   "x1": 690.0,
+   "floor_y": 86.0,
+   "lip_m": 5.0,
+   "note": "Rim drop just north of the rim road. More than 30 m."
+  }
+ ]
+}

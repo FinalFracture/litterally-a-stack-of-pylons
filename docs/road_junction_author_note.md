@@ -1,5 +1,7 @@
 # Road junction and terrain work note
 
+The code described below was the unvalidated `41cbe8a` lab. It is not on `m2-foundations` anymore. Strategy 0 is the measured builder. See `docs/road_bakeoff.md`.
+
 ## Rollback checkpoint
 
 The repository commit immediately before this work was `1ed88ba98ff32fc126ccdf068a20cf2bca71fe2b`.

@@ -1,0 +1,3011 @@
+{
+ "map": "RoadLab",
+ "generated": "2026-10-23",
+ "source": "ROADLAB",
+ "seed": 20261008,
+ "coords": "[x, y, z_godot]; dev area x 100..700, z -2200..-1600",
+ "note": "Synthetic network for the bake-off. Segment ids are stable. Features strategy 0 cannot build are listed in tools/road_bakeoff/sites.json.",
+ "roads": [
+  {
+   "id": "lab_nw_st_0",
+   "name": "RoadLab 1st",
+   "class": "downtown",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "NW downtown grid street. Curbs, sidewalks and ADA ramps are not geometry.",
+   "polyline": [
+    [
+     120.0,
+     120.0,
+     -2175.0
+    ],
+    [
+     120.0,
+     120.0,
+     -2010.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_nw_st_0.s0"
+   ]
+  },
+  {
+   "id": "lab_nw_st_1",
+   "name": "RoadLab 2st",
+   "class": "downtown",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "NW downtown grid street. Curbs, sidewalks and ADA ramps are not geometry.",
+   "polyline": [
+    [
+     175.0,
+     120.0,
+     -2175.0
+    ],
+    [
+     175.0,
+     120.0,
+     -2010.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_nw_st_1.s0"
+   ]
+  },
+  {
+   "id": "lab_nw_st_2",
+   "name": "RoadLab 3st",
+   "class": "downtown",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "NW downtown grid street. Curbs, sidewalks and ADA ramps are not geometry.",
+   "polyline": [
+    [
+     230.0,
+     120.0,
+     -2175.0
+    ],
+    [
+     230.0,
+     120.0,
+     -2010.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_nw_st_2.s0"
+   ]
+  },
+  {
+   "id": "lab_nw_st_3",
+   "name": "RoadLab 4st",
+   "class": "downtown",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "NW downtown grid street. Curbs, sidewalks and ADA ramps are not geometry.",
+   "polyline": [
+    [
+     285.0,
+     120.0,
+     -2175.0
+    ],
+    [
+     285.0,
+     120.0,
+     -2010.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_nw_st_3.s0"
+   ]
+  },
+  {
+   "id": "lab_nw_av_0",
+   "name": "RoadLab 1 Ave",
+   "class": "downtown",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "NW downtown grid avenue.",
+   "polyline": [
+    [
+     120.0,
+     120.0,
+     -2175.0
+    ],
+    [
+     285.0,
+     120.0,
+     -2175.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_nw_av_0.s0"
+   ]
+  },
+  {
+   "id": "lab_nw_av_1",
+   "name": "RoadLab 2 Ave",
+   "class": "downtown",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "NW downtown grid avenue.",
+   "polyline": [
+    [
+     120.0,
+     120.0,
+     -2120.0
+    ],
+    [
+     285.0,
+     120.0,
+     -2120.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_nw_av_1.s0"
+   ]
+  },
+  {
+   "id": "lab_nw_av_2",
+   "name": "RoadLab 3 Ave",
+   "class": "downtown",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "NW downtown grid avenue.",
+   "polyline": [
+    [
+     120.0,
+     120.0,
+     -2065.0
+    ],
+    [
+     285.0,
+     120.0,
+     -2065.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_nw_av_2.s0"
+   ]
+  },
+  {
+   "id": "lab_nw_av_3",
+   "name": "RoadLab 4 Ave",
+   "class": "downtown",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "NW downtown grid avenue.",
+   "polyline": [
+    [
+     120.0,
+     120.0,
+     -2010.0
+    ],
+    [
+     285.0,
+     120.0,
+     -2010.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_nw_av_3.s0"
+   ]
+  },
+  {
+   "id": "lab_nw_diag",
+   "name": "RoadLab Diagonal",
+   "class": "downtown",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "NW diagonal through the 3x3 blocks.",
+   "polyline": [
+    [
+     120.0,
+     120.0,
+     -2175.0
+    ],
+    [
+     285.0,
+     120.0,
+     -2010.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_nw_diag.s0"
+   ]
+  },
+  {
+   "id": "lab_nw_bus_bay",
+   "name": "RoadLab Bus Bay",
+   "class": "downtown",
+   "speed_mph": 25,
+   "lanes": 1,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Bus pullout centreline. Shelter pad is not supported by strategy 0.",
+   "polyline": [
+    [
+     175.0,
+     120.0,
+     -2010.0
+    ],
+    [
+     175.0,
+     120.0,
+     -2003.0
+    ],
+    [
+     230.0,
+     120.0,
+     -2003.0
+    ],
+    [
+     230.0,
+     120.0,
+     -2010.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     3,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_nw_bus_bay.s0"
+   ]
+  },
+  {
+   "id": "lab_ne_two_lane",
+   "name": "RoadLab Arterial West",
+   "class": "urban_arterial",
+   "speed_mph": 40,
+   "lanes": 2,
+   "lane_width_m": 3.6,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "2-lane side of the signalised junction. Stop bars are not supported by strategy 0.",
+   "polyline": [
+    [
+     430.0,
+     120.0,
+     -2100.0
+    ],
+    [
+     560.0,
+     120.0,
+     -2100.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_ne_two_lane.s0"
+   ]
+  },
+  {
+   "id": "lab_ne_four_lane",
+   "name": "RoadLab Arterial East",
+   "class": "urban_arterial",
+   "speed_mph": 40,
+   "lanes": 4,
+   "lane_width_m": 3.6,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "4-lane side. Strategy 0 tapers where this road ends at the junction. The run past x=700 is the dev-area exit, not the Twin Falls map edge.",
+   "polyline": [
+    [
+     560.0,
+     120.0,
+     -2100.0
+    ],
+    [
+     750.0,
+     120.0,
+     -2100.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_ne_four_lane.s0"
+   ]
+  },
+  {
+   "id": "lab_ne_cross",
+   "name": "RoadLab Cross Street",
+   "class": "urban_arterial",
+   "speed_mph": 35,
+   "lanes": 2,
+   "lane_width_m": 3.6,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Cross street. North end runs 50 m past the dev-area edge. Signals and 12-15 m return arcs are not supported by strategy 0.",
+   "polyline": [
+    [
+     560.0,
+     120.0,
+     -2250.0
+    ],
+    [
+     560.0,
+     120.0,
+     -1980.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_ne_cross.s0"
+   ]
+  },
+  {
+   "id": "lab_c_spine",
+   "name": "RoadLab S-curve",
+   "class": "collector",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Centre S-curve, hairpins and the spine of the 6-leg. Reused from the strategy lab layout.",
+   "polyline": [
+    [
+     310.0,
+     120.0,
+     -2021.0
+    ],
+    [
+     314.266,
+     120.038,
+     -2017.208
+    ],
+    [
+     320.333,
+     120.092,
+     -2011.384
+    ],
+    [
+     327.347,
+     120.155,
+     -2005.256
+    ],
+    [
+     334.454,
+     120.22,
+     -2000.552
+    ],
+    [
+     340.8,
+     120.28,
+     -1999.0
+    ],
+    [
+     346.211,
+     120.335,
+     -2002.424
+    ],
+    [
+     351.258,
+     120.389,
+     -2009.672
+    ],
+    [
+     356.198,
+     120.443,
+     -2018.008
+    ],
+    [
+     361.293,
+     120.5,
+     -2024.696
+    ],
+    [
+     366.8,
+     120.56,
+     -2027.0
+    ],
+    [
+     371.127,
+     120.611,
+     -2025.128
+    ],
+    [
+     375.739,
+     120.671,
+     -2021.087
+    ],
+    [
+     380.514,
+     120.734,
+     -2015.525
+    ],
+    [
+     385.331,
+     120.796,
+     -2009.087
+    ],
+    [
+     390.065,
+     120.849,
+     -2002.423
+    ],
+    [
+     394.596,
+     120.889,
+     -1996.178
+    ],
+    [
+     398.8,
+     120.91,
+     -1991.0
+    ],
+    [
+     404.688,
+     120.905,
+     -1985.128
+    ],
+    [
+     410.704,
+     120.87,
+     -1979.784
+    ],
+    [
+     416.176,
+     120.816,
+     -1974.776
+    ],
+    [
+     420.432,
+     120.755,
+     -1969.912
+    ],
+    [
+     422.8,
+     120.7,
+     -1965.0
+    ],
+    [
+     422.706,
+     120.632,
+     -1957.922
+    ],
+    [
+     420.05,
+     120.556,
+     -1950.375
+    ],
+    [
+     415.769,
+     120.482,
+     -1944.141
+    ],
+    [
+     410.8,
+     120.42,
+     -1941.0
+    ],
+    [
+     406.32,
+     120.384,
+     -1942.344
+    ],
+    [
+     401.04,
+     120.356,
+     -1946.632
+    ],
+    [
+     395.2,
+     120.332,
+     -1951.848
+    ],
+    [
+     389.04,
+     120.308,
+     -1955.976
+    ],
+    [
+     382.8,
+     120.28,
+     -1957.0
+    ],
+    [
+     376.902,
+     120.253,
+     -1954.88
+    ],
+    [
+     370.059,
+     120.224,
+     -1950.926
+    ],
+    [
+     363.05,
+     120.195,
+     -1945.75
+    ],
+    [
+     356.652,
+     120.165,
+     -1939.963
+    ],
+    [
+     351.643,
+     120.135,
+     -1934.176
+    ],
+    [
+     348.8,
+     120.105,
+     -1929.0
+    ],
+    [
+     348.622,
+     120.07,
+     -1923.304
+    ],
+    [
+     351.067,
+     120.035,
+     -1917.512
+    ],
+    [
+     355.2,
+     120.0,
+     -1911.768
+    ],
+    [
+     360.089,
+     119.965,
+     -1906.216
+    ],
+    [
+     364.8,
+     119.93,
+     -1901.0
+    ],
+    [
+     369.612,
+     119.894,
+     -1895.672
+    ],
+    [
+     375.148,
+     119.856,
+     -1890.136
+    ],
+    [
+     380.988,
+     119.819,
+     -1885.064
+    ],
+    [
+     386.715,
+     119.784,
+     -1881.128
+    ],
+    [
+     391.91,
+     119.755,
+     -1879.0
+    ],
+    [
+     399.371,
+     119.719,
+     -1880.519
+    ],
+    [
+     406.129,
+     119.693,
+     -1885.815
+    ],
+    [
+     412.695,
+     119.668,
+     -1891.0
+    ],
+    [
+     419.174,
+     119.635,
+     -1894.741
+    ],
+    [
+     425.461,
+     119.603,
+     -1898.37
+    ],
+    [
+     431.747,
+     119.58,
+     -1902.0
+    ],
+    [
+     438.098,
+     119.574,
+     -1905.667
+    ],
+    [
+     444.449,
+     119.577,
+     -1909.333
+    ],
+    [
+     450.8,
+     119.58,
+     -1913.0
+    ],
+    [
+     457.279,
+     119.57,
+     -1916.741
+    ],
+    [
+     463.758,
+     119.559,
+     -1920.481
+    ],
+    [
+     469.853,
+     119.58,
+     -1924.0
+    ],
+    [
+     476.351,
+     119.645,
+     -1926.296
+    ],
+    [
+     482.464,
+     119.741,
+     -1928.37
+    ],
+    [
+     485.441,
+     119.86,
+     -1933.0
+    ],
+    [
+     484.293,
+     119.949,
+     -1938.056
+    ],
+    [
+     481.138,
+     120.054,
+     -1944.528
+    ],
+    [
+     477.293,
+     120.164,
+     -1951.672
+    ],
+    [
+     474.075,
+     120.267,
+     -1958.744
+    ],
+    [
+     472.8,
+     120.35,
+     -1965.0
+    ],
+    [
+     475.317,
+     120.431,
+     -1971.656
+    ],
+    [
+     480.51,
+     120.497,
+     -1977.75
+    ],
+    [
+     485.347,
+     120.541,
+     -1983.469
+    ],
+    [
+     486.8,
+     120.56,
+     -1989.0
+    ],
+    [
+     483.753,
+     120.544,
+     -1994.562
+    ],
+    [
+     477.925,
+     120.499,
+     -2000.0
+    ],
+    [
+     470.534,
+     120.44,
+     -2004.938
+    ],
+    [
+     462.8,
+     120.385,
+     -2009.0
+    ],
+    [
+     455.792,
+     120.342,
+     -2011.496
+    ],
+    [
+     447.536,
+     120.293,
+     -2013.448
+    ],
+    [
+     439.184,
+     120.246,
+     -2014.952
+    ],
+    [
+     431.888,
+     120.204,
+     -2016.104
+    ],
+    [
+     426.8,
+     120.175,
+     -2017.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     80,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_c_spine.s0"
+   ]
+  },
+  {
+   "id": "lab_c_bypass",
+   "name": "RoadLab Bypass",
+   "class": "collector",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Bypass that merges back.",
+   "polyline": [
+    [
+     410.8,
+     120.42,
+     -1941.0
+    ],
+    [
+     416.409,
+     120.382,
+     -1938.531
+    ],
+    [
+     424.675,
+     120.328,
+     -1935.0
+    ],
+    [
+     432.503,
+     120.267,
+     -1930.969
+    ],
+    [
+     436.8,
+     120.21,
+     -1927.0
+    ],
+    [
+     435.722,
+     120.141,
+     -1922.407
+    ],
+    [
+     430.199,
+     120.073,
+     -1917.593
+    ],
+    [
+     422.8,
+     120.0,
+     -1911.0
+    ],
+    [
+     418.272,
+     119.958,
+     -1906.222
+    ],
+    [
+     412.61,
+     119.912,
+     -1900.333
+    ],
+    [
+     406.48,
+     119.864,
+     -1894.0
+    ],
+    [
+     400.544,
+     119.82,
+     -1887.889
+    ],
+    [
+     395.466,
+     119.782,
+     -1882.667
+    ],
+    [
+     391.91,
+     119.755,
+     -1879.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     13,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_c_bypass.s0"
+   ]
+  },
+  {
+   "id": "lab_c_tee",
+   "name": "RoadLab T Spur",
+   "class": "local",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "T spur off the hairpin.",
+   "polyline": [
+    [
+     382.8,
+     120.28,
+     -1957.0
+    ],
+    [
+     378.448,
+     120.267,
+     -1958.92
+    ],
+    [
+     372.464,
+     120.248,
+     -1961.56
+    ],
+    [
+     365.256,
+     120.226,
+     -1964.74
+    ],
+    [
+     357.232,
+     120.201,
+     -1968.28
+    ],
+    [
+     348.8,
+     120.175,
+     -1972.0
+    ],
+    [
+     340.368,
+     120.149,
+     -1975.72
+    ],
+    [
+     332.344,
+     120.124,
+     -1979.26
+    ],
+    [
+     325.136,
+     120.102,
+     -1982.44
+    ],
+    [
+     319.152,
+     120.083,
+     -1985.08
+    ],
+    [
+     314.8,
+     120.07,
+     -1987.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     10,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_c_tee.s0"
+   ]
+  },
+  {
+   "id": "lab_c_ns",
+   "name": "RoadLab North-South",
+   "class": "collector",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "North-south leg of the 6-leg junction.",
+   "polyline": [
+    [
+     450.8,
+     120.07,
+     -1861.0
+    ],
+    [
+     450.8,
+     119.97,
+     -1866.578
+    ],
+    [
+     450.8,
+     119.825,
+     -1874.625
+    ],
+    [
+     450.8,
+     119.68,
+     -1883.359
+    ],
+    [
+     450.8,
+     119.58,
+     -1891.0
+    ],
+    [
+     450.8,
+     119.544,
+     -1898.926
+    ],
+    [
+     450.8,
+     119.562,
+     -1905.963
+    ],
+    [
+     450.8,
+     119.58,
+     -1913.0
+    ],
+    [
+     450.8,
+     119.562,
+     -1920.037
+    ],
+    [
+     450.8,
+     119.544,
+     -1927.074
+    ],
+    [
+     450.8,
+     119.58,
+     -1935.0
+    ],
+    [
+     450.8,
+     119.68,
+     -1942.641
+    ],
+    [
+     450.8,
+     119.825,
+     -1951.375
+    ],
+    [
+     450.8,
+     119.97,
+     -1959.422
+    ],
+    [
+     450.8,
+     120.07,
+     -1965.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     14,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_c_ns.s0"
+   ]
+  },
+  {
+   "id": "lab_c_diag",
+   "name": "RoadLab Six-leg Diagonal",
+   "class": "local",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Diagonal into the 6-leg.",
+   "polyline": [
+    [
+     481.928,
+     120.0,
+     -1891.204
+    ],
+    [
+     478.166,
+     119.876,
+     -1893.838
+    ],
+    [
+     472.765,
+     119.704,
+     -1897.62
+    ],
+    [
+     467.183,
+     119.58,
+     -1901.528
+    ],
+    [
+     461.237,
+     119.549,
+     -1905.692
+    ],
+    [
+     455.108,
+     119.564,
+     -1909.983
+    ],
+    [
+     450.8,
+     119.58,
+     -1913.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     6,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_c_diag.s0"
+   ]
+  },
+  {
+   "id": "lab_c_fork",
+   "name": "RoadLab Fork",
+   "class": "local",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Short fork off the 6-leg.",
+   "polyline": [
+    [
+     450.8,
+     119.58,
+     -1913.0
+    ],
+    [
+     453.95,
+     119.552,
+     -1918.456
+    ],
+    [
+     458.0,
+     119.58,
+     -1925.471
+    ],
+    [
+     462.05,
+     119.807,
+     -1932.486
+    ],
+    [
+     465.2,
+     120.035,
+     -1937.942
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     4,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_c_fork.s0"
+   ]
+  },
+  {
+   "id": "lab_c_y_west",
+   "name": "RoadLab Y West",
+   "class": "local",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "West arm of the Y.",
+   "polyline": [
+    [
+     426.8,
+     120.175,
+     -2017.0
+    ],
+    [
+     421.504,
+     120.154,
+     -2019.167
+    ],
+    [
+     413.763,
+     120.123,
+     -2022.333
+    ],
+    [
+     404.8,
+     120.087,
+     -2026.0
+    ],
+    [
+     395.837,
+     120.052,
+     -2029.667
+    ],
+    [
+     388.096,
+     120.021,
+     -2032.833
+    ],
+    [
+     382.8,
+     120.0,
+     -2035.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     6,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_c_y_west.s0"
+   ]
+  },
+  {
+   "id": "lab_c_y_east",
+   "name": "RoadLab Y East",
+   "class": "local",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "East arm of the Y.",
+   "polyline": [
+    [
+     426.8,
+     120.175,
+     -2017.0
+    ],
+    [
+     431.133,
+     120.192,
+     -2019.167
+    ],
+    [
+     437.467,
+     120.216,
+     -2022.333
+    ],
+    [
+     444.8,
+     120.245,
+     -2026.0
+    ],
+    [
+     452.133,
+     120.274,
+     -2029.667
+    ],
+    [
+     458.467,
+     120.298,
+     -2032.833
+    ],
+    [
+     462.8,
+     120.315,
+     -2035.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     6,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_c_y_east.s0"
+   ]
+  },
+  {
+   "id": "lab_c_spur",
+   "name": "RoadLab Short Spur",
+   "class": "local",
+   "speed_mph": 25,
+   "lanes": 1,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Short spur off the south bend.",
+   "polyline": [
+    [
+     472.8,
+     120.35,
+     -1965.0
+    ],
+    [
+     469.456,
+     120.371,
+     -1968.648
+    ],
+    [
+     464.528,
+     120.403,
+     -1974.024
+    ],
+    [
+     459.072,
+     120.437,
+     -1979.976
+    ],
+    [
+     454.144,
+     120.469,
+     -1985.352
+    ],
+    [
+     450.8,
+     120.49,
+     -1989.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     5,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_c_spur.s0"
+   ]
+  },
+  {
+   "id": "lab_sw_grade",
+   "name": "RoadLab Canyon Grade",
+   "class": "grade",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.05,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "10% grade, 13 m hairpins. 3 m benches on the 76 degree cut are not supported by strategy 0.",
+   "polyline": [
+    [
+     160.0,
+     145.0,
+     -1845.0
+    ],
+    [
+     160.0,
+     144.227,
+     -1837.273
+    ],
+    [
+     160.0,
+     143.455,
+     -1829.545
+    ],
+    [
+     160.0,
+     142.682,
+     -1821.818
+    ],
+    [
+     160.0,
+     141.909,
+     -1814.091
+    ],
+    [
+     160.0,
+     141.136,
+     -1806.364
+    ],
+    [
+     160.0,
+     140.364,
+     -1798.636
+    ],
+    [
+     160.0,
+     139.591,
+     -1790.909
+    ],
+    [
+     160.0,
+     138.818,
+     -1783.182
+    ],
+    [
+     160.0,
+     138.045,
+     -1775.455
+    ],
+    [
+     160.0,
+     137.273,
+     -1767.727
+    ],
+    [
+     160.0,
+     136.5,
+     -1760.0
+    ],
+    [
+     160.443,
+     136.16,
+     -1756.635
+    ],
+    [
+     161.742,
+     135.819,
+     -1753.5
+    ],
+    [
+     163.808,
+     135.479,
+     -1750.808
+    ],
+    [
+     166.5,
+     135.139,
+     -1748.742
+    ],
+    [
+     169.635,
+     134.798,
+     -1747.443
+    ],
+    [
+     173.0,
+     134.458,
+     -1747.0
+    ],
+    [
+     176.365,
+     134.118,
+     -1747.443
+    ],
+    [
+     179.5,
+     133.777,
+     -1748.742
+    ],
+    [
+     182.192,
+     133.437,
+     -1750.808
+    ],
+    [
+     184.258,
+     133.097,
+     -1753.5
+    ],
+    [
+     185.557,
+     132.756,
+     -1756.635
+    ],
+    [
+     186.0,
+     132.416,
+     -1760.0
+    ],
+    [
+     186.0,
+     131.694,
+     -1767.222
+    ],
+    [
+     186.0,
+     130.971,
+     -1774.444
+    ],
+    [
+     186.0,
+     130.249,
+     -1781.667
+    ],
+    [
+     186.0,
+     129.527,
+     -1788.889
+    ],
+    [
+     186.0,
+     128.805,
+     -1796.111
+    ],
+    [
+     186.0,
+     128.083,
+     -1803.333
+    ],
+    [
+     186.0,
+     127.36,
+     -1810.556
+    ],
+    [
+     186.0,
+     126.638,
+     -1817.778
+    ],
+    [
+     186.0,
+     125.916,
+     -1825.0
+    ],
+    [
+     186.443,
+     125.576,
+     -1828.365
+    ],
+    [
+     187.742,
+     125.235,
+     -1831.5
+    ],
+    [
+     189.808,
+     124.895,
+     -1834.192
+    ],
+    [
+     192.5,
+     124.555,
+     -1836.258
+    ],
+    [
+     195.635,
+     124.214,
+     -1837.557
+    ],
+    [
+     199.0,
+     123.874,
+     -1838.0
+    ],
+    [
+     202.365,
+     123.534,
+     -1837.557
+    ],
+    [
+     205.5,
+     123.193,
+     -1836.258
+    ],
+    [
+     208.192,
+     122.853,
+     -1834.192
+    ],
+    [
+     210.258,
+     122.513,
+     -1831.5
+    ],
+    [
+     211.557,
+     122.172,
+     -1828.365
+    ],
+    [
+     212.0,
+     121.832,
+     -1825.0
+    ],
+    [
+     212.0,
+     121.032,
+     -1817.0
+    ],
+    [
+     212.0,
+     120.232,
+     -1809.0
+    ],
+    [
+     212.0,
+     119.432,
+     -1801.0
+    ],
+    [
+     212.0,
+     118.632,
+     -1793.0
+    ],
+    [
+     212.0,
+     117.832,
+     -1785.0
+    ],
+    [
+     212.0,
+     117.032,
+     -1777.0
+    ],
+    [
+     212.0,
+     116.232,
+     -1769.0
+    ],
+    [
+     212.0,
+     115.432,
+     -1761.0
+    ],
+    [
+     212.0,
+     114.632,
+     -1753.0
+    ],
+    [
+     212.0,
+     113.832,
+     -1745.0
+    ],
+    [
+     212.0,
+     113.032,
+     -1737.0
+    ],
+    [
+     212.0,
+     112.232,
+     -1729.0
+    ],
+    [
+     212.0,
+     111.432,
+     -1721.0
+    ],
+    [
+     212.0,
+     110.632,
+     -1713.0
+    ],
+    [
+     212.0,
+     109.832,
+     -1705.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     59,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_sw_grade.s0"
+   ]
+  },
+  {
+   "id": "lab_sw_pad",
+   "name": "RoadLab Level Pad",
+   "class": "service",
+   "speed_mph": 25,
+   "lanes": 1,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Flat pad at the bottom of the grade.",
+   "polyline": [
+    [
+     212.0,
+     109.832,
+     -1705.0
+    ],
+    [
+     150.0,
+     109.832,
+     -1688.0
+    ],
+    [
+     150.0,
+     109.832,
+     -1662.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     2,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_sw_pad.s0"
+   ]
+  },
+  {
+   "id": "lab_se_rim",
+   "name": "RoadLab Rim",
+   "class": "rim_local",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Rim road. The ground drops more than 30 m just north of the edge. A distinct 0.8 m concrete barrier is not supported by strategy 0; the builder may emit its guard wall.",
+   "polyline": [
+    [
+     430.0,
+     120.0,
+     -1788.0
+    ],
+    [
+     680.0,
+     120.0,
+     -1788.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_se_rim.s0"
+   ]
+  },
+  {
+   "id": "lab_se_approach_w",
+   "name": "RoadLab Bridge Approach West",
+   "class": "urban_arterial",
+   "speed_mph": 35,
+   "lanes": 2,
+   "lane_width_m": 3.6,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "19 m approach slab is the deck-kind tail. Abutment fill is not supported by strategy 0.",
+   "polyline": [
+    [
+     430.0,
+     120.0,
+     -1735.0
+    ],
+    [
+     500.0,
+     120.0,
+     -1735.0
+    ],
+    [
+     519.0,
+     120.0,
+     -1735.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ],
+    [
+     1,
+     2,
+     "deck"
+    ]
+   ],
+   "segment_ids": [
+    "lab_se_approach_w.s0",
+    "lab_se_approach_w.s1"
+   ]
+  },
+  {
+   "id": "lab_se_bridge",
+   "name": "RoadLab Bridge",
+   "class": "urban_arterial",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.6,
+   "oneway": false,
+   "bridge": true,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Pinned deck at y=120. Strategy 0 emits the bridge shoulder parapets. It is not the Perrine asset.",
+   "polyline": [
+    [
+     519.0,
+     120.0,
+     -1735.0
+    ],
+    [
+     641.0,
+     120.0,
+     -1735.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "bridge"
+    ]
+   ],
+   "segment_ids": [
+    "lab_se_bridge.s0"
+   ]
+  },
+  {
+   "id": "lab_se_approach_e",
+   "name": "RoadLab Bridge Approach East",
+   "class": "urban_arterial",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.6,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "19 m approach slab is the deck-kind head.",
+   "polyline": [
+    [
+     641.0,
+     120.0,
+     -1735.0
+    ],
+    [
+     660.0,
+     120.0,
+     -1735.0
+    ],
+    [
+     700.0,
+     120.0,
+     -1735.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "deck"
+    ],
+    [
+     1,
+     2,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_se_approach_e.s0",
+    "lab_se_approach_e.s1"
+   ]
+  },
+  {
+   "id": "lab_se_closure",
+   "name": "RoadLab Lane Closure Pad",
+   "class": "service",
+   "speed_mph": 25,
+   "lanes": 1,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Flat pad beside the approach. Closure furniture is not supported by strategy 0.",
+   "polyline": [
+    [
+     470.0,
+     120.0,
+     -1755.0
+    ],
+    [
+     530.0,
+     120.0,
+     -1755.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_se_closure.s0"
+   ]
+  },
+  {
+   "id": "lab_se_crossing_road",
+   "name": "RoadLab Rail Crossing",
+   "class": "local",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Road across the freight line. The crossing surface is not supported by strategy 0.",
+   "polyline": [
+    [
+     540.0,
+     120.0,
+     -1710.0
+    ],
+    [
+     575.0,
+     120.0,
+     -1655.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_se_crossing_road.s0"
+   ]
+  },
+  {
+   "id": "lab_se_overpass",
+   "name": "RoadLab Overpass",
+   "class": "urban_arterial",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.6,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Upper road of the underpass. The 4.9 m structure is not supported by strategy 0.",
+   "polyline": [
+    [
+     610.0,
+     120.0,
+     -1840.0
+    ],
+    [
+     610.0,
+     120.0,
+     -1760.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_se_overpass.s0"
+   ]
+  },
+  {
+   "id": "lab_se_underpass",
+   "name": "RoadLab Underpass",
+   "class": "local",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Lower road. Clearance to the overpass centreline is 4.9 m. Strategy 0 does not build the structure.",
+   "polyline": [
+    [
+     560.0,
+     115.1,
+     -1800.0
+    ],
+    [
+     680.0,
+     115.1,
+     -1800.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_se_underpass.s0"
+   ]
+  },
+  {
+   "id": "lab_s_stem",
+   "name": "RoadLab Cul-de-sac Stem",
+   "class": "local",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Dead-end stem into the 12 m bulb.",
+   "polyline": [
+    [
+     340.0,
+     120.0,
+     -1685.0
+    ],
+    [
+     340.0,
+     120.0,
+     -1632.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_s_stem.s0"
+   ]
+  },
+  {
+   "id": "lab_s_bulb",
+   "name": "RoadLab Cul-de-sac Bulb",
+   "class": "local",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "12 m bulb. The gravel apron and the end-of-road sign are not supported by strategy 0.",
+   "polyline": [
+    [
+     340.0,
+     120.0,
+     -1632.0
+    ],
+    [
+     344.592,
+     120.0,
+     -1631.087
+    ],
+    [
+     348.485,
+     120.0,
+     -1628.485
+    ],
+    [
+     351.087,
+     120.0,
+     -1624.592
+    ],
+    [
+     352.0,
+     120.0,
+     -1620.0
+    ],
+    [
+     351.087,
+     120.0,
+     -1615.408
+    ],
+    [
+     348.485,
+     120.0,
+     -1611.515
+    ],
+    [
+     344.592,
+     120.0,
+     -1608.913
+    ],
+    [
+     340.0,
+     120.0,
+     -1608.0
+    ],
+    [
+     335.408,
+     120.0,
+     -1608.913
+    ],
+    [
+     331.515,
+     120.0,
+     -1611.515
+    ],
+    [
+     328.913,
+     120.0,
+     -1615.408
+    ],
+    [
+     328.0,
+     120.0,
+     -1620.0
+    ],
+    [
+     328.913,
+     120.0,
+     -1624.592
+    ],
+    [
+     331.515,
+     120.0,
+     -1628.485
+    ],
+    [
+     335.408,
+     120.0,
+     -1631.087
+    ],
+    [
+     340.0,
+     120.0,
+     -1632.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     16,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_s_bulb.s0"
+   ]
+  },
+  {
+   "id": "lab_s_service",
+   "name": "RoadLab Service",
+   "class": "service",
+   "speed_mph": 10,
+   "lanes": 1,
+   "lane_width_m": 3.0,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Fictional service road. The gate is not supported by strategy 0.",
+   "polyline": [
+    [
+     390.0,
+     120.0,
+     -1648.0
+    ],
+    [
+     470.0,
+     120.0,
+     -1636.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_s_service.s0"
+   ]
+  },
+  {
+   "id": "lab_link_nw",
+   "name": "RoadLab Link Northwest",
+   "class": "local",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Connects the downtown grid to the centre spine.",
+   "polyline": [
+    [
+     285.0,
+     120.0,
+     -2010.0
+    ],
+    [
+     310.0,
+     120.0,
+     -2021.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_link_nw.s0"
+   ]
+  },
+  {
+   "id": "lab_link_sw",
+   "name": "RoadLab Link Southwest",
+   "class": "collector",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Connects the centre Y to the canyon grade.",
+   "polyline": [
+    [
+     382.8,
+     120.0,
+     -2035.0
+    ],
+    [
+     160.0,
+     145.0,
+     -1845.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_link_sw.s0"
+   ]
+  },
+  {
+   "id": "lab_link_se",
+   "name": "RoadLab Link Southeast",
+   "class": "collector",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Connects the arterial cross street to the rim road.",
+   "polyline": [
+    [
+     560.0,
+     120.0,
+     -1980.0
+    ],
+    [
+     500.0,
+     120.0,
+     -1788.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_link_se.s0"
+   ]
+  },
+  {
+   "id": "lab_link_s",
+   "name": "RoadLab Link South",
+   "class": "local",
+   "speed_mph": 25,
+   "lanes": 2,
+   "lane_width_m": 3.3,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Connects the rim to the cul-de-sac stem.",
+   "polyline": [
+    [
+     500.0,
+     120.0,
+     -1788.0
+    ],
+    [
+     340.0,
+     120.0,
+     -1685.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_link_s.s0"
+   ]
+  },
+  {
+   "id": "lab_link_service",
+   "name": "RoadLab Service Tie",
+   "class": "service",
+   "speed_mph": 10,
+   "lanes": 1,
+   "lane_width_m": 3.0,
+   "oneway": false,
+   "bridge": false,
+   "tunnel": false,
+   "source": "ROADLAB",
+   "note": "Ties the gated service road into the stem. The gate itself is not supported by strategy 0.",
+   "polyline": [
+    [
+     340.0,
+     120.0,
+     -1685.0
+    ],
+    [
+     390.0,
+     120.0,
+     -1648.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_link_service.s0"
+   ]
+  }
+ ],
+ "intersections": [
+  {
+   "id": "lab_001",
+   "pos": [
+    120.0,
+    120.0,
+    -2175.0
+   ],
+   "roads": [
+    "lab_nw_st_0",
+    "lab_nw_av_0"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_002",
+   "pos": [
+    120.0,
+    120.0,
+    -2120.0
+   ],
+   "roads": [
+    "lab_nw_st_0",
+    "lab_nw_av_1"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_003",
+   "pos": [
+    120.0,
+    120.0,
+    -2065.0
+   ],
+   "roads": [
+    "lab_nw_st_0",
+    "lab_nw_av_2"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_004",
+   "pos": [
+    120.0,
+    120.0,
+    -2010.0
+   ],
+   "roads": [
+    "lab_nw_st_0",
+    "lab_nw_av_3"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_005",
+   "pos": [
+    175.0,
+    120.0,
+    -2175.0
+   ],
+   "roads": [
+    "lab_nw_st_1",
+    "lab_nw_av_0"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_006",
+   "pos": [
+    175.0,
+    120.0,
+    -2120.0
+   ],
+   "roads": [
+    "lab_nw_st_1",
+    "lab_nw_av_1"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_007",
+   "pos": [
+    175.0,
+    120.0,
+    -2065.0
+   ],
+   "roads": [
+    "lab_nw_st_1",
+    "lab_nw_av_2"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_008",
+   "pos": [
+    175.0,
+    120.0,
+    -2010.0
+   ],
+   "roads": [
+    "lab_nw_st_1",
+    "lab_nw_av_3"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_009",
+   "pos": [
+    230.0,
+    120.0,
+    -2175.0
+   ],
+   "roads": [
+    "lab_nw_st_2",
+    "lab_nw_av_0"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_010",
+   "pos": [
+    230.0,
+    120.0,
+    -2120.0
+   ],
+   "roads": [
+    "lab_nw_st_2",
+    "lab_nw_av_1"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_011",
+   "pos": [
+    230.0,
+    120.0,
+    -2065.0
+   ],
+   "roads": [
+    "lab_nw_st_2",
+    "lab_nw_av_2"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_012",
+   "pos": [
+    230.0,
+    120.0,
+    -2010.0
+   ],
+   "roads": [
+    "lab_nw_st_2",
+    "lab_nw_av_3"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_013",
+   "pos": [
+    285.0,
+    120.0,
+    -2175.0
+   ],
+   "roads": [
+    "lab_nw_st_3",
+    "lab_nw_av_0"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_014",
+   "pos": [
+    285.0,
+    120.0,
+    -2120.0
+   ],
+   "roads": [
+    "lab_nw_st_3",
+    "lab_nw_av_1"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_015",
+   "pos": [
+    285.0,
+    120.0,
+    -2065.0
+   ],
+   "roads": [
+    "lab_nw_st_3",
+    "lab_nw_av_2"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_016",
+   "pos": [
+    285.0,
+    120.0,
+    -2010.0
+   ],
+   "roads": [
+    "lab_nw_st_3",
+    "lab_nw_av_3"
+   ],
+   "note": "downtown crossing. 6 m returns, crosswalks, ADA ramps: not supported by strategy 0"
+  },
+  {
+   "id": "lab_017",
+   "pos": [
+    175.0,
+    120.0,
+    -2010.0
+   ],
+   "roads": [
+    "lab_nw_bus_bay",
+    "lab_nw_st_1",
+    "lab_nw_av_3"
+   ],
+   "note": "bus bay west tie-in"
+  },
+  {
+   "id": "lab_018",
+   "pos": [
+    230.0,
+    120.0,
+    -2010.0
+   ],
+   "roads": [
+    "lab_nw_bus_bay",
+    "lab_nw_st_2",
+    "lab_nw_av_3"
+   ],
+   "note": "bus bay east tie-in"
+  },
+  {
+   "id": "lab_019",
+   "pos": [
+    560.0,
+    120.0,
+    -2100.0
+   ],
+   "roads": [
+    "lab_ne_two_lane",
+    "lab_ne_four_lane",
+    "lab_ne_cross"
+   ],
+   "note": "signalised arterial junction. Signals, stop bars, 12-15 m returns: not supported by strategy 0"
+  },
+  {
+   "id": "lab_020",
+   "pos": [
+    410.8,
+    120.42,
+    -1941.0
+   ],
+   "roads": [
+    "lab_c_spine",
+    "lab_c_bypass"
+   ],
+   "note": "bypass split"
+  },
+  {
+   "id": "lab_021",
+   "pos": [
+    382.8,
+    120.28,
+    -1957.0
+   ],
+   "roads": [
+    "lab_c_spine",
+    "lab_c_tee"
+   ],
+   "note": "T junction"
+  },
+  {
+   "id": "lab_022",
+   "pos": [
+    391.91,
+    119.755,
+    -1879.0
+   ],
+   "roads": [
+    "lab_c_spine",
+    "lab_c_bypass"
+   ],
+   "note": "bypass merge"
+  },
+  {
+   "id": "lab_023",
+   "pos": [
+    450.8,
+    119.58,
+    -1913.0
+   ],
+   "roads": [
+    "lab_c_spine",
+    "lab_c_ns",
+    "lab_c_diag",
+    "lab_c_fork"
+   ],
+   "note": "6-leg junction. Corner arcs are not supported by strategy 0."
+  },
+  {
+   "id": "lab_024",
+   "pos": [
+    426.8,
+    120.175,
+    -2017.0
+   ],
+   "roads": [
+    "lab_c_spine",
+    "lab_c_y_west",
+    "lab_c_y_east"
+   ],
+   "note": "Y junction"
+  },
+  {
+   "id": "lab_025",
+   "pos": [
+    472.8,
+    120.35,
+    -1965.0
+   ],
+   "roads": [
+    "lab_c_spine",
+    "lab_c_spur"
+   ],
+   "note": "south spur"
+  },
+  {
+   "id": "lab_026",
+   "pos": [
+    212.0,
+    109.832,
+    -1705.0
+   ],
+   "roads": [
+    "lab_sw_grade",
+    "lab_sw_pad"
+   ],
+   "note": "grade meets the level pad"
+  },
+  {
+   "id": "lab_027",
+   "pos": [
+    519.0,
+    120.0,
+    -1735.0
+   ],
+   "roads": [
+    "lab_se_approach_w",
+    "lab_se_bridge"
+   ],
+   "note": "west abutment line"
+  },
+  {
+   "id": "lab_028",
+   "pos": [
+    641.0,
+    120.0,
+    -1735.0
+   ],
+   "roads": [
+    "lab_se_bridge",
+    "lab_se_approach_e"
+   ],
+   "note": "east abutment line"
+  },
+  {
+   "id": "lab_029",
+   "pos": [
+    340.0,
+    120.0,
+    -1632.0
+   ],
+   "roads": [
+    "lab_s_stem",
+    "lab_s_bulb"
+   ],
+   "note": "bulb tie-in"
+  },
+  {
+   "id": "lab_030",
+   "pos": [
+    285.0,
+    120.0,
+    -2010.0
+   ],
+   "roads": [
+    "lab_link_nw",
+    "lab_nw_st_3",
+    "lab_nw_av_3"
+   ],
+   "note": "grid to centre"
+  },
+  {
+   "id": "lab_031",
+   "pos": [
+    310.0,
+    120.0,
+    -2021.0
+   ],
+   "roads": [
+    "lab_link_nw",
+    "lab_c_spine"
+   ],
+   "note": "centre spine start"
+  },
+  {
+   "id": "lab_032",
+   "pos": [
+    382.8,
+    120.0,
+    -2035.0
+   ],
+   "roads": [
+    "lab_link_sw",
+    "lab_c_y_west"
+   ],
+   "note": "Y to the grade link"
+  },
+  {
+   "id": "lab_033",
+   "pos": [
+    160.0,
+    145.0,
+    -1845.0
+   ],
+   "roads": [
+    "lab_link_sw",
+    "lab_sw_grade"
+   ],
+   "note": "canyon grade start"
+  },
+  {
+   "id": "lab_034",
+   "pos": [
+    560.0,
+    120.0,
+    -1980.0
+   ],
+   "roads": [
+    "lab_link_se",
+    "lab_ne_cross"
+   ],
+   "note": "cross street south end"
+  },
+  {
+   "id": "lab_035",
+   "pos": [
+    500.0,
+    120.0,
+    -1788.0
+   ],
+   "roads": [
+    "lab_link_s",
+    "lab_se_rim",
+    "lab_link_se"
+   ],
+   "note": "rim south link"
+  },
+  {
+   "id": "lab_036",
+   "pos": [
+    340.0,
+    120.0,
+    -1685.0
+   ],
+   "roads": [
+    "lab_link_service",
+    "lab_s_stem",
+    "lab_link_s"
+   ],
+   "note": "service tie"
+  },
+  {
+   "id": "lab_037",
+   "pos": [
+    390.0,
+    120.0,
+    -1648.0
+   ],
+   "roads": [
+    "lab_link_service",
+    "lab_s_service"
+   ],
+   "note": "service road west end"
+  }
+ ],
+ "railways": [
+  {
+   "id": "lab_se_rail",
+   "name": "RoadLab Freight",
+   "source": "ROADLAB",
+   "gauge_m": 1.435,
+   "max_grade": 0.015,
+   "note": "Freight line. Crossing panels are visual in strategy 0 and are not a solid crossing.",
+   "polyline": [
+    [
+     450.0,
+     120.0,
+     -1695.0
+    ],
+    [
+     690.0,
+     120.0,
+     -1665.0
+    ]
+   ],
+   "segments": [
+    [
+     0,
+     1,
+     "grade"
+    ]
+   ],
+   "segment_ids": [
+    "lab_se_rail.s0"
+   ]
+  }
+ ]
+}

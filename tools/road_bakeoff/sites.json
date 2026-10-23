@@ -1,0 +1,146 @@
+{
+  "seed": 20261008,
+  "note": "One site is one harness run. Synthetic sites use RoadLab (no lidar). Map sites build only the 500 m chunks the rect touches, plus a neighbour chunk where a sample is within 40 m of a chunk edge. They do not build the rest of the Twin Falls map. A 400 m cell is usually 4 to 9 chunks. Cell A also instances the Perrine bridge model.",
+  "unsupported_by_strategy_0": [
+    "downtown curbs, 2.4 m sidewalks, continental crosswalks, ADA ramps",
+    "bus pullout shelter pad",
+    "signal heads, stop bars, and 6 m / 12-15 m corner-return arcs",
+    "dev-area map-edge exit pad (strategy 0 only pads the Twin Falls boundary x<=5, x>=4995, z>=-5, z<=-7995)",
+    "3 m benches on a rock cut taller than 8 m",
+    "0.8 m concrete barrier as its own asset (a guard wall is emitted when the stamped drop exceeds 2.5 m)",
+    "approach-slab abutment fill and the Perrine deck joint (lab bridge parapets do emit)",
+    "lane-closure furniture",
+    "solid freight-rail crossing",
+    "4.9 m underpass structure",
+    "cul-de-sac gravel apron and end-of-road sign",
+    "service-road gate"
+  ],
+  "sites": [
+    {
+      "id": "dev",
+      "kind": "synthetic",
+      "centre": [435, -1929],
+      "size": [700, 700],
+      "notes": "Whole RoadLab. Nominal roads sit in x 100..700, z -2200..-1600. The rect is wider so the 50 m exits (x 750, z -2250) and the cul-de-sac bulb are inside it. Builds the four synthetic chunks (0,-5), (1,-5), (0,-4), (1,-4). No lidar tile is read."
+    },
+    {
+      "id": "dev_nw",
+      "kind": "synthetic",
+      "centre": [202, -2089],
+      "size": [220, 220],
+      "notes": "NW downtown grid, diagonal, bus bay centreline. Curbs, sidewalks, crosswalks, ADA ramps and the shelter pad are not supported by strategy 0. Chunks (0,-5) and, if the south edge is within 40 m of z=-2000, (0,-4)."
+    },
+    {
+      "id": "dev_ne",
+      "kind": "synthetic",
+      "centre": [590, -2115],
+      "size": [360, 320],
+      "notes": "Signalised arterial, 2-to-4 lane roads, cross street, exits 50 m past the dev-area edge. Signals, stop bars and 12-15 m returns are not supported by strategy 0. Chunks (0,-5), (1,-5) and possibly (1,-4)."
+    },
+    {
+      "id": "dev_centre",
+      "kind": "synthetic",
+      "centre": [398, -1948],
+      "size": [220, 220],
+      "notes": "S-curve, hairpins, T, Y and 6-leg, scaled from the strategy-lab layout. Corner arcs are not supported by strategy 0. Chunks (0,-5) and (0,-4)."
+    },
+    {
+      "id": "dev_sw",
+      "kind": "synthetic",
+      "centre": [230, -1750],
+      "size": [280, 240],
+      "notes": "Canyon Springs analogue: 10% grade, 13 m hairpins, ~25 m rock mass, fill side, flat pad. Benches are not supported by strategy 0. Chunk (0,-4)."
+    },
+    {
+      "id": "dev_se",
+      "kind": "synthetic",
+      "centre": [565, -1748],
+      "size": [320, 240],
+      "notes": "Rim drop over 30 m, bridge with 19 m deck-kind approach tails, parapets on the span, lane-closure centreline, freight rail, 4.9 m vertical pair. Concrete barrier, abutments, crossing, underpass structure and closure furniture are not supported by strategy 0. Chunks (0,-4) and (1,-4)."
+    },
+    {
+      "id": "dev_s",
+      "kind": "synthetic",
+      "centre": [399, -1646],
+      "size": [200, 140],
+      "notes": "12 m cul-de-sac bulb and the service road. Apron, end sign and gate are not supported by strategy 0. Chunk (0,-4), and (1,-4) if the service road reaches it."
+    },
+    {
+      "id": "A",
+      "kind": "map",
+      "centre": [3370, -6480],
+      "size": [400, 400],
+      "notes": "Bridge approach and visitor lot. Real lidar. Usually chunks x 6..7, z -14..-13, some of them hi-res, plus the Perrine bridge model. Not the whole map."
+    },
+    {
+      "id": "B",
+      "kind": "map",
+      "centre": [2850, -6480],
+      "size": [400, 400],
+      "notes": "Canyon Springs Grade. Real lidar, hi-res canyon chunks. A handful of chunks, not the whole map."
+    },
+    {
+      "id": "C",
+      "kind": "map",
+      "centre": [2350, -1750],
+      "size": [400, 400],
+      "notes": "Downtown junctions. Real lidar, low-res tiles with the 1 m paint corridor. Usually about 6 chunks. Not the whole map."
+    },
+    {
+      "id": "D",
+      "kind": "map",
+      "centre": [3500, -2500],
+      "size": [400, 400],
+      "notes": "Blue Lakes (US-93) and Addison. Real lidar. A handful of chunks, not the whole map."
+    },
+    {
+      "id": "E_east",
+      "kind": "map",
+      "centre": [4800, -2500],
+      "size": [400, 400],
+      "notes": "Addison off the east map edge. Real lidar. Includes the strategy-0 exit pad when the road end is inside the built chunks."
+    },
+    {
+      "id": "E_north",
+      "kind": "map",
+      "centre": [3330, -7850],
+      "size": [400, 400],
+      "notes": "US-93 off the north map edge. Real lidar. The rect crosses z=-8000, so the exit past the boundary is in the site."
+    },
+    {
+      "id": "F",
+      "kind": "map",
+      "centre": [3900, -6150],
+      "size": [400, 400],
+      "notes": "Canyon Rim Rd. Real lidar. Rim barrier and the drop sit in this rect."
+    },
+    {
+      "id": "pin_3153",
+      "kind": "map",
+      "centre": [3153, -6143],
+      "size": [80, 80],
+      "notes": "Regression pin (3153, -6143). The chunk that contains the pin is built, not the whole map. Cone pushes include this pin."
+    },
+    {
+      "id": "pin_3218",
+      "kind": "map",
+      "centre": [3218, -6368],
+      "size": [80, 80],
+      "notes": "Regression pin (3218, -6368)."
+    },
+    {
+      "id": "pin_3320",
+      "kind": "map",
+      "centre": [3320, -6511],
+      "size": [80, 80],
+      "notes": "Regression pin (3320, -6511)."
+    },
+    {
+      "id": "pin_3365",
+      "kind": "map",
+      "centre": [3365, -6510],
+      "size": [80, 80],
+      "notes": "Regression pin (3365, -6510)."
+    }
+  ]
+}
