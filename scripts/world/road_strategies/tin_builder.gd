@@ -17,6 +17,9 @@ extends TfRoadBuilder
 const LIFT := 0.02
 const DENSE := 2.0
 const APRON := 12.0
+const VERGE_SLACK := 1.70
+const END_CAP := 1.20
+const PUFF := 0.04
 const LIP := 0.012
 const BLEND_MIN := 10.0
 const HOLD_EXTRA := 2.5
@@ -648,8 +651,8 @@ func _frames(ri: int) -> void:
 		var rpos := Vector3(pts[i].x - side.x * half, sec.z, pts[i].z - side.z * half)
 		left[i] = lpos
 		right[i] = rpos
-		outer_l[i] = Vector3(pts[i].x + side.x * (half + reach), sec.x, pts[i].z + side.z * (half + reach))
-		outer_r[i] = Vector3(pts[i].x - side.x * (half + reach), sec.z, pts[i].z - side.z * (half + reach))
+		outer_l[i] = Vector3(pts[i].x + side.x * (half + reach + VERGE_SLACK), sec.x, pts[i].z + side.z * (half + reach + VERGE_SLACK))
+		outer_r[i] = Vector3(pts[i].x - side.x * (half + reach + VERGE_SLACK), sec.z, pts[i].z - side.z * (half + reach + VERGE_SLACK))
 		apron_l[i] = Vector3(pts[i].x + side.x * (half + APRON), sec.x, pts[i].z + side.z * (half + APRON))
 		apron_r[i] = Vector3(pts[i].x - side.x * (half + APRON), sec.z, pts[i].z - side.z * (half + APRON))
 	road["left"] = left
@@ -771,8 +774,47 @@ func _build_mesh() -> void:
 			_drive_quad(al[i], ol[i], ol[i + 1], al[i + 1])
 			_drive_quad(orr[i], ar[i], ar[i + 1], orr[i + 1])
 			_stamp_on = true
+		if pts[0].distance_to(pts[pts.size() - 1]) > 0.5:
+			_end_cap(pts, left, right, ol, orr, al, ar, kinds, 0)
+			_end_cap(pts, left, right, ol, orr, al, ar, kinds, pts.size() - 1)
 	for item in _junctions:
 		_emit_disk(item)
+
+
+func _end_cap(pts: PackedVector3Array, left: PackedVector3Array, right: PackedVector3Array, ol: PackedVector3Array, orr: PackedVector3Array, al: PackedVector3Array, ar: PackedVector3Array, kinds: PackedStringArray, i: int) -> void:
+	var dir := Vector3.ZERO
+	if i == 0:
+		dir = pts[0] - pts[1]
+	else:
+		dir = pts[i] - pts[i - 1]
+	dir.y = 0.0
+	if dir.length_squared() < 0.0001:
+		return
+	dir = dir.normalized()
+	var kind := kinds[0] if i == 0 else kinds[mini(i - 1, kinds.size() - 1)]
+	_stamp_on = kind != "bridge"
+	var p0 := pts[i]
+	var p1 := _ahead(p0, dir)
+	var l0 := left[i]
+	var l1 := _ahead(l0, dir)
+	var r0 := right[i]
+	var r1 := _ahead(r0, dir)
+	var o0 := ol[i]
+	var o1 := _ahead(o0, dir)
+	var q0 := orr[i]
+	var q1 := _ahead(q0, dir)
+	_drive_quad(l0, p0, p1, l1)
+	_drive_quad(p0, r0, r1, p1)
+	_drive_quad(o0, l0, l1, o1)
+	_drive_quad(r0, q0, q1, r1)
+	_stamp_on = false
+	_drive_quad(al[i], o0, o1, _ahead(al[i], dir))
+	_drive_quad(q0, ar[i], _ahead(ar[i], dir), q1)
+	_stamp_on = true
+
+
+func _ahead(p: Vector3, dir: Vector3) -> Vector3:
+	return Vector3(p.x + dir.x * END_CAP, p.y, p.z + dir.z * END_CAP)
 
 
 func _drive_quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
@@ -874,13 +916,28 @@ func _push(a: Vector3, b: Vector3, c: Vector3) -> void:
 		var swap := b
 		b = c
 		c = swap
-	_mesh.append(a)
-	_mesh.append(b)
-	_mesh.append(c)
+	# The apron is collision only. A triangle that crosses another carriageway
+	# sits a few centimetres above it and the ray keeps that face.
+	if not _stamp_on and _apron_hits_road(a, b, c):
+		return
+	var mid := (a + b + c) / 3.0
+	# Shared edges of a concave trimesh drop rays. Overlap the collision
+	# faces by a few centimetres; the stamp keeps the true breaklines.
+	_mesh.append(_puff(a, mid))
+	_mesh.append(_puff(b, mid))
+	_mesh.append(_puff(c, mid))
 	if _stamp_on:
 		_stamp.append(a)
 		_stamp.append(b)
 		_stamp.append(c)
+
+
+func _puff(p: Vector3, mid: Vector3) -> Vector3:
+	var d := Vector3(p.x - mid.x, 0.0, p.z - mid.z)
+	if d.length_squared() < 1.0e-8:
+		return p
+	d = d.normalized() * PUFF
+	return Vector3(p.x + d.x, p.y, p.z + d.z)
 
 
 func _conform(p: Vector3) -> Vector3:
@@ -935,7 +992,7 @@ func _fill_flat(grid: PackedFloat32Array, mask: PackedByteArray, _orig: PackedFl
 	for edge in _edges:
 		if bool(edge["skip"]):
 			continue
-		var reach := float(edge["half"]) + float(edge["shoulder"]) + float(edge["ditch"]) + spacing
+		var reach := _shelf(edge, spacing)
 		var min_x := minf(float(edge["ax"]), float(edge["bx"])) - reach
 		var max_x := maxf(float(edge["ax"]), float(edge["bx"])) + reach
 		var min_z := minf(float(edge["az"]), float(edge["bz"])) - reach
@@ -1016,7 +1073,7 @@ func _fill_slope(grid: PackedFloat32Array, mask: PackedByteArray, orig: PackedFl
 				if hit.z < 0.0:
 					continue
 				var lat := hit.y
-				var flat := float(edge["half"]) + float(edge["shoulder"]) + float(edge["ditch"])
+				var flat := _shelf(edge, spacing)
 				if absf(lat) <= flat or absf(lat) > float(edge["half"]) + SLOPE_REACH:
 					continue
 				var left := lat > 0.0
@@ -1123,7 +1180,7 @@ func _ray(edge: Dictionary, t: float, left: bool) -> Array:
 	var cz := lerpf(float(edge["az"]), float(edge["bz"]), t)
 	var edge_y := _edge_y(edge, t, left)
 	var half := float(edge["half"])
-	var flat := half + float(edge["shoulder"]) + float(edge["ditch"])
+	var flat := half + float(edge["shoulder"]) + float(edge["ditch"]) + VERGE_SLACK
 	var out := _outward(edge, t, left)
 	var origin := Vector3(cx, 0.0, cz) + Vector3(out.x, 0.0, out.y) * flat
 	origin.y = edge_y
@@ -1360,6 +1417,12 @@ func _copy_disk(drawn: PackedFloat32Array, cut: PackedFloat32Array, origin: Vect
 			drawn[row + c] = cut[row + c]
 
 
+func _shelf(edge: Dictionary, spacing: float) -> float:
+	# One extra cell, including the diagonal, so bilinear of a sample inside
+	# the harness band does not see the ditch or the next cross-section.
+	return float(edge["half"]) + float(edge["shoulder"]) + float(edge["ditch"]) + maxf(spacing * 1.5, VERGE_SLACK)
+
+
 func _project(edge: Dictionary, x: float, z: float) -> Vector3:
 	var ax := float(edge["ax"])
 	var az := float(edge["az"])
@@ -1368,7 +1431,11 @@ func _project(edge: Dictionary, x: float, z: float) -> Vector3:
 	var len2 := abx * abx + abz * abz
 	if len2 < 0.0001:
 		return Vector3(0.0, 0.0, -1.0)
-	var t := clampf(((x - ax) * abx + (z - az) * abz) / len2, 0.0, 1.0)
+	var t := ((x - ax) * abx + (z - az) * abz) / len2
+	# A clamped foot belongs to the neighbouring segment. Using it here stamps
+	# this segment's bank onto cells that segment does not own.
+	if t < 0.0 or t > 1.0:
+		return Vector3(t, 0.0, -1.0)
 	var cx := ax + abx * t
 	var cz := az + abz * t
 	var len := sqrt(len2)
@@ -1376,6 +1443,30 @@ func _project(edge: Dictionary, x: float, z: float) -> Vector3:
 	var left_z := abx / len
 	var lat := (x - cx) * left_x + (z - cz) * left_z
 	return Vector3(t, lat, 1.0)
+
+
+func _apron_hits_road(a: Vector3, b: Vector3, c: Vector3) -> bool:
+	var mid_ab := (a + b) * 0.5
+	var mid_bc := (b + c) * 0.5
+	var mid_ca := (c + a) * 0.5
+	var mid := (a + b + c) / 3.0
+	return _in_band(a.x, a.z) or _in_band(b.x, b.z) or _in_band(c.x, c.z) or _in_band(mid.x, mid.z) or _in_band(mid_ab.x, mid_ab.z) or _in_band(mid_bc.x, mid_bc.z) or _in_band(mid_ca.x, mid_ca.z)
+
+
+func _in_band(x: float, z: float) -> bool:
+	var key := Vector2i(int(floor(x / BUCKET)), int(floor(z / BUCKET)))
+	var packed: PackedInt32Array = _buckets.get(key, PackedInt32Array())
+	for ei in packed:
+		var edge: Dictionary = _edges[int(ei)]
+		if bool(edge.get("skip", false)):
+			continue
+		var hit := _project(edge, x, z)
+		if hit.z < 0.0:
+			continue
+		var band := float(edge["half"]) + float(edge["shoulder"]) + float(edge["ditch"]) - 0.25
+		if absf(hit.y) < band:
+			return true
+	return false
 
 
 func _design_y(edge: Dictionary, t: float, lat: float) -> float:
