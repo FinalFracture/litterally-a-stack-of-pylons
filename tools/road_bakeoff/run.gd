@@ -54,9 +54,10 @@ func _bakeoff() -> void:
 			return
 	_strategy_id = RoadStrategyRegistry.current_id()
 	_spec = RoadStrategyRegistry.spec_for(_strategy_id)
-	if _strategy_id != 0:
-		var strategy := RoadStrategyRegistry.create()
-		strategy.fail_unimplemented()
+	# Step 0 treated every id above 0 as a stub. An implemented strategy returns
+	# a builder; only a null builder is still "not implemented". make_builder()
+	# already reports the stub, so this branch does not push that error again.
+	if not _strategy_ready():
 		bakeoff_gap_max = float(_spec.get("gap_max", 0.05))
 		for item in queue:
 			_site = item
@@ -91,6 +92,9 @@ func _one(site: Dictionary) -> void:
 	var hash_b := collision_hash()
 	var det_s := float(Time.get_ticks_msec() - t1) / 1000.0
 	await _measure_all()
+	var steep := _steep_line()
+	if steep != "":
+		print(steep)
 	_write_result(_payload(), hash_a, hash_b, build_s, det_s, false)
 	print("BAKEOFF site=%s build=%.0f s determinism=%.0f s hash=%s" % [
 		site.get("id", ""), build_s, det_s, "match" if hash_a == hash_b else "DIFFER",
@@ -155,6 +159,10 @@ func _write_result(net_payload: Dictionary, hash_a: String, hash_b: String, buil
 		},
 		"not_measured_headless": ["fps", "frame_time_ms", "draw_calls"],
 	}
+	var steep := _steep_line()
+	if steep != "":
+		var stats: Dictionary = doc["stats"]
+		stats["steep"] = steep
 	var json_path := "%s/%s.json" % [dir, sid]
 	var md_path := "%s/%s.md" % [dir, sid]
 	var jf := FileAccess.open(json_path, FileAccess.WRITE)
@@ -215,6 +223,66 @@ func _gates(net: Dictionary, mem_mb: float, triangles: int, same_hash: bool) -> 
 
 func _gate(value, limit, ok: bool) -> Dictionary:
 	return {"value": value, "limit": limit, "pass": ok}
+
+
+## Strategy 0 stays on the shared chunk builder. Strategy 4 has no ribbon, so
+## the guardrail is a separate body the edge probe can see and the driving
+## rays do not treat as the carriageway.
+func _build_chunks(coords: Array[Vector2i]) -> void:
+	var raw: Variant = _builder
+	if _strategy_id == 4 and raw != null and raw.has_method("clear_barriers"):
+		raw.clear_barriers()
+	super._build_chunks(coords)
+	if _strategy_id != 4 or _host == null:
+		return
+	raw = _builder
+	if raw == null or not raw.has_method("take_barriers"):
+		return
+	var pending: Array = raw.take_barriers()
+	if pending.is_empty():
+		return
+	var body := StaticBody3D.new()
+	body.name = "BarrierBody"
+	body.collision_layer = 1
+	body.collision_mask = 0
+	_host.add_child(body)
+	for item in pending:
+		if not (item is Dictionary):
+			continue
+		var rec: Dictionary = item
+		var shape := BoxShape3D.new()
+		shape.size = rec.get("size", Vector3(2.35, 0.7, 0.30))
+		var col := CollisionShape3D.new()
+		col.shape = shape
+		col.transform = rec.get("xf", Transform3D.IDENTITY)
+		body.add_child(col)
+	print("BARRIERS %d" % pending.size())
+
+
+## The road is the terrain body. A TerrainBody hit is a hit. The guardrail is not.
+func _is_road(hit: Dictionary) -> bool:
+	if _strategy_id != 4:
+		return super._is_road(hit)
+	if hit.is_empty():
+		return false
+	var body := hit.get("collider") as Node
+	if body != null and str(body.name) == "BarrierBody":
+		return false
+	return true
+
+
+func _strategy_ready() -> bool:
+	if _strategy_id == 0:
+		return true
+	var strategy := RoadStrategyRegistry.create()
+	return strategy.make_builder() != null
+
+
+func _steep_line() -> String:
+	var raw: Variant = _builder
+	if raw != null and raw.has_method("steep_line"):
+		return str(raw.steep_line())
+	return ""
 
 
 func _summary(doc: Dictionary) -> String:

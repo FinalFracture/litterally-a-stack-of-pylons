@@ -354,6 +354,15 @@ func _build(coord: Vector2i, dc: Vector2i, hi: bool, floor_box: Dictionary = {})
 			drawn = fine
 			store_n = HI_N
 			store_sp = HI_SP
+	# Optional. Strategy 0 has no refine_corridor, so its grid is unchanged.
+	# Strategy 4 replaces the chunk collision with a 0.5 m corridor heightfield.
+	if _roads != null and _roads.has_method("refine_corridor"):
+		var refined: Dictionary = _roads.refine_corridor(drawn, store_n, store_sp, b.origin)
+		var rh: Variant = refined.get("h", PackedFloat32Array())
+		if rh is PackedFloat32Array and (rh as PackedFloat32Array).size() > 0:
+			drawn = rh
+			store_n = int(refined.get("n", store_n))
+			store_sp = float(refined.get("sp", store_sp))
 	stage["sample"] = (Time.get_ticks_usec() - t_sample) / 1000
 	_store_drawn(coord, drawn, store_n, store_sp)
 	pay.heights = drawn
